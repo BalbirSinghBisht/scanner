@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_constants.dart';
 import '../core/errors/app_exceptions.dart';
 import '../models/backup_settings.dart';
@@ -39,6 +40,8 @@ class BackupSyncService {
   final MediaAnalysisService _analysis = MediaAnalysisService.instance;
   final DeviceStateService _device = DeviceStateService.instance;
 
+  static const String _lockKey = 'global_backup_sync_lock_ts';
+
   final StreamController<UploadProgressEvent?> _progressController =
       StreamController<UploadProgressEvent?>.broadcast();
   Stream<UploadProgressEvent?> get progressStream => _progressController.stream;
@@ -48,6 +51,17 @@ class BackupSyncService {
 
   bool _isPaused = false;
   bool get isPaused => _isPaused;
+
+  bool _hasAuthError = false;
+  bool get hasAuthError => _hasAuthError;
+
+  String? _authErrorMessage;
+  String? get authErrorMessage => _authErrorMessage;
+
+  void clearAuthError() {
+    _hasAuthError = false;
+    _authErrorMessage = null;
+  }
 
   MediaItem? _currentUploadingItem;
   MediaItem? get currentUploadingItem => _currentUploadingItem;
@@ -63,93 +77,119 @@ class BackupSyncService {
     }
   }
 
-  /// Main synchronization loop
+  static bool _inProcessSyncLock = false;
+
+  /// Main synchronization loop with cross-isolate mutex lock, Drive reconciliation, and atomic item claims
   Future<void> startSync({
     required BackupSettings settings,
     bool isManualTrigger = false,
   }) async {
-    // 1. Validate user consent & authorization
-    if (!settings.userConsentGiven && !isManualTrigger) {
-      debugPrint('Sync skipped: User consent not granted for automatic backup.');
+    if (_inProcessSyncLock || _isSyncing) {
+      debugPrint('Sync already in progress in this isolate.');
       return;
     }
 
-    if (!settings.autoBackupEnabled && !isManualTrigger) {
-      debugPrint('Sync skipped: Automatic backup is disabled in settings.');
+    // 1. Cross-isolate process lock check
+    final prefs = await SharedPreferences.getInstance();
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final lastLockMs = prefs.getInt(_lockKey) ?? 0;
+    // Strict lock check: if any isolate holds an active lock within the last 45 seconds, yield immediately
+    if (nowMs - lastLockMs < 45000) {
+      debugPrint('Sync skipped: Another isolate is actively syncing.');
       return;
     }
+    await prefs.setInt(_lockKey, nowMs);
+    _inProcessSyncLock = true;
 
-    if (_isSyncing) {
-      debugPrint('Sync already in progress.');
-      return;
-    }
+    _hasAuthError = false;
+    _authErrorMessage = null;
 
-    // Check Google Auth unless local-only testing mode is active
+    // Check Google Auth: ensure session is restored from settings if not authenticated yet
     if (!settings.localOnlyMode && !_auth.isAuthenticated) {
-      debugPrint('Sync skipped: Google Drive account is not connected.');
-      return;
+      await _auth.restoreSession();
+      if (!_auth.isAuthenticated) {
+        debugPrint('Sync skipped: Google Drive account credentials not found.');
+        _inProcessSyncLock = false;
+        await prefs.remove(_lockKey);
+        return;
+      }
     }
 
     _isSyncing = true;
     _isPaused = settings.isPaused;
 
     try {
-      // 2. Safely recover any items stuck in UPLOADING state from previous restarts
-      await _db.recoverInterruptedUploads();
+      // 2. Safely recover interrupted transfers older than 5 minutes
+      await _db.recoverInterruptedUploads(timeoutMinutes: 5);
 
-      // 3. Process pending queue
+      // 3. Two-way reconciliation with Google Drive:
+      // - If user removed data from Drive, reset SQLite so it automatically re-syncs without clearing app data
+      // - If data is already on Drive, mark SQLite as UPLOADED so it never duplicates
+      if (!settings.localOnlyMode && _auth.isAuthenticated) {
+        try {
+          final remoteSummary = await _drive.fetchRemoteFilesSummary();
+          await _db.reconcileWithDrive(
+            remoteSummary.filesByName,
+            remoteSummary.fileIds,
+          );
+        } catch (e) {
+          debugPrint('Drive reconciliation warning: $e');
+        }
+      }
+
+      // 4. Process pending queue one-by-one atomically
       while (_isSyncing && !_isPaused) {
-        // Verify network & battery constraints before each batch
+        // Keep lock alive while active
+        await prefs.setInt(_lockKey, DateTime.now().millisecondsSinceEpoch);
+
+        // Verify network & battery constraints before each item
         final networkOk = await _device.isNetworkPermitted(settings);
         if (!networkOk) {
-          debugPrint('Sync paused: Network constraints not met (e.g., Wi-Fi required).');
+          debugPrint('Sync paused: Network constraints not met.');
           break;
         }
 
         final batteryOk = await _device.isBatteryPermitted(settings);
         if (!batteryOk) {
-          debugPrint('Sync paused: Battery constraints not met (low battery or charging required).');
+          debugPrint('Sync paused: Battery constraints not met.');
           break;
         }
 
-        // Fetch next eligible items from SQLite manifest
-        final pendingItems = await _db.getPendingUploads(
+        // Atomically claim the single next pending upload in an SQLite transaction
+        final item = await _db.claimNextPendingUpload(
           includePhotos: settings.backupPhotos,
           includeVideos: settings.backupVideos,
           maxVideoSizeBytes: settings.maxVideoSizeBytes,
-          limit: 10,
         );
 
-        if (pendingItems.isEmpty) {
+        if (item == null) {
           debugPrint('Sync complete: No more pending items in queue.');
           break;
         }
 
-        for (final item in pendingItems) {
-          if (_isPaused || !_isSyncing) break;
-
-          // Double check individual file size against maxVideoSizeBytes
-          if (item.mediaType == AppMediaType.video &&
-              settings.maxVideoSizeBytes != null &&
-              item.fileSize > settings.maxVideoSizeBytes!) {
-            await _db.updateUploadState(
-              item.localId,
-              UploadState.SKIPPED,
-              errorMessage:
-                  'Exceeds maximum video size limit of ${settings.maxVideoSizeBytes} bytes',
-            );
-            continue;
-          }
-
-          await _processSingleUpload(item, settings);
+        // Check video size limit
+        if (item.mediaType == AppMediaType.video &&
+            settings.maxVideoSizeBytes != null &&
+            item.fileSize > settings.maxVideoSizeBytes!) {
+          await _db.updateUploadState(
+            item.localId,
+            UploadState.SKIPPED,
+            errorMessage:
+                'Exceeds maximum video size limit of ${settings.maxVideoSizeBytes} bytes',
+          );
+          continue;
         }
+
+        await _processSingleUpload(item, settings);
       }
     } catch (e) {
       debugPrint('Error during backup sync: $e');
     } finally {
       _isSyncing = false;
+      _inProcessSyncLock = false;
       _currentUploadingItem = null;
       _progressController.add(null);
+      await prefs.remove(_lockKey);
     }
   }
 
@@ -260,8 +300,17 @@ class BackupSyncService {
       ));
     } catch (e) {
       debugPrint('Failed to upload ${item.fileName}: $e');
+      final isAuth = e.toString().contains('401') ||
+          e.toString().contains('authentication') ||
+          e.toString().contains('UNAUTHENTICATED');
+      if (isAuth) {
+        _hasAuthError = true;
+        _authErrorMessage =
+            'Google Drive authentication expired (401). Please update your access token or reconnect.';
+      }
+
       final newRetryCount = item.retryCount + 1;
-      final finalState = newRetryCount >= AppConstants.maxRetryAttempts
+      final finalState = isAuth || newRetryCount >= AppConstants.maxRetryAttempts
           ? UploadState.FAILED
           : UploadState.RETRY_PENDING;
 
@@ -278,13 +327,19 @@ class BackupSyncService {
         bytesSent: 0,
         totalBytes: item.fileSize,
         progress: 0.0,
-        statusMessage: 'Failed: ${e.toString()}',
+        statusMessage: isAuth ? 'Authentication Expired (401)' : 'Failed: ${e.toString()}',
       ));
+
+      if (isAuth) {
+        // Pause sync immediately so other files don't fail unnecessarily
+        _isSyncing = false;
+      }
     }
   }
 
   /// Retries all currently failed uploads
   Future<void> retryFailedUploads(BackupSettings settings) async {
+    clearAuthError();
     await _db.resetAllFailedToReady();
     if (!_isSyncing) {
       startSync(settings: settings, isManualTrigger: true);

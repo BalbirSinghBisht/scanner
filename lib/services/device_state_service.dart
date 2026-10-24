@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/backup_settings.dart';
 
 class DeviceStateService {
@@ -8,26 +11,64 @@ class DeviceStateService {
 
   final Connectivity _connectivity = Connectivity();
   final Battery _battery = Battery();
+  String? _cachedDeviceFolderName;
 
-  /// Checks if current network connection meets backup criteria
+  /// Returns a clean root folder name based on device model (e.g. Google_Pixel_7 or Samsung_SM-S911B)
+  Future<String> getDeviceBackupFolderName() async {
+    if (_cachedDeviceFolderName != null && _cachedDeviceFolderName!.isNotEmpty) {
+      return _cachedDeviceFolderName!;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final persisted = prefs.getString('persisted_device_folder_name');
+      if (persisted != null && persisted.isNotEmpty) {
+        _cachedDeviceFolderName = persisted;
+        return persisted;
+      }
+
+      final deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        final brand = androidInfo.brand.trim();
+        final model = androidInfo.model.trim();
+        final cleanBrand = brand.replaceAll(RegExp(r'[^\w\-]'), '_');
+        final cleanModel = model.replaceAll(RegExp(r'[^\w\-]'), '_');
+        if (cleanModel.toLowerCase().contains(cleanBrand.toLowerCase())) {
+          _cachedDeviceFolderName = cleanModel;
+        } else {
+          _cachedDeviceFolderName = '${cleanBrand}_$cleanModel';
+        }
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        _cachedDeviceFolderName =
+            iosInfo.name.replaceAll(RegExp(r'[^\w\-]'), '_');
+      }
+
+      _cachedDeviceFolderName ??= 'Phone_Device';
+      if (_cachedDeviceFolderName!.isEmpty) {
+        _cachedDeviceFolderName = 'Phone_Device';
+      }
+
+      await prefs.setString('persisted_device_folder_name', _cachedDeviceFolderName!);
+      return _cachedDeviceFolderName!;
+    } catch (_) {
+      return _cachedDeviceFolderName ?? 'Phone_Device';
+    }
+  }
+
+  /// Checks if current network connection meets backup criteria (supports both Wi-Fi and mobile data)
   Future<bool> isNetworkPermitted(BackupSettings settings) async {
     try {
       final connectivityResult = await _connectivity.checkConnectivity();
 
-      // Check for no connection
+      // Check for completely disconnected state
       if (connectivityResult.contains(ConnectivityResult.none) &&
           connectivityResult.length == 1) {
         return false;
       }
 
-      // If Wi-Fi only is required, verify Wi-Fi or Ethernet is present
-      if (settings.wifiOnly) {
-        final isWifiOrEthernet = connectivityResult.contains(ConnectivityResult.wifi) ||
-            connectivityResult.contains(ConnectivityResult.ethernet);
-        return isWifiOrEthernet;
-      }
-
-      // If Wi-Fi only is disabled, mobile data or any active connection is allowed
+      // Both Mobile Data (4G/5G/LTE) and Wi-Fi are fully supported
       return !connectivityResult.contains(ConnectivityResult.none);
     } catch (_) {
       // Default to true on platforms where connectivity plugin isn't supported

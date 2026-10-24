@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../core/constants/app_constants.dart';
 import '../core/errors/app_exceptions.dart';
@@ -39,11 +41,40 @@ class MediaScannerService {
   PermissionState _lastPermissionState = PermissionState.notDetermined;
   PermissionState get lastPermissionState => _lastPermissionState;
 
+  final Map<String, Uint8List> _thumbnailCache = {};
+
   bool get isPermissionGranted =>
       _lastPermissionState == PermissionState.authorized ||
       _lastPermissionState == PermissionState.limited;
 
   bool get isPartialAccess => _lastPermissionState == PermissionState.limited;
+
+  bool _isObservingChanges = false;
+  void Function(MethodCall)? _changeCallback;
+
+  /// Starts listening to device media changes (new photos, videos) and triggers auto-sync
+  void startObservingLibraryChanges(Future<void> Function() onNewMedia) {
+    if (_isObservingChanges) return;
+    _isObservingChanges = true;
+
+    _changeCallback = (MethodCall call) async {
+      debugPrint('Device media change detected (${call.method}). Auto-scanning new data...');
+      await onNewMedia();
+    };
+
+    PhotoManager.addChangeCallback(_changeCallback!);
+    PhotoManager.startChangeNotify();
+  }
+
+  void stopObservingLibraryChanges() {
+    if (!_isObservingChanges) return;
+    if (_changeCallback != null) {
+      PhotoManager.removeChangeCallback(_changeCallback!);
+      _changeCallback = null;
+    }
+    PhotoManager.stopChangeNotify();
+    _isObservingChanges = false;
+  }
 
   /// Requests native media library permissions
   Future<PermissionState> requestPermission() async {
@@ -60,6 +91,24 @@ class MediaScannerService {
   /// Opens the device system settings for this app
   Future<void> openSettings() async {
     await PhotoManager.openSetting();
+  }
+
+  /// Retrieves all album / library folders from the device
+  Future<List<AssetPathEntity>> getAllAlbums() async {
+    try {
+      final perm = await requestPermission();
+      if (perm == PermissionState.denied || perm == PermissionState.restricted) {
+        return [];
+      }
+      return await PhotoManager.getAssetPathList(
+        type: RequestType.common,
+        hasAll: true,
+        onlyAll: false,
+      );
+    } catch (e) {
+      debugPrint('Error getting albums: $e');
+      return [];
+    }
   }
 
   /// Scans device media library incrementally using pagination.
@@ -117,12 +166,13 @@ class MediaScannerService {
       final batchItems = <MediaItem>[];
 
       for (final entity in entities) {
-        // Incremental check: if scanSince is set and item created before it, skip if not forceFullScan
-        if (!forceFullScan && scanSince != null) {
-          if (entity.createDateTime.isBefore(scanSince)) {
-            // Already indexed in previous scans
-            continue;
-          }
+        // Fast incremental check: if already indexed and uploaded, skip immediately
+        final existingItem = await _db.getItemByLocalId(entity.id);
+        if (!forceFullScan &&
+            existingItem != null &&
+            existingItem.uploadState == UploadState.UPLOADED) {
+          processedCount++;
+          continue;
         }
 
         // Fast metadata extraction without loading bytes into memory
@@ -146,8 +196,33 @@ class MediaScannerService {
           // Fallback if file handle is restricted
         }
 
-        // Check if item already exists in local SQLite manifest
-        final existingItem = await _db.getItemByLocalId(entity.id);
+        // Extract folder name accurately
+        String? folderName;
+        try {
+          if (entity.relativePath != null && entity.relativePath!.isNotEmpty) {
+            final trimmed = entity.relativePath!.replaceAll(RegExp(r'[\\/]+$'), '');
+            final parts = trimmed.split(RegExp(r'[\\/]'));
+            if (parts.isNotEmpty) {
+              folderName = parts.last;
+            }
+          }
+        } catch (_) {}
+
+        if (folderName == null || folderName.isEmpty) {
+          if (filePath != null && filePath.isNotEmpty) {
+            final parts = filePath.split(RegExp(r'[\\/]'));
+            if (parts.length >= 2) {
+              final parent = parts[parts.length - 2];
+              if (parent.isNotEmpty && parent != '0' && parent != 'emulated') {
+                folderName = parent;
+              }
+            }
+          }
+        }
+        if (folderName?.toUpperCase() == 'DCIM') {
+          folderName = 'Camera';
+        }
+        folderName ??= (mediaType == AppMediaType.video ? 'Videos' : 'Camera');
 
         final item = MediaItem(
           localId: entity.id,
@@ -172,6 +247,7 @@ class MediaScannerService {
           bytesUploaded: existingItem?.bytesUploaded ?? 0,
           driveFolderPath: existingItem?.driveFolderPath,
           localFilePath: filePath ?? existingItem?.localFilePath,
+          folderName: folderName,
         );
 
         batchItems.add(item);
@@ -210,15 +286,22 @@ class MediaScannerService {
     return null;
   }
 
-  /// Helper to fetch small thumbnail bytes for fast UI display
+  /// Helper to fetch small thumbnail bytes for fast UI display with memory cache
   Future<Uint8List?> getThumbnail(String assetId, {int size = 200}) async {
+    if (_thumbnailCache.containsKey(assetId)) {
+      return _thumbnailCache[assetId];
+    }
     try {
       final asset = await AssetEntity.fromId(assetId);
       if (asset != null) {
-        return await asset.thumbnailDataWithSize(
+        final data = await asset.thumbnailDataWithSize(
           ThumbnailSize(size, size),
           quality: 80,
         );
+        if (data != null) {
+          _thumbnailCache[assetId] = data;
+        }
+        return data;
       }
     } catch (_) {}
     return null;

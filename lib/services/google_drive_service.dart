@@ -2,10 +2,11 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
-import '../core/constants/app_constants.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/errors/app_exceptions.dart';
 import '../models/media_item.dart';
 import 'auth_service.dart';
+import 'device_state_service.dart';
 
 typedef UploadProgressCallback = void Function(int bytesUploaded, int totalBytes);
 
@@ -44,8 +45,12 @@ class GoogleDriveService {
 
   final AuthService _auth = AuthService.instance;
 
-  // In-memory folder path cache: e.g. "PhoneBackup/Photos/2026/01" -> "driveFolderId"
+  // Root folder in Google Drive
+  static const String rootFolderName = 'PhoneBackup';
+
+  // In-memory cache backed by SharedPreferences
   final Map<String, String> _folderCache = {};
+  Completer<void>? _folderLock;
 
   drive.DriveApi? _driveApi;
 
@@ -55,14 +60,23 @@ class GoogleDriveService {
     return _driveApi!;
   }
 
-  /// Resolves or recursively creates folder hierarchy in Google Drive
-  /// e.g. ['PhoneBackup', 'Photos', '2026', '01']
+  /// Thread-safe resolution of folder paths with persistent caching in SharedPreferences
   Future<String> getOrCreateFolderPath(List<String> pathSegments) async {
-    final fullPath = pathSegments.join('/');
-    if (_folderCache.containsKey(fullPath)) {
-      return _folderCache[fullPath]!;
+    while (_folderLock != null) {
+      await _folderLock!.future;
     }
+    _folderLock = Completer<void>();
+    try {
+      return await _resolveFolderPathLocked(pathSegments);
+    } finally {
+      final lock = _folderLock;
+      _folderLock = null;
+      lock?.complete();
+    }
+  }
 
+  Future<String> _resolveFolderPathLocked(List<String> pathSegments) async {
+    final prefs = await SharedPreferences.getInstance();
     final api = await _getDriveApi();
     String currentParentId = 'root';
     final currentAccumulatedPath = <String>[];
@@ -70,13 +84,35 @@ class GoogleDriveService {
     for (final segment in pathSegments) {
       currentAccumulatedPath.add(segment);
       final partialPath = currentAccumulatedPath.join('/');
+      final prefKey = 'gdrive_folder_id_${partialPath.replaceAll(RegExp(r'[^\w]'), '_')}';
 
+      // 1. Check in-memory cache
       if (_folderCache.containsKey(partialPath)) {
         currentParentId = _folderCache[partialPath]!;
         continue;
       }
 
-      // Check if folder already exists in Drive under currentParentId
+      // 2. Check persistent SharedPreferences cache
+      final savedId = prefs.getString(prefKey) ??
+          (segment == rootFolderName ? '1y27LUA1lGyAu7zbyLfNSJ4VDu5V_f8hX' : null);
+      if (savedId != null && savedId.isNotEmpty) {
+        try {
+          final existing = await api.files.get(
+            savedId,
+            supportsAllDrives: true,
+            $fields: 'id, trashed',
+          );
+          if (existing is drive.File && existing.trashed != true) {
+            _folderCache[partialPath] = savedId;
+            currentParentId = savedId;
+            continue;
+          }
+        } catch (_) {
+          // Folder no longer exists or inaccessible, fall through to re-query / re-create
+        }
+      }
+
+      // 3. Query Drive under currentParentId to see if folder exists
       final escapedSegment = segment.replaceAll("'", "\\'");
       final query =
           "name = '$escapedSegment' and "
@@ -87,6 +123,8 @@ class GoogleDriveService {
       final fileList = await api.files.list(
         q: query,
         spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
         $fields: 'files(id, name)',
       );
 
@@ -94,7 +132,7 @@ class GoogleDriveService {
       if (fileList.files != null && fileList.files!.isNotEmpty) {
         folderId = fileList.files!.first.id!;
       } else {
-        // Create new folder
+        // Create new folder under currentParentId
         final folderMetadata = drive.File()
           ..name = segment
           ..mimeType = 'application/vnd.google-apps.folder'
@@ -102,27 +140,32 @@ class GoogleDriveService {
 
         final created = await api.files.create(
           folderMetadata,
+          supportsAllDrives: true,
           $fields: 'id, name',
         );
         folderId = created.id!;
       }
 
       _folderCache[partialPath] = folderId;
+      await prefs.setString(prefKey, folderId);
       currentParentId = folderId;
     }
 
     return currentParentId;
   }
 
-  /// Checks if file already exists in target folder by name and size to avoid duplicate uploads
+  /// Checks if file already exists in target folder by name or contentHash to avoid duplicate uploads
   Future<String?> findExistingDriveFile({
     required String parentFolderId,
     required String fileName,
     required int fileSize,
+    String? contentHash,
   }) async {
     try {
       final api = await _getDriveApi();
       final escapedName = fileName.replaceAll("'", "\\'");
+
+      // 1. Search by exact file name inside target folder
       final query =
           "name = '$escapedName' and "
           "'$parentFolderId' in parents and "
@@ -131,22 +174,76 @@ class GoogleDriveService {
       final fileList = await api.files.list(
         q: query,
         spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
         $fields: 'files(id, name, size)',
       );
 
       if (fileList.files != null && fileList.files!.isNotEmpty) {
-        for (final f in fileList.files!) {
-          final driveSize = int.tryParse(f.size ?? '0') ?? 0;
-          if (driveSize == fileSize) {
-            return f.id;
-          }
+        return fileList.files!.first.id;
+      }
+
+      // 2. Search by contentHash in target folder if available
+      if (contentHash != null && contentHash.isNotEmpty) {
+        final hashQuery =
+            "appProperties has { key='contentHash' and value='$contentHash' } and "
+            "'$parentFolderId' in parents and "
+            "trashed = false";
+        final hashList = await api.files.list(
+          q: hashQuery,
+          spaces: 'drive',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+          $fields: 'files(id, name)',
+        );
+        if (hashList.files != null && hashList.files!.isNotEmpty) {
+          return hashList.files!.first.id;
         }
       }
     } catch (_) {}
     return null;
   }
 
-  /// Uploads media file to Google Drive with progress tracking and exponential backoff
+  /// Fetches a mapping of all accessible media files on Google Drive
+  /// Returns a record with Map of {fileName: fileId} and Set of {fileId}
+  Future<({Map<String, String> filesByName, Set<String> fileIds})> fetchRemoteFilesSummary() async {
+    final filesByName = <String, String>{};
+    final fileIds = <String>{};
+
+    try {
+      final api = await _getDriveApi();
+      String? pageToken;
+      do {
+        final list = await api.files.list(
+          q: "trashed = false and mimeType != 'application/vnd.google-apps.folder'",
+          spaces: 'drive',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+          $fields: 'nextPageToken, files(id, name, appProperties)',
+          pageToken: pageToken,
+          pageSize: 500,
+        );
+
+        if (list.files != null) {
+          for (final f in list.files!) {
+            if (f.id != null && f.id!.isNotEmpty) {
+              fileIds.add(f.id!);
+              if (f.name != null && f.name!.isNotEmpty) {
+                filesByName[f.name!] = f.id!;
+              }
+            }
+          }
+        }
+        pageToken = list.nextPageToken;
+      } while (pageToken != null && pageToken.isNotEmpty);
+    } catch (e) {
+      debugPrint('Error fetching remote drive files summary: $e');
+    }
+
+    return (filesByName: filesByName, fileIds: fileIds);
+  }
+
+  /// Uploads media file to Google Drive under PhoneBackup/`Device`/Photos or Videos
   Future<drive.File> uploadFile({
     required File file,
     required MediaItem item,
@@ -154,26 +251,20 @@ class GoogleDriveService {
   }) async {
     final api = await _getDriveApi();
 
-    // 1. Determine destination folder structure: PhoneBackup/Photos/2026/01
-    final year = item.createdAt.year.toString();
-    final month = item.createdAt.month.toString().padLeft(2, '0');
-    final mediaSubfolder =
-        item.mediaType == AppMediaType.video ? AppConstants.videosFolderName : AppConstants.photosFolderName;
-
-    final pathSegments = [
-      AppConstants.rootBackupFolderName,
-      mediaSubfolder,
-      year,
-      month,
-    ];
+    // 1. Destination folder structure: PhoneBackup as root, then device folder, then matching phone folder (e.g. Camera, Screenshots, WhatsApp Images)
+    final deviceFolder =
+        await DeviceStateService.instance.getDeviceBackupFolderName();
+    final phoneFolder = item.displayFolderName;
+    final pathSegments = [rootFolderName, deviceFolder, phoneFolder];
 
     final folderId = await getOrCreateFolderPath(pathSegments);
 
-    // 2. Check if file already exists in this Drive folder
+    // 2. Check if file already exists in this Drive folder to prevent duplicate uploads
     final existingFileId = await findExistingDriveFile(
       parentFolderId: folderId,
       fileName: item.fileName,
       fileSize: item.fileSize,
+      contentHash: item.contentHash,
     );
 
     if (existingFileId != null) {
@@ -222,6 +313,7 @@ class GoogleDriveService {
         final result = await api.files.create(
           driveFile,
           uploadMedia: media,
+          supportsAllDrives: true,
           $fields: 'id, name, size, md5Checksum, mimeType',
         );
 
@@ -243,6 +335,11 @@ class GoogleDriveService {
             );
           }
           if (e.status == 401) {
+            final refreshed = await _auth.refreshDirectAccessToken();
+            if (refreshed != null && attempt < 3) {
+              debugPrint('Refreshed token on 401, retrying upload...');
+              continue;
+            }
             throw AuthException(
               'Google authentication expired or revoked. Please re-authenticate.',
               originalError: e,

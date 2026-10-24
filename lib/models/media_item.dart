@@ -36,6 +36,7 @@ class MediaItem {
   final int bytesUploaded;
   final String? driveFolderPath;
   final String? localFilePath;
+  final String? folderName;
 
   const MediaItem({
     required this.localId,
@@ -58,6 +59,7 @@ class MediaItem {
     this.bytesUploaded = 0,
     this.driveFolderPath,
     this.localFilePath,
+    this.folderName,
   });
 
   bool get isUploaded => uploadState == UploadState.UPLOADED;
@@ -92,12 +94,32 @@ class MediaItem {
     return '';
   }
 
-  /// Builds folder path based on media creation date, e.g. PhoneBackup/Photos/2026/01
-  String computeTargetFolderPath({String rootFolder = 'PhoneBackup'}) {
-    final year = createdAt.year.toString();
-    final month = createdAt.month.toString().padLeft(2, '0');
-    final subFolder = mediaType == AppMediaType.video ? 'Videos' : 'Photos';
-    return '$rootFolder/$subFolder/$year/$month';
+  /// Builds folder path based on device root folder and phone album folder, e.g. PhoneBackup/Pixel_7/Camera
+  String computeTargetFolderPath({String deviceFolder = 'Phone_Device'}) {
+    return 'PhoneBackup/$deviceFolder/$displayFolderName';
+  }
+
+  String get displayFolderName {
+    if (folderName != null && folderName!.trim().isNotEmpty) {
+      final name = folderName!.trim();
+      if (name.toUpperCase() == 'DCIM') return 'Camera';
+      return name;
+    }
+    if (localFilePath != null && localFilePath!.isNotEmpty) {
+      final parts = localFilePath!.split(RegExp(r'[\\/]'));
+      if (parts.length >= 2) {
+        final parent = parts[parts.length - 2];
+        if (parent.isNotEmpty &&
+            parent != '0' &&
+            parent != 'emulated' &&
+            parent != 'storage' &&
+            parent != 'sdcard') {
+          if (parent.toUpperCase() == 'DCIM') return 'Camera';
+          return parent;
+        }
+      }
+    }
+    return mediaType == AppMediaType.video ? 'Videos' : 'Camera';
   }
 
   MediaItem copyWith({
@@ -121,6 +143,7 @@ class MediaItem {
     int? bytesUploaded,
     String? driveFolderPath,
     String? localFilePath,
+    String? folderName,
   }) {
     return MediaItem(
       localId: localId ?? this.localId,
@@ -143,6 +166,7 @@ class MediaItem {
       bytesUploaded: bytesUploaded ?? this.bytesUploaded,
       driveFolderPath: driveFolderPath ?? this.driveFolderPath,
       localFilePath: localFilePath ?? this.localFilePath,
+      folderName: folderName ?? this.folderName,
     );
   }
 
@@ -168,6 +192,7 @@ class MediaItem {
       'bytes_uploaded': bytesUploaded,
       'drive_folder_path': driveFolderPath,
       'local_file_path': localFilePath,
+      'folder_name': folderName,
     };
   }
 
@@ -207,6 +232,7 @@ class MediaItem {
       bytesUploaded: (map['bytes_uploaded'] as num?)?.toInt() ?? 0,
       driveFolderPath: map['drive_folder_path'] as String?,
       localFilePath: map['local_file_path'] as String?,
+      folderName: map['folder_name'] as String?,
     );
   }
 }

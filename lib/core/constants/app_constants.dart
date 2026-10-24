@@ -11,7 +11,7 @@ class AppConstants {
 
   // Database
   static const String databaseName = 'media_backup_manifest.db';
-  static const int databaseVersion = 1;
+  static const int databaseVersion = 2;
   static const String manifestTableName = 'media_manifest';
 
   // Scan & Upload Batch Sizes

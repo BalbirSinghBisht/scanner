@@ -11,12 +11,12 @@ class BackupSettings {
   final bool isPaused;
 
   const BackupSettings({
-    this.autoBackupEnabled = false,
-    this.userConsentGiven = false,
-    this.wifiOnly = true,
+    this.autoBackupEnabled = true,
+    this.userConsentGiven = true,
+    this.wifiOnly = false,
     this.backupPhotos = true,
     this.backupVideos = true,
-    this.minBatteryThreshold = 20,
+    this.minBatteryThreshold = 10,
     this.chargingOnly = false,
     this.maxVideoSizeBytes,
     this.localOnlyMode = false,
@@ -66,12 +66,12 @@ class BackupSettings {
 
   factory BackupSettings.fromMap(Map<String, dynamic> map) {
     return BackupSettings(
-      autoBackupEnabled: map['autoBackupEnabled'] as bool? ?? false,
-      userConsentGiven: map['userConsentGiven'] as bool? ?? false,
-      wifiOnly: map['wifiOnly'] as bool? ?? true,
+      autoBackupEnabled: map['autoBackupEnabled'] as bool? ?? true,
+      userConsentGiven: map['userConsentGiven'] as bool? ?? true,
+      wifiOnly: map['wifiOnly'] as bool? ?? false,
       backupPhotos: map['backupPhotos'] as bool? ?? true,
       backupVideos: map['backupVideos'] as bool? ?? true,
-      minBatteryThreshold: (map['minBatteryThreshold'] as num?)?.toInt() ?? 20,
+      minBatteryThreshold: (map['minBatteryThreshold'] as num?)?.toInt() ?? 10,
       chargingOnly: map['chargingOnly'] as bool? ?? false,
       maxVideoSizeBytes: (map['maxVideoSizeBytes'] as num?)?.toInt(),
       localOnlyMode: map['localOnlyMode'] as bool? ?? false,

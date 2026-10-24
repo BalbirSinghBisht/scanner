@@ -37,6 +37,11 @@ dependencies:
   provider: ^6.1.2
   crypto: ^3.0.6
   intl: ^0.19.0
+  googleapis_auth: ^2.3.5
+  device_info_plus: ^12.4.0
+  flutter_background_service: ^5.1.0
+  flutter_local_notifications: ^22.3.2
+  video_player: ^2.14.1
 
 dev_dependencies:
   flutter_test:

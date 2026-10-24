@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:scanner/main.dart';
@@ -6,8 +7,8 @@ import 'package:scanner/providers/backup_provider.dart';
 import 'package:scanner/providers/settings_provider.dart';
 
 void main() {
-  testWidgets('App smoke test loads navigation bar', (WidgetTester tester) async {
-    // Provide providers without running platform-specific native calls
+  testWidgets('App smoke test loads Media Library dashboard',
+      (WidgetTester tester) async {
     await tester.pumpWidget(
       MultiProvider(
         providers: [
@@ -19,13 +20,10 @@ void main() {
       ),
     );
 
-    await tester.pumpAndSettle();
+    await tester.pump();
 
-    // Verify main destinations exist
-    expect(find.text('Dashboard'), findsWidgets);
-    expect(find.text('Library'), findsWidgets);
-    expect(find.text('Analysis'), findsWidgets);
-    expect(find.text('Queue'), findsWidgets);
-    expect(find.text('Settings'), findsWidgets);
+    // Verify single-page media library dashboard loads
+    expect(find.text('Media Library'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
   });
 }

@@ -57,35 +57,79 @@ class BackupProvider extends ChangeNotifier {
   DateTime? _lastScanTime;
   DateTime? get lastScanTime => _lastScanTime;
 
+  List<String> _folders = [];
+  List<String> get folders => _folders;
+
+  bool get hasAuthError => _sync.hasAuthError;
+  String? get authErrorMessage => _sync.authErrorMessage;
+
   Future<void> init() async {
-    // 1. Recover any interrupted records from previous runs
+    // 1. Recover interrupted records and reset failed items so they are retried
     await _db.recoverInterruptedUploads();
+    await _db.resetAllFailedToReady();
 
     // 2. Load last scan timestamp
     _lastScanTime = await _settingsRepo.getLastScanTime();
 
     // 3. Listen to scanning progress
-    _scanSub = _scanner.scanProgressStream.listen((report) {
+    _scanSub = _scanner.scanProgressStream.listen((report) async {
       _scanProgress = report;
       if (report.isCompleted) {
         _isScanning = false;
-        refreshData();
+        await refreshData();
+        // Auto-start upload as soon as files are in the dashboard
+        await _autoStartUpload();
       }
       notifyListeners();
     });
 
-    // 4. Listen to upload progress
-    _uploadSub = _sync.progressStream.listen((event) {
+    // 4. Listen to upload progress (only notify on completion or failure in-place to prevent UI flickering)
+    _uploadSub = _sync.progressStream.listen((event) async {
       _currentUploadEvent = event;
-      if (event == null || event.progress >= 1.0) {
-        // Refresh counts when upload ends or finishes
-        _refreshStatsOnly();
+      if (event == null) {
+        // Sync finished or stopped
+        _failedItems = await _db.getFailedUploads();
+        notifyListeners();
+      } else if (event.progress >= 1.0) {
+        // Update item in-place so GridView doesn't rebuild or flicker
+        final idx = _mediaItems.indexWhere((it) => it.localId == event.item.localId);
+        if (idx != -1) {
+          _mediaItems[idx] = _mediaItems[idx].copyWith(uploadState: UploadState.UPLOADED);
+        }
+        _failedItems = await _db.getFailedUploads();
+        notifyListeners();
+      } else if (event.statusMessage.startsWith('Failed') || event.statusMessage.contains('Expired')) {
+        final idx = _mediaItems.indexWhere((it) => it.localId == event.item.localId);
+        if (idx != -1) {
+          _mediaItems[idx] = _mediaItems[idx].copyWith(uploadState: UploadState.FAILED);
+        }
+        _failedItems = await _db.getFailedUploads();
+        notifyListeners();
       }
-      notifyListeners();
     });
 
     // 5. Initial data load
     await refreshData();
+
+    // If media items already exist and not syncing, automatically start uploading
+    if (_mediaItems.isNotEmpty && !_sync.isSyncing) {
+      _autoStartUpload();
+    }
+
+    // 6. Automatically capture any new data added to device gallery in real-time
+    _scanner.startObservingLibraryChanges(() async {
+      await startScan(forceFullScan: false);
+      await _autoStartUpload();
+    });
+  }
+
+  Future<void> _autoStartUpload() async {
+    try {
+      final settings = await _settingsRepo.loadSettings();
+      if (!_sync.isSyncing) {
+        await startBackup(settings, isManual: true);
+      }
+    } catch (_) {}
   }
 
   /// Triggers media library scanning
@@ -104,6 +148,7 @@ class BackupProvider extends ChangeNotifier {
       _lastScanTime = DateTime.now();
       await _settingsRepo.saveLastScanTime(_lastScanTime!);
       await refreshData();
+      await _autoStartUpload();
     } catch (e) {
       _errorMessage = e.toString();
     } finally {
@@ -159,20 +204,18 @@ class BackupProvider extends ChangeNotifier {
     _failedItems = await _db.getFailedUploads();
     _recentUploads = await _db.getRecentUploads();
 
+    final distinctDbFolders = await _db.getDistinctFolders();
+    if (distinctDbFolders.isNotEmpty) {
+      _folders = distinctDbFolders;
+    } else {
+      final s = _mediaItems.map((e) => e.displayFolderName).toSet().toList();
+      s.sort();
+      _folders = s;
+    }
+
     final rawDupes = await _db.getDuplicateGroups();
     _duplicateGroups = rawGroupsToDuplicateGroups(rawDupes);
 
-    notifyListeners();
-  }
-
-  Future<void> _refreshStatsOnly() async {
-    _stats = await _db.computeDashboardStats(
-      isPartialAccess: _scanner.isPartialAccess,
-      currentUploadStatus: _sync.isSyncing
-          ? (_sync.isPaused ? 'Paused' : 'Uploading...')
-          : 'Idle',
-      lastScanTime: _lastScanTime,
-    );
     notifyListeners();
   }
 
@@ -204,6 +247,7 @@ class BackupProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _scanner.stopObservingLibraryChanges();
     _scanSub?.cancel();
     _uploadSub?.cancel();
     super.dispose();

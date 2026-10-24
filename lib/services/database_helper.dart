@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import '../core/constants/app_constants.dart';
@@ -25,6 +26,7 @@ class DatabaseHelper {
       path,
       version: AppConstants.databaseVersion,
       onCreate: _createDB,
+      onUpgrade: _onUpgradeDB,
     );
   }
 
@@ -50,7 +52,8 @@ class DatabaseHelper {
         retry_count INTEGER NOT NULL DEFAULT 0,
         bytes_uploaded INTEGER NOT NULL DEFAULT 0,
         drive_folder_path TEXT,
-        local_file_path TEXT
+        local_file_path TEXT,
+        folder_name TEXT
       )
     ''');
 
@@ -67,23 +70,128 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX idx_created_at ON ${AppConstants.manifestTableName} (created_at)',
     );
+    await db.execute(
+      'CREATE INDEX idx_folder_name ON ${AppConstants.manifestTableName} (folder_name)',
+    );
+  }
+
+  Future<void> _onUpgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      try {
+        await db.execute(
+          'ALTER TABLE ${AppConstants.manifestTableName} ADD COLUMN folder_name TEXT',
+        );
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_folder_name ON ${AppConstants.manifestTableName} (folder_name)',
+        );
+      } catch (_) {}
+    }
   }
 
   /// Recovers any interrupted transfers from previous app lifecycle.
-  /// If an item was in 'UPLOADING' state when the app was closed or crashed,
-  /// it is reverted to 'READY_TO_UPLOAD' or 'RETRY_PENDING' so it can resume cleanly.
-  Future<int> recoverInterruptedUploads() async {
+  /// Only reverts items that have been stuck in 'UPLOADING' state for more than [timeoutMinutes]
+  /// to ensure active transfers running in another isolate/thread are not disrupted.
+  Future<int> recoverInterruptedUploads({int timeoutMinutes = 5}) async {
     final db = await database;
+    final cutoff = DateTime.now()
+        .subtract(Duration(minutes: timeoutMinutes))
+        .toIso8601String();
     return await db.rawUpdate('''
       UPDATE ${AppConstants.manifestTableName}
       SET upload_state = ?,
           error_message = ?
-      WHERE upload_state = ?
+      WHERE upload_state = ? AND (last_attempt_at IS NULL OR last_attempt_at < ?)
     ''', [
       UploadState.RETRY_PENDING.name,
-      'Interrupted by app termination or process exit. Queued for resume.',
+      'Interrupted transfer timed out. Queued for resume.',
       UploadState.UPLOADING.name,
+      cutoff,
     ]);
+  }
+
+  /// Reconciles local SQLite state with actual remote files on Google Drive.
+  /// 1. Any file currently on Google Drive is ensured to be marked UPLOADED (prevents duplicate uploads).
+  /// 2. Any file marked UPLOADED locally that NO LONGER exists on Google Drive (e.g. user deleted it from Drive)
+  ///    is reset to READY_TO_UPLOAD (automatically re-syncs to Drive without needing to clear app data).
+  Future<void> reconcileWithDrive(
+    Map<String, String> remoteFilesByName,
+    Set<String> remoteFileIds,
+  ) async {
+    final db = await database;
+
+    // A. For any item currently marked UPLOADED in SQLite:
+    // If its driveFileId is NOT in remoteFileIds AND its fileName is NOT in remoteFilesByName,
+    // the user deleted it from Drive! Reset it to READY_TO_UPLOAD.
+    final uploadedItems = await db.query(
+      AppConstants.manifestTableName,
+      where: 'upload_state = ?',
+      whereArgs: [UploadState.UPLOADED.name],
+    );
+
+    final toResetIds = <String>[];
+    for (final map in uploadedItems) {
+      final driveId = map['drive_file_id'] as String?;
+      final localId = map['local_id'] as String;
+      final fileName = map['file_name'] as String;
+
+      if ((driveId == null || !remoteFileIds.contains(driveId)) &&
+          !remoteFilesByName.containsKey(fileName)) {
+        toResetIds.add(localId);
+      }
+    }
+
+    if (toResetIds.isNotEmpty) {
+      final batch = db.batch();
+      for (final id in toResetIds) {
+        batch.update(
+          AppConstants.manifestTableName,
+          {
+            'upload_state': UploadState.READY_TO_UPLOAD.name,
+            'drive_file_id': null,
+            'uploaded_at': null,
+          },
+          where: 'local_id = ?',
+          whereArgs: [id],
+        );
+      }
+      await batch.commit(noResult: true);
+      debugPrint('Reset ${toResetIds.length} items to READY_TO_UPLOAD because they were removed from Google Drive.');
+    }
+
+    // B. For any item in SQLite NOT marked UPLOADED:
+    // If it ALREADY exists on Google Drive, mark it UPLOADED with the remote ID!
+    final pendingItems = await db.query(
+      AppConstants.manifestTableName,
+      where: 'upload_state != ?',
+      whereArgs: [UploadState.UPLOADED.name],
+    );
+
+    final toMarkUploaded = <String, String>{};
+    for (final map in pendingItems) {
+      final fileName = map['file_name'] as String;
+      final localId = map['local_id'] as String;
+      if (remoteFilesByName.containsKey(fileName)) {
+        toMarkUploaded[localId] = remoteFilesByName[fileName]!;
+      }
+    }
+
+    if (toMarkUploaded.isNotEmpty) {
+      final batch = db.batch();
+      toMarkUploaded.forEach((localId, driveId) {
+        batch.update(
+          AppConstants.manifestTableName,
+          {
+            'upload_state': UploadState.UPLOADED.name,
+            'drive_file_id': driveId,
+            'uploaded_at': DateTime.now().toIso8601String(),
+          },
+          where: 'local_id = ?',
+          whereArgs: [localId],
+        );
+      });
+      await batch.commit(noResult: true);
+      debugPrint('Marked ${toMarkUploaded.length} items as UPLOADED because they already exist on Google Drive.');
+    }
   }
 
   Future<int> upsertMediaItem(MediaItem item) async {
@@ -226,6 +334,76 @@ class DatabaseHelper {
     );
 
     return maps.map((m) => MediaItem.fromMap(m)).toList();
+  }
+
+  /// Atomically claims a single pending item by transitioning its state to UPLOADING in a transaction.
+  /// Prevents race conditions between multiple isolates (e.g. background service and foreground app).
+  Future<MediaItem?> claimNextPendingUpload({
+    bool includePhotos = true,
+    bool includeVideos = true,
+    int? maxVideoSizeBytes,
+  }) async {
+    final db = await database;
+    return await db.transaction<MediaItem?>((txn) async {
+      final conditions = <String>[];
+      final args = <dynamic>[
+        UploadState.READY_TO_UPLOAD.name,
+        UploadState.RETRY_PENDING.name,
+      ];
+
+      conditions.add('(upload_state = ? OR upload_state = ?)');
+
+      if (!includePhotos && !includeVideos) {
+        return null;
+      } else if (includePhotos && !includeVideos) {
+        conditions.add('media_type = ?');
+        args.add(AppMediaType.image.name);
+      } else if (!includePhotos && includeVideos) {
+        conditions.add('media_type = ?');
+        args.add(AppMediaType.video.name);
+      }
+
+      if (maxVideoSizeBytes != null && maxVideoSizeBytes > 0) {
+        conditions.add(
+          '(media_type = ? OR (media_type = ? AND file_size <= ?))',
+        );
+        args.add(AppMediaType.image.name);
+        args.add(AppMediaType.video.name);
+        args.add(maxVideoSizeBytes);
+      }
+
+      final whereClause = conditions.join(' AND ');
+
+      final maps = await txn.query(
+        AppConstants.manifestTableName,
+        where: whereClause,
+        whereArgs: args,
+        orderBy: 'created_at ASC',
+        limit: 1,
+      );
+
+      if (maps.isEmpty) {
+        return null;
+      }
+
+      final item = MediaItem.fromMap(maps.first);
+      final now = DateTime.now().toIso8601String();
+
+      await txn.update(
+        AppConstants.manifestTableName,
+        {
+          'upload_state': UploadState.UPLOADING.name,
+          'last_attempt_at': now,
+        },
+        where: 'local_id = ?',
+        whereArgs: [item.localId],
+      );
+
+      return item.copyWith(
+        uploadState: UploadState.UPLOADING,
+        lastAttemptAt: DateTime.parse(now),
+      );
+    });
   }
 
   Future<List<MediaItem>> getFailedUploads({int limit = 100}) async {
@@ -467,6 +645,29 @@ class DatabaseHelper {
           retry_count = 0
       WHERE upload_state = ?
     ''', [UploadState.READY_TO_UPLOAD.name, UploadState.FAILED.name]);
+  }
+
+  Future<List<String>> getDistinctFolders() async {
+    final db = await database;
+    final res = await db.rawQuery('''
+      SELECT DISTINCT folder_name
+      FROM ${AppConstants.manifestTableName}
+      WHERE folder_name IS NOT NULL AND folder_name != ''
+      ORDER BY folder_name ASC
+    ''');
+    return res.map((r) => r['folder_name'] as String).toList();
+  }
+
+  Future<List<MediaItem>> getItemsByFolder(String folderName, {int limit = 500}) async {
+    final db = await database;
+    final res = await db.query(
+      AppConstants.manifestTableName,
+      where: 'folder_name = ?',
+      whereArgs: [folderName],
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+    return res.map((map) => MediaItem.fromMap(map)).toList();
   }
 
   Future<void> clearAll() async {

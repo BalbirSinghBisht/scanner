@@ -18,6 +18,11 @@ class AuthProvider extends ChangeNotifier {
   String? _customClientId;
   String? get customClientId => _customClientId;
 
+  String? get apiKey => _auth.apiKey;
+  String? get directAccessToken => _auth.directAccessToken;
+  String? get directRefreshToken => _auth.directRefreshToken;
+  DateTime? get tokenExpiry => _auth.tokenExpiry;
+
   GoogleSignInAccount? get currentUser => _auth.currentUser;
   bool get isAuthenticated => _auth.isAuthenticated;
   String? get userEmail => _auth.userEmail;
@@ -55,6 +60,38 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> setDirectTokens({
+    required String? accessToken,
+    String? refreshToken,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+
+    await _auth.setDirectTokens(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    );
+    _drive.clearFolderCache();
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> refreshDirectAccessToken() async {
+    _isLoading = true;
+    notifyListeners();
+
+    await _auth.refreshDirectAccessToken();
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> setApiKey(String key) async {
+    await _auth.setApiKey(key);
+    notifyListeners();
+  }
+
   Future<void> signOut() async {
     _isLoading = true;
     notifyListeners();
@@ -81,6 +118,15 @@ class AuthProvider extends ChangeNotifier {
     _customClientId = clientId;
     await _settingsRepo.saveCustomOAuthClientId(clientId);
     notifyListeners();
+  }
+
+  Future<bool> validateToken() async {
+    _isLoading = true;
+    notifyListeners();
+    final valid = await _auth.validateCurrentToken();
+    _isLoading = false;
+    notifyListeners();
+    return valid;
   }
 
   void clearError() {

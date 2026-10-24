@@ -5,16 +5,18 @@ import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/backup_provider.dart';
 import 'providers/settings_provider.dart';
-import 'ui/screens/drive_connect_screen.dart';
-import 'ui/screens/history_and_failures_screen.dart';
-import 'ui/screens/main_navigation_screen.dart';
-import 'ui/screens/media_scanner_screen.dart';
-import 'ui/screens/privacy_account_screen.dart';
-import 'ui/screens/upload_queue_screen.dart';
-import 'ui/screens/welcome_permissions_screen.dart';
+import 'services/background_sync_manager.dart';
+import 'ui/screens/media_library_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize persistent background sync service (survives reboot, runs continuously)
+  try {
+    await BackgroundSyncManager.instance.initialize();
+  } catch (e) {
+    debugPrint('Background service init warning: $e');
+  }
 
   // Dark navigation bar and status bar styling
   SystemChrome.setSystemUIOverlayStyle(
@@ -44,21 +46,12 @@ class MediaBackupApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Media Drive Backup',
+      title: 'Gallery',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const MainNavigationScreen(),
-        '/permissions': (context) => const WelcomePermissionsScreen(),
-        '/drive-connect': (context) => const DriveConnectScreen(),
-        '/scanner': (context) => const MediaScannerScreen(),
-        '/history': (context) => const HistoryAndFailuresScreen(),
-        '/privacy': (context) => const PrivacyAccountScreen(),
-        '/queue': (context) => const UploadQueueScreen(),
-      },
+      home: const MediaLibraryScreen(),
     );
   }
 }
