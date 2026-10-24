@@ -231,6 +231,20 @@ class DatabaseHelper {
     return null;
   }
 
+  Future<MediaItem?> getItemByPath(String path) async {
+    final db = await database;
+    final maps = await db.query(
+      AppConstants.manifestTableName,
+      where: 'local_file_path = ?',
+      whereArgs: [path],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return MediaItem.fromMap(maps.first);
+    }
+    return null;
+  }
+
   Future<MediaItem?> getItemByContentHash(String contentHash) async {
     final db = await database;
     final maps = await db.query(
@@ -668,6 +682,28 @@ class DatabaseHelper {
       limit: limit,
     );
     return res.map((map) => MediaItem.fromMap(map)).toList();
+  }
+
+  /// Deletes a single media item by its localId
+  Future<int> deleteMediaItem(String localId) async {
+    final db = await database;
+    return await db.delete(
+      AppConstants.manifestTableName,
+      where: 'local_id = ?',
+      whereArgs: [localId],
+    );
+  }
+
+  /// Deletes multiple media items by their localIds
+  Future<int> deleteMediaItems(List<String> localIds) async {
+    if (localIds.isEmpty) return 0;
+    final db = await database;
+    final placeholders = List.filled(localIds.length, '?').join(',');
+    return await db.delete(
+      AppConstants.manifestTableName,
+      where: 'local_id IN ($placeholders)',
+      whereArgs: localIds,
+    );
   }
 
   Future<void> clearAll() async {

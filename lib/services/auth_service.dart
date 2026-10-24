@@ -109,7 +109,10 @@ class AuthService {
       if (clientId != null && clientId.isNotEmpty) {
         _initGoogleSignIn(clientId: clientId);
       }
-      final account = await _signInInstance.signInSilently();
+      final account = await _signInInstance.signInSilently().timeout(
+            const Duration(seconds: 4),
+            onTimeout: () => null,
+          );
       _currentUser = account;
       if (account != null) {
         await _saveUserMetadata(account);

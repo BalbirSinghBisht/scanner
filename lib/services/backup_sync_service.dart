@@ -93,8 +93,8 @@ class BackupSyncService {
     final prefs = await SharedPreferences.getInstance();
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final lastLockMs = prefs.getInt(_lockKey) ?? 0;
-    // Strict lock check: if any isolate holds an active lock within the last 45 seconds, yield immediately
-    if (nowMs - lastLockMs < 45000) {
+    // Strict lock check: if any isolate holds an active lock within the last 15 seconds, yield immediately
+    if (nowMs - lastLockMs < 15000) {
       debugPrint('Sync skipped: Another isolate is actively syncing.');
       return;
     }
@@ -119,8 +119,9 @@ class BackupSyncService {
     _isPaused = settings.isPaused;
 
     try {
-      // 2. Safely recover interrupted transfers older than 5 minutes
-      await _db.recoverInterruptedUploads(timeoutMinutes: 5);
+      // 2. Safely recover interrupted transfers and reset failed items so they are always retried
+      await _db.recoverInterruptedUploads(timeoutMinutes: 1);
+      await _db.resetAllFailedToReady();
 
       // 3. Two-way reconciliation with Google Drive:
       // - If user removed data from Drive, reset SQLite so it automatically re-syncs without clearing app data
@@ -143,10 +144,14 @@ class BackupSyncService {
         await prefs.setInt(_lockKey, DateTime.now().millisecondsSinceEpoch);
 
         // Verify network & battery constraints before each item
-        final networkOk = await _device.isNetworkPermitted(settings);
+        var networkOk = await _device.isNetworkPermitted(settings);
         if (!networkOk) {
-          debugPrint('Sync paused: Network constraints not met.');
-          break;
+          await Future.delayed(const Duration(seconds: 2));
+          networkOk = await _device.isNetworkPermitted(settings);
+          if (!networkOk) {
+            debugPrint('Sync paused: Network constraints not met.');
+            break;
+          }
         }
 
         final batteryOk = await _device.isBatteryPermitted(settings);
@@ -219,6 +224,24 @@ class BackupSyncService {
         if (await f.exists()) file = f;
       }
       file ??= await _scanner.getMediaFile(item.localId);
+
+      // Fallback: check direct Android device paths if localId mapping was lost in background isolate
+      if (file == null || !await file.exists()) {
+        final possiblePaths = [
+          '/storage/emulated/0/DCIM/Camera/${item.fileName}',
+          '/storage/emulated/0/DCIM/${item.folderName}/${item.fileName}',
+          '/storage/emulated/0/Pictures/${item.folderName}/${item.fileName}',
+          '/storage/emulated/0/Movies/${item.folderName}/${item.fileName}',
+          '/storage/emulated/0/Download/${item.fileName}',
+        ];
+        for (final p in possiblePaths) {
+          final f = File(p);
+          if (await f.exists()) {
+            file = f;
+            break;
+          }
+        }
+      }
 
       if (file == null || !await file.exists()) {
         throw BackupException(

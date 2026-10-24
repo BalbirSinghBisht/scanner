@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../core/constants/app_constants.dart';
 import '../core/errors/app_exceptions.dart';
 import '../models/media_item.dart';
 import 'database_helper.dart';
+import 'device_settings_helper.dart';
 
 class ScanProgressReport {
   final int scannedItems;
@@ -88,6 +88,19 @@ class MediaScannerService {
     }
   }
 
+  /// Requests essential runtime permissions for continuous, uninterrupted auto-sync:
+  /// 1. Photo & Video media storage permission
+  /// 2. Notification permission (enables persistent Foreground Service notification on Android 13+)
+  /// 3. Battery optimization exemption (prevents Android Doze mode killing background sync)
+  Future<void> requestAllAppPermissions() async {
+    try {
+      await requestPermission();
+      await DeviceSettingsHelper.requestNotificationPermission();
+    } catch (e) {
+      debugPrint('Error requesting media permissions: $e');
+    }
+  }
+
   /// Opens the device system settings for this app
   Future<void> openSettings() async {
     await PhotoManager.openSetting();
@@ -116,21 +129,46 @@ class MediaScannerService {
   Future<List<MediaItem>> scanMedia({
     bool forceFullScan = false,
     DateTime? scanSince,
+    bool isBackground = false,
   }) async {
-    final perm = await requestPermission();
-    if (perm == PermissionState.denied || perm == PermissionState.restricted) {
-      throw MediaPermissionDeniedException(
-        'Media library permission was denied by the user.',
-        isPermanentlyDenied: false,
-      );
+    if (!isBackground) {
+      final perm = await requestPermission();
+      if (perm == PermissionState.denied || perm == PermissionState.restricted) {
+        throw MediaPermissionDeniedException(
+          'Media library permission was denied by the user.',
+          isPermanentlyDenied: false,
+        );
+      }
     }
 
     // Retrieve album collections (Recent / All Photos and Videos)
-    final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
+    List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
       type: RequestType.common, // Both images and videos
       hasAll: true,
       onlyAll: true,
     );
+
+    // Resilient fallback: if the synthetic "Recent/All" album is empty (e.g. right after granting permissions
+    // or on strict OEM ROMs like MIUI/HyperOS), refresh cache and query all concrete folders
+    if (albums.isEmpty) {
+      await PhotoManager.clearFileCache();
+      await Future.delayed(const Duration(milliseconds: 300));
+      albums = await PhotoManager.getAssetPathList(
+        type: RequestType.common,
+        hasAll: true,
+        onlyAll: false,
+      );
+    }
+
+    if (albums.isEmpty) {
+      // Retry once more after brief delay for OS MediaStore to finish propagating
+      await Future.delayed(const Duration(milliseconds: 500));
+      albums = await PhotoManager.getAssetPathList(
+        type: RequestType.common,
+        hasAll: true,
+        onlyAll: false,
+      );
+    }
 
     if (albums.isEmpty) {
       _scanProgressController.add(const ScanProgressReport(
@@ -142,8 +180,20 @@ class MediaScannerService {
       return [];
     }
 
-    final recentAlbum = albums.first;
-    final totalAssetCount = await recentAlbum.assetCountAsync;
+    AssetPathEntity? recentAlbum;
+    for (final a in albums) {
+      if (a.isAll) {
+        recentAlbum = a;
+        break;
+      }
+    }
+    recentAlbum ??= albums.first;
+    final List<AssetPathEntity> scanTargets = recentAlbum.isAll ? [recentAlbum] : albums;
+
+    int totalAssetCount = 0;
+    for (final album in scanTargets) {
+      totalAssetCount += await album.assetCountAsync;
+    }
 
     _scanProgressController.add(ScanProgressReport(
       scannedItems: 0,
@@ -153,15 +203,18 @@ class MediaScannerService {
 
     final discoveredList = <MediaItem>[];
     const pageSize = AppConstants.scanPageSize;
-    final totalPages = (totalAssetCount / pageSize).ceil();
-
     int processedCount = 0;
 
-    for (int page = 0; page < totalPages; page++) {
-      final List<AssetEntity> entities = await recentAlbum.getAssetListPaged(
-        page: page,
-        size: pageSize,
-      );
+    for (final album in scanTargets) {
+      final albumCount = await album.assetCountAsync;
+      final albumPages = (albumCount / pageSize).ceil();
+      final maxPages = isBackground ? 2 : albumPages;
+
+      for (int page = 0; page < maxPages && page < albumPages; page++) {
+        final List<AssetEntity> entities = await album.getAssetListPaged(
+          page: page,
+          size: pageSize,
+        );
 
       final batchItems = <MediaItem>[];
 
@@ -266,6 +319,7 @@ class MediaScannerService {
         currentBatchStatus: 'Indexed $processedCount of $totalAssetCount items...',
       ));
     }
+  }
 
     _scanProgressController.add(ScanProgressReport(
       scannedItems: processedCount,
@@ -281,6 +335,12 @@ class MediaScannerService {
   Future<File?> getMediaFile(String assetId) async {
     final asset = await AssetEntity.fromId(assetId);
     if (asset != null) {
+      try {
+        final origin = await asset.originFile;
+        if (origin != null && await origin.exists()) {
+          return origin;
+        }
+      } catch (_) {}
       return await asset.file;
     }
     return null;
@@ -303,7 +363,154 @@ class MediaScannerService {
         }
         return data;
       }
+      // If AssetEntity is not found in PhotoManager memory, load directly from local file
+      final item = await _db.getItemByLocalId(assetId);
+      if (item?.localFilePath != null) {
+        final f = File(item!.localFilePath!);
+        if (await f.exists()) {
+          final bytes = await f.readAsBytes();
+          _thumbnailCache[assetId] = bytes;
+          return bytes;
+        }
+      }
     } catch (_) {}
     return null;
+  }
+
+  /// Deletes a photo or video from device storage and removes its record from SQLite
+  Future<bool> deleteMediaFromDevice(String assetId) async {
+    try {
+      final List<String> deletedIds =
+          await PhotoManager.editor.deleteWithIds([assetId]);
+      final success = deletedIds.contains(assetId);
+      await _db.deleteMediaItem(assetId);
+      _thumbnailCache.remove(assetId);
+      return success;
+    } catch (e) {
+      debugPrint('Error deleting media from device: $e');
+      try {
+        final item = await _db.getItemByLocalId(assetId);
+        if (item?.localFilePath != null) {
+          final f = File(item!.localFilePath!);
+          if (await f.exists()) await f.delete();
+        }
+        await _db.deleteMediaItem(assetId);
+        _thumbnailCache.remove(assetId);
+        return true;
+      } catch (_) {}
+      return false;
+    }
+  }
+
+  /// Scans direct Android storage directories for newly added photos/videos
+  /// (e.g. downloaded from Chrome, WhatsApp, or taken when MediaStore hasn't indexed yet)
+  Future<List<MediaItem>> scanDirectDirectories() async {
+    final discovered = <MediaItem>[];
+    if (!Platform.isAndroid) return discovered;
+
+    final targetDirs = [
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/DCIM/Camera',
+      '/storage/emulated/0/Pictures',
+      '/storage/emulated/0/Movies',
+    ];
+
+    const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif'};
+    const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp', '.webm'};
+
+    for (final dirPath in targetDirs) {
+      final dir = Directory(dirPath);
+      if (!await dir.exists()) continue;
+
+      try {
+        await for (final entity in dir.list(recursive: false, followLinks: false)) {
+          if (entity is! File) continue;
+          final path = entity.path;
+          final dotIndex = path.lastIndexOf('.');
+          if (dotIndex == -1) continue;
+          final ext = path.toLowerCase().substring(dotIndex);
+          final isImage = imageExtensions.contains(ext);
+          final isVideo = videoExtensions.contains(ext);
+          if (!isImage && !isVideo) continue;
+
+          // Check if already in SQLite
+          final existing = await _db.getItemByPath(path);
+          if (existing != null) continue;
+
+          final stat = await entity.stat();
+          final fileName = path.split(RegExp(r'[\\/]')).last;
+          final folderName = dirPath.split(RegExp(r'[\\/]')).last;
+          final mediaType = isVideo ? AppMediaType.video : AppMediaType.image;
+          final mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+          final localId = 'disk_${path.hashCode.abs()}';
+
+          final item = MediaItem(
+            localId: localId,
+            fileName: fileName,
+            mediaType: mediaType,
+            mimeType: mimeType,
+            fileSize: stat.size,
+            createdAt: stat.modified,
+            modifiedAt: stat.modified,
+            uploadState: UploadState.READY_TO_UPLOAD,
+            localFilePath: path,
+            folderName: folderName,
+          );
+
+          discovered.add(item);
+        }
+      } catch (e) {
+        debugPrint('Direct dir scan error for $dirPath: $e');
+      }
+    }
+
+    if (discovered.isNotEmpty) {
+      await _db.batchUpsertMediaItems(discovered);
+      debugPrint('Direct storage scan discovered ${discovered.length} new items!');
+    }
+    return discovered;
+  }
+
+  /// Quickly verifies SQLite items against device storage and cleans up any deleted items
+  Future<int> pruneDeletedItems() async {
+    try {
+      final allItems = await _db.getAllItems(limit: 2000);
+      final toDelete = <String>[];
+      for (final item in allItems) {
+        // If file exists at recorded path, it is definitely NOT deleted!
+        if (item.localFilePath != null && item.localFilePath!.isNotEmpty) {
+          final f = File(item.localFilePath!);
+          if (await f.exists()) continue;
+        }
+
+        // Check if it exists at standard device directories
+        final possiblePaths = [
+          '/storage/emulated/0/DCIM/Camera/${item.fileName}',
+          '/storage/emulated/0/DCIM/${item.folderName}/${item.fileName}',
+          '/storage/emulated/0/Pictures/${item.folderName}/${item.fileName}',
+          '/storage/emulated/0/Download/${item.fileName}',
+        ];
+        bool existsOnDisk = false;
+        for (final p in possiblePaths) {
+          if (await File(p).exists()) {
+            existsOnDisk = true;
+            break;
+          }
+        }
+        if (existsOnDisk) continue;
+
+        // If file is missing from disk AND PhotoManager returns null, only then mark deleted
+        final asset = await AssetEntity.fromId(item.localId);
+        if (asset == null) {
+          toDelete.add(item.localId);
+        }
+      }
+      if (toDelete.isNotEmpty) {
+        await _db.deleteMediaItems(toDelete);
+      }
+      return toDelete.length;
+    } catch (_) {
+      return 0;
+    }
   }
 }

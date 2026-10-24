@@ -21,7 +21,7 @@ class MediaItemTile extends StatelessWidget {
           () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => MediaPreviewScreen(item: item),
+                  builder: (_) => MediaPreviewScreen.single(item: item),
                 ),
               ),
       borderRadius: BorderRadius.circular(10),
@@ -48,6 +48,10 @@ class MediaItemTile extends StatelessWidget {
                     snapshot.data!,
                     fit: BoxFit.cover,
                   );
+                }
+                if (snapshot.connectionState == ConnectionState.done &&
+                    snapshot.data == null) {
+                  return const SizedBox.shrink();
                 }
                 return Container(
                   color: Colors.white.withOpacity(0.05),

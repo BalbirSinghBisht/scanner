@@ -144,6 +144,12 @@ class BackupProvider extends ChangeNotifier {
         forceFullScan: forceFullScan,
         scanSince: forceFullScan ? null : _lastScanTime,
       );
+      // Also scan standard device directories for downloads & camera media
+      await _scanner.scanDirectDirectories();
+
+      if (forceFullScan) {
+        await _scanner.pruneDeletedItems();
+      }
 
       _lastScanTime = DateTime.now();
       await _settingsRepo.saveLastScanTime(_lastScanTime!);
@@ -190,7 +196,7 @@ class BackupProvider extends ChangeNotifier {
     await refreshData();
   }
 
-  /// Refreshes all cached lists and dashboard statistics from SQLite manifest
+  /// Refreshes all cached lists and dashboard statistics from SQLite manifest (Read-Only)
   Future<void> refreshData() async {
     _stats = await _db.computeDashboardStats(
       isPartialAccess: _scanner.isPartialAccess,
@@ -216,6 +222,23 @@ class BackupProvider extends ChangeNotifier {
     final rawDupes = await _db.getDuplicateGroups();
     _duplicateGroups = rawGroupsToDuplicateGroups(rawDupes);
 
+    notifyListeners();
+  }
+
+  /// Deletes a media item from the device storage and immediately removes it from the UI
+  Future<bool> deleteMediaItem(MediaItem item) async {
+    final success = await _scanner.deleteMediaFromDevice(item.localId);
+    _mediaItems.removeWhere((it) => it.localId == item.localId);
+    _failedItems.removeWhere((it) => it.localId == item.localId);
+    _recentUploads.removeWhere((it) => it.localId == item.localId);
+    notifyListeners();
+    await refreshData();
+    return success;
+  }
+
+  /// Removes an item from in-memory list when detected missing
+  void removeMediaItemLocally(String localId) {
+    _mediaItems.removeWhere((it) => it.localId == localId);
     notifyListeners();
   }
 

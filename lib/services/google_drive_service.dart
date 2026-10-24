@@ -47,6 +47,8 @@ class GoogleDriveService {
 
   // Root folder in Google Drive
   static const String rootFolderName = 'PhoneBackup';
+  static const String canonicalRootFolderId = '1D4WcMHsuG1mLWqjh3dK-9zh_mQV08b6M';
+  static const String sharedDriveRootId = '0AJ9AkL5OYh0uUk9PVA';
 
   // In-memory cache backed by SharedPreferences
   final Map<String, String> _folderCache = {};
@@ -78,88 +80,138 @@ class GoogleDriveService {
   Future<String> _resolveFolderPathLocked(List<String> pathSegments) async {
     final prefs = await SharedPreferences.getInstance();
     final api = await _getDriveApi();
-    String currentParentId = 'root';
+    String currentParentId = sharedDriveRootId;
     final currentAccumulatedPath = <String>[];
 
-    for (final segment in pathSegments) {
+    for (int i = 0; i < pathSegments.length; i++) {
+      final segment = pathSegments[i];
+      final isRoot = segment == rootFolderName;
       currentAccumulatedPath.add(segment);
       final partialPath = currentAccumulatedPath.join('/');
       final prefKey = 'gdrive_folder_id_${partialPath.replaceAll(RegExp(r'[^\w]'), '_')}';
 
-      // 1. Check in-memory cache
-      if (_folderCache.containsKey(partialPath)) {
-        currentParentId = _folderCache[partialPath]!;
-        continue;
-      }
+      String? resolvedFolderId;
 
-      // 2. Check persistent SharedPreferences cache
-      final savedId = prefs.getString(prefKey) ??
-          (segment == rootFolderName ? '1y27LUA1lGyAu7zbyLfNSJ4VDu5V_f8hX' : null);
-      if (savedId != null && savedId.isNotEmpty) {
+      // 1. Check cached folder ID
+      final cachedId = _folderCache[partialPath] ?? prefs.getString(prefKey);
+      final candidateId = cachedId ?? (isRoot ? canonicalRootFolderId : null);
+
+      if (candidateId != null && candidateId.isNotEmpty) {
         try {
           final existing = await api.files.get(
-            savedId,
+            candidateId,
             supportsAllDrives: true,
-            $fields: 'id, trashed',
+            $fields: 'id, name, parents, trashed',
           );
           if (existing is drive.File && existing.trashed != true) {
-            _folderCache[partialPath] = savedId;
-            currentParentId = savedId;
-            continue;
+            if (isRoot) {
+              resolvedFolderId = candidateId;
+            } else {
+              final parents = existing.parents ?? [];
+              if (parents.contains(currentParentId)) {
+                resolvedFolderId = candidateId;
+              } else {
+                // Orphaned folder sitting outside currentParentId (e.g. in root when PhoneBackup was deleted).
+                // Relocate it directly into currentParentId.
+                try {
+                  final prevParents = parents.join(',');
+                  await api.files.update(
+                    drive.File(),
+                    candidateId,
+                    addParents: currentParentId,
+                    removeParents: prevParents.isNotEmpty ? prevParents : null,
+                    supportsAllDrives: true,
+                  );
+                  resolvedFolderId = candidateId;
+                  debugPrint('Relocated orphaned folder $segment into parent $currentParentId');
+                } catch (_) {
+                  resolvedFolderId = null;
+                }
+              }
+            }
           }
         } catch (_) {
-          // Folder no longer exists or inaccessible, fall through to re-query / re-create
+          resolvedFolderId = null;
+          // If root folder was deleted on Drive, clear all stale child cache keys
+          if (isRoot) {
+            _folderCache.clear();
+            final allKeys = prefs.getKeys().where((k) => k.startsWith('gdrive_folder_id_')).toList();
+            for (final k in allKeys) {
+              await prefs.remove(k);
+            }
+          }
         }
       }
 
-      // 3. Query Drive under currentParentId to see if folder exists
-      final escapedSegment = segment.replaceAll("'", "\\'");
-      final query =
-          "name = '$escapedSegment' and "
-          "mimeType = 'application/vnd.google-apps.folder' and "
-          "'$currentParentId' in parents and "
-          "trashed = false";
+      // 2. Query Drive under currentParentId if not resolved via cache
+      if (resolvedFolderId == null) {
+        final escapedSegment = segment.replaceAll("'", "\\'");
+        final String query;
+        if (isRoot) {
+          query =
+              "name = '$escapedSegment' and "
+              "mimeType = 'application/vnd.google-apps.folder' and "
+              "trashed = false";
+        } else {
+          query =
+              "name = '$escapedSegment' and "
+              "mimeType = 'application/vnd.google-apps.folder' and "
+              "'$currentParentId' in parents and "
+              "trashed = false";
+        }
 
-      final fileList = await api.files.list(
-        q: query,
-        spaces: 'drive',
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true,
-        $fields: 'files(id, name)',
-      );
-
-      String folderId;
-      if (fileList.files != null && fileList.files!.isNotEmpty) {
-        folderId = fileList.files!.first.id!;
-      } else {
-        // Create new folder under currentParentId
-        final folderMetadata = drive.File()
-          ..name = segment
-          ..mimeType = 'application/vnd.google-apps.folder'
-          ..parents = [currentParentId];
-
-        final created = await api.files.create(
-          folderMetadata,
+        final fileList = await api.files.list(
+          q: query,
+          spaces: 'drive',
           supportsAllDrives: true,
-          $fields: 'id, name',
+          includeItemsFromAllDrives: true,
+          $fields: 'files(id, name, parents)',
+          pageSize: 10,
         );
-        folderId = created.id!;
+
+        if (fileList.files != null && fileList.files!.isNotEmpty) {
+          // Always pick first match to prevent folder duplicates
+          resolvedFolderId = fileList.files!.first.id;
+        } else {
+          // Create new folder under currentParentId (or sharedDriveRootId if root)
+          final folderMetadata = drive.File()
+            ..name = segment
+            ..mimeType = 'application/vnd.google-apps.folder';
+
+          if (isRoot) {
+            folderMetadata.parents = [sharedDriveRootId];
+          } else {
+            folderMetadata.parents = [currentParentId];
+          }
+
+          final created = await api.files.create(
+            folderMetadata,
+            supportsAllDrives: true,
+            $fields: 'id, name',
+          );
+          resolvedFolderId = created.id!;
+        }
       }
 
-      _folderCache[partialPath] = folderId;
-      await prefs.setString(prefKey, folderId);
-      currentParentId = folderId;
+      if (resolvedFolderId == null || resolvedFolderId.isEmpty) {
+        throw BackupException('Failed to resolve or create Drive folder: $segment');
+      }
+
+      _folderCache[partialPath] = resolvedFolderId;
+      await prefs.setString(prefKey, resolvedFolderId);
+      currentParentId = resolvedFolderId;
     }
 
     return currentParentId;
   }
 
-  /// Checks if file already exists in target folder by name or contentHash to avoid duplicate uploads
+  /// Checks if file already exists in target folder or on Drive by name, contentHash, or localId
   Future<String?> findExistingDriveFile({
     required String parentFolderId,
     required String fileName,
     required int fileSize,
     String? contentHash,
+    String? localId,
   }) async {
     try {
       final api = await _getDriveApi();
@@ -183,21 +235,62 @@ class GoogleDriveService {
         return fileList.files!.first.id;
       }
 
-      // 2. Search by contentHash in target folder if available
+      // 2. Search by localId in appProperties
+      if (localId != null && localId.isNotEmpty) {
+        try {
+          final localIdQuery =
+              "appProperties has { key='localId' and value='$localId' } and "
+              "trashed = false";
+          final localIdList = await api.files.list(
+            q: localIdQuery,
+            spaces: 'drive',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+            $fields: 'files(id, name)',
+          );
+          if (localIdList.files != null && localIdList.files!.isNotEmpty) {
+            return localIdList.files!.first.id;
+          }
+        } catch (_) {}
+      }
+
+      // 3. Search by contentHash in appProperties if available
       if (contentHash != null && contentHash.isNotEmpty) {
-        final hashQuery =
-            "appProperties has { key='contentHash' and value='$contentHash' } and "
-            "'$parentFolderId' in parents and "
-            "trashed = false";
-        final hashList = await api.files.list(
-          q: hashQuery,
-          spaces: 'drive',
-          supportsAllDrives: true,
-          includeItemsFromAllDrives: true,
-          $fields: 'files(id, name)',
-        );
-        if (hashList.files != null && hashList.files!.isNotEmpty) {
-          return hashList.files!.first.id;
+        try {
+          final hashQuery =
+              "appProperties has { key='contentHash' and value='$contentHash' } and "
+              "trashed = false";
+          final hashList = await api.files.list(
+            q: hashQuery,
+            spaces: 'drive',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+            $fields: 'files(id, name)',
+          );
+          if (hashList.files != null && hashList.files!.isNotEmpty) {
+            return hashList.files!.first.id;
+          }
+        } catch (_) {}
+      }
+
+      // 4. Global match by fileName and matching fileSize across active files on Drive
+      final globalQuery =
+          "name = '$escapedName' and "
+          "mimeType != 'application/vnd.google-apps.folder' and "
+          "trashed = false";
+      final globalList = await api.files.list(
+        q: globalQuery,
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        $fields: 'files(id, name, size)',
+      );
+      if (globalList.files != null) {
+        for (final f in globalList.files!) {
+          final size = int.tryParse(f.size ?? '');
+          if (size != null && size == fileSize) {
+            return f.id;
+          }
         }
       }
     } catch (_) {}
@@ -265,6 +358,7 @@ class GoogleDriveService {
       fileName: item.fileName,
       fileSize: item.fileSize,
       contentHash: item.contentHash,
+      localId: item.localId,
     );
 
     if (existingFileId != null) {
@@ -273,43 +367,41 @@ class GoogleDriveService {
       return existingFile;
     }
 
-    // 3. Prepare upload stream and progress reporting
     final fileLength = await file.length();
-    final fileStream = file.openRead();
 
-    final countingStream = ProgressCountingStream(
-      fileStream,
-      fileLength,
-      (sent, total) {
-        if (onProgress != null) {
-          onProgress(sent, total);
-        }
-      },
-    );
-
-    final media = drive.Media(
-      countingStream,
-      fileLength,
-      contentType: item.mimeType,
-    );
-
-    final driveFile = drive.File()
-      ..name = item.fileName
-      ..parents = [folderId]
-      ..description = 'Backed up via Media Backup App. Local ID: ${item.localId}';
-
-    if (item.contentHash != null) {
-      driveFile.appProperties = {
-        'contentHash': item.contentHash!,
-        'localId': item.localId,
-      };
-    }
-
-    // 4. Execute upload with exponential backoff for transient errors
+    // 3. Execute upload with exponential backoff for transient errors
     int attempt = 0;
     while (true) {
       attempt++;
       try {
+        final fileStream = file.openRead();
+        final countingStream = ProgressCountingStream(
+          fileStream,
+          fileLength,
+          (sent, total) {
+            if (onProgress != null) {
+              onProgress(sent, total);
+            }
+          },
+        );
+
+        final media = drive.Media(
+          countingStream,
+          fileLength,
+          contentType: item.mimeType,
+        );
+
+        final driveFile = drive.File()
+          ..name = item.fileName
+          ..parents = [folderId]
+          ..description = 'Backed up via Media Backup App. Local ID: ${item.localId}';
+
+        driveFile.appProperties = {
+          'localId': item.localId,
+          if (item.contentHash != null && item.contentHash!.isNotEmpty)
+            'contentHash': item.contentHash!,
+        };
+
         final result = await api.files.create(
           driveFile,
           uploadMedia: media,

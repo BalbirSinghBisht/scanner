@@ -14,6 +14,13 @@ void onStartBackgroundService(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
   if (service is AndroidServiceInstance) {
+    await service.setAsForegroundService();
+    await service.setAutoStartOnBootMode(true);
+    service.setForegroundNotificationInfo(
+      title: 'Gallery',
+      content: 'Auto-sync active in background',
+    );
+
     service.on('setAsForeground').listen((event) {
       service.setAsForegroundService();
     });
@@ -27,8 +34,8 @@ void onStartBackgroundService(ServiceInstance service) async {
     });
   }
 
-  // Delay initial background check to allow foreground UI to complete startup cleanly
-  Future.delayed(const Duration(seconds: 30), () {
+  // Initial check immediately after startup
+  Future.delayed(const Duration(seconds: 2), () {
     _runBackgroundSyncCycle();
   });
 
@@ -43,36 +50,45 @@ void onStartBackgroundService(ServiceInstance service) async {
     debugPrint('Background change notify error: $e');
   }
 
-  // Periodic background check every 10 minutes to auto-capture any new media and upload
-  Timer.periodic(const Duration(minutes: 10), (timer) async {
+  // Fast background check every 15 seconds to catch newly downloaded/saved media immediately
+  Timer.periodic(const Duration(seconds: 15), (timer) async {
     await _runBackgroundSyncCycle();
   });
 }
 
+bool _isBackgroundCycleRunning = false;
+
 Future<void> _runBackgroundSyncCycle() async {
+  if (_isBackgroundCycleRunning) return;
+  _isBackgroundCycleRunning = true;
   try {
     final settingsRepo = SettingsRepository.instance;
     final settings = await settingsRepo.loadSettings();
     if (settings.isPaused) return;
 
-    // Check media permission
-    final perm = await MediaScannerService.instance.requestPermission();
-    if (perm != PermissionState.authorized && perm != PermissionState.limited) {
-      return;
-    }
+    // Refresh PhotoManager cache so newly saved/downloaded media appears immediately
+    try {
+      await PhotoManager.clearFileCache();
+    } catch (_) {}
 
-    // Auto-scan new photos/videos since last scan time
+    // Auto-scan new photos/videos since last scan time (isBackground: true bypasses Activity requirement)
     final lastScan = await settingsRepo.getLastScanTime();
     await MediaScannerService.instance.scanMedia(
       forceFullScan: false,
       scanSince: lastScan,
+      isBackground: true,
     );
+    // Direct directory scan so any downloaded or camera media is captured even if MediaStore hasn't indexed
+    await MediaScannerService.instance.scanDirectDirectories();
+
     await settingsRepo.saveLastScanTime(DateTime.now());
 
     // Automatically trigger upload of any pending items to Google Drive
     await BackupSyncService.instance.startSync(settings: settings);
   } catch (e) {
     debugPrint('Background sync cycle error: $e');
+  } finally {
+    _isBackgroundCycleRunning = false;
   }
 }
 
@@ -115,8 +131,9 @@ class BackgroundSyncManager {
         autoStartOnBoot: true,
         notificationChannelId: 'media_backup_service_channel',
         initialNotificationTitle: 'Gallery',
-        initialNotificationContent: 'Backing up photos & videos',
+        initialNotificationContent: 'Auto-sync active in background',
         foregroundServiceNotificationId: 991,
+        foregroundServiceTypes: [AndroidForegroundType.dataSync],
       ),
       iosConfiguration: IosConfiguration(
         autoStart: true,
@@ -124,5 +141,10 @@ class BackgroundSyncManager {
         onBackground: onIosBackground,
       ),
     );
+
+    final isRunning = await service.isRunning();
+    if (!isRunning) {
+      await service.startService();
+    }
   }
 }

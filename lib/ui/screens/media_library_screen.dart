@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
 import '../../providers/backup_provider.dart';
-import '../../providers/settings_provider.dart';
+import '../../services/device_settings_helper.dart';
+import '../../services/media_scanner_service.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
+import 'media_preview_screen.dart';
 
 class MediaLibraryScreen extends StatefulWidget {
   const MediaLibraryScreen({super.key});
@@ -14,7 +16,8 @@ class MediaLibraryScreen extends StatefulWidget {
   State<MediaLibraryScreen> createState() => _MediaLibraryScreenState();
 }
 
-class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
+class _MediaLibraryScreenState extends State<MediaLibraryScreen>
+    with WidgetsBindingObserver {
   /// When null, we display the Folders/Albums grid.
   /// When non-null, we display the photos & videos inside that folder.
   String? _openedFolder;
@@ -22,19 +25,48 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initAutoScanAndBackup();
     });
   }
 
-  Future<void> _initAutoScanAndBackup() async {
-    final backup = context.read<BackupProvider>();
-    if (backup.mediaItems.isEmpty && !backup.isScanning) {
-      await backup.startScan();
-    } else if (backup.mediaItems.isNotEmpty && !backup.isSyncing) {
-      final settings = context.read<SettingsProvider>().settings;
-      await backup.startBackup(settings, isManual: true);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final backup = context.read<BackupProvider>();
+      if (backup.mediaItems.isEmpty && !backup.isScanning) {
+        backup.startScan(forceFullScan: true);
+      }
     }
+  }
+
+  Future<void> _initAutoScanAndBackup() async {
+    // 1. Request initial permissions on launch: Photos, Notifications, Battery exemption
+    await MediaScannerService.instance.requestAllAppPermissions();
+
+    if (!mounted) return;
+
+    final backup = context.read<BackupProvider>();
+
+    // 2. Scan device media library immediately so albums load on screen and new media is discovered
+    if (backup.mediaItems.isEmpty && !backup.isScanning) {
+      await backup.startScan(forceFullScan: true);
+    } else if (!backup.isScanning) {
+      await backup.startScan(forceFullScan: false);
+    }
+
+    if (!mounted) return;
+
+    // 3. Open Xiaomi Autostart settings screen on first launch for Redmi/Xiaomi devices
+    // Run after the initial scan so albums are already loaded in memory and displayed
+    DeviceSettingsHelper.checkAndOpenXiaomiAutostartOnFirstLaunch();
   }
 
   Map<String, List<MediaItem>> _groupItemsByFolder(List<MediaItem> items) {
@@ -132,27 +164,73 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     List<String> sortedFolderNames,
   ) {
     if (backup.mediaItems.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              backup.isScanning ? Icons.sync : Icons.folder_open_outlined,
-              size: 56,
-              color: Colors.white24,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              backup.isScanning
-                  ? 'Scanning device albums...'
-                  : 'No albums found on device',
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.white70,
-                fontWeight: FontWeight.w600,
+      return RefreshIndicator(
+        color: AppTheme.primaryAccent,
+        backgroundColor: AppTheme.darkCard,
+        onRefresh: () => backup.startScan(forceFullScan: true),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        backup.isScanning ? Icons.sync : Icons.photo_library_outlined,
+                        size: 56,
+                        color: backup.isScanning ? AppTheme.primaryAccent : Colors.white24,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        backup.isScanning
+                            ? 'Scanning device albums...'
+                            : 'No albums found on device',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        backup.isScanning
+                            ? 'Indexing photos and videos from your device'
+                            : 'Pull down to refresh or tap below to scan device albums',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white38,
+                        ),
+                      ),
+                      if (!backup.isScanning) ...[
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          onPressed: () => backup.startScan(forceFullScan: true),
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('Scan Device Media'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryAccent,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
-          ],
+          ),
         ),
       );
     }
@@ -160,8 +238,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     final totalCount = backup.mediaItems.length;
     final totalFolders = sortedFolderNames.length;
 
-    return CustomScrollView(
-      slivers: [
+    return RefreshIndicator(
+      color: AppTheme.primaryAccent,
+      backgroundColor: AppTheme.darkCard,
+      onRefresh: () => backup.startScan(forceFullScan: true),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
         // Section Header
         SliverToBoxAdapter(
           child: Padding(
@@ -243,8 +326,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
           ),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
 
   /// Secondary View: Shows photos & videos inside the selected folder
   Widget _buildFolderMediaGrid(
@@ -278,22 +362,37 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
       );
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 0.82,
+    return RefreshIndicator(
+      color: AppTheme.primaryAccent,
+      backgroundColor: AppTheme.darkCard,
+      onRefresh: () => backup.startScan(forceFullScan: true),
+      child: GridView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 0.82,
+        ),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return MediaItemTile(
+            key: ValueKey(item.localId),
+            item: item,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MediaPreviewScreen(
+                  items: items,
+                  initialIndex: index,
+                ),
+              ),
+            ),
+          );
+        },
       ),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return MediaItemTile(
-          key: ValueKey(item.localId),
-          item: item,
-        );
-      },
     );
   }
 }

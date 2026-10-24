@@ -88,7 +88,7 @@ class DeviceStateService {
       }
 
       final batteryLevel = await _battery.batteryLevel;
-      if (batteryLevel < settings.minBatteryThreshold && !isCharging) {
+      if (batteryLevel < 5 && !isCharging) {
         return false;
       }
 
