@@ -677,30 +677,43 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             ),
             const SizedBox(width: 10),
           ] else ...[
-            // Brand mark lens icon
+            // Brand mark: Official App Logo (same as launcher icon)
             Container(
               width: 32,
               height: 32,
               margin: const EdgeInsets.only(right: 10),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [
-                    AppTheme.primaryAccent,
-                    AppTheme.electricViolet,
-                  ],
-                ),
+                borderRadius: BorderRadius.circular(8),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.primaryAccent.withOpacity(0.35),
-                    blurRadius: 8,
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.lens_blur_rounded,
-                size: 18,
-                color: Colors.black,
+              clipBehavior: Clip.antiAlias,
+              child: Image.asset(
+                'assets/icons/app_logo.png',
+                width: 32,
+                height: 32,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Container(
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        AppTheme.primaryAccent,
+                        AppTheme.electricViolet,
+                      ],
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.photo_library_rounded,
+                    size: 18,
+                    color: Colors.black,
+                  ),
+                ),
               ),
             ),
           ],
