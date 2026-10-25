@@ -43,8 +43,18 @@ class MediaScannerService {
 
   final Map<String, Uint8List> _thumbnailCache = {};
 
-  /// Synchronously returns cached thumbnail bytes if already loaded in memory
-  Uint8List? getCachedThumbnail(String assetId) => _thumbnailCache[assetId];
+  /// Synchronously returns cached thumbnail bytes if already loaded in memory.
+  /// If [size] is specified, it first checks for that exact size, falling back to any cached resolution.
+  Uint8List? getCachedThumbnail(String assetId, {int? size}) {
+    if (size != null) {
+      final sizedKey = '${assetId}_$size';
+      final sizedBytes = _thumbnailCache[sizedKey];
+      if (sizedBytes != null && sizedBytes.isNotEmpty) {
+        return sizedBytes;
+      }
+    }
+    return _thumbnailCache[assetId];
+  }
 
   bool get isPermissionGranted =>
       _lastPermissionState == PermissionState.authorized ||
@@ -442,32 +452,43 @@ class MediaScannerService {
     return null;
   }
 
+  void _removeThumbnailFromCache(String assetId) {
+    _thumbnailCache.remove(assetId);
+    _thumbnailCache.removeWhere((k, _) => k.startsWith('${assetId}_'));
+  }
+
   /// Invalidates thumbnail cache for a specific asset or all assets
   void invalidateCache([String? assetId]) {
     if (assetId != null) {
-      _thumbnailCache.remove(assetId);
+      _removeThumbnailFromCache(assetId);
     } else {
       _thumbnailCache.clear();
     }
   }
 
-  /// Helper to fetch small thumbnail bytes for fast UI display with memory cache
-  Future<Uint8List?> getThumbnail(String assetId, {int size = 200}) async {
-    if (_thumbnailCache.containsKey(assetId)) {
-      final cached = _thumbnailCache[assetId];
+  /// Helper to fetch crisp thumbnail bytes for fast UI display with memory cache
+  Future<Uint8List?> getThumbnail(
+    String assetId, {
+    int size = 500,
+    int quality = 95,
+  }) async {
+    final cacheKey = '${assetId}_$size';
+    if (_thumbnailCache.containsKey(cacheKey)) {
+      final cached = _thumbnailCache[cacheKey];
       if (cached != null && cached.isNotEmpty) {
         return cached;
       }
-      _thumbnailCache.remove(assetId);
+      _thumbnailCache.remove(cacheKey);
     }
     try {
       final asset = await AssetEntity.fromId(assetId);
       if (asset != null) {
         final data = await asset.thumbnailDataWithSize(
           ThumbnailSize(size, size),
-          quality: 80,
+          quality: quality,
         );
         if (data != null && data.isNotEmpty) {
+          _thumbnailCache[cacheKey] = data;
           _thumbnailCache[assetId] = data;
           return data;
         }
@@ -478,6 +499,7 @@ class MediaScannerService {
         if (await f.exists()) {
           final bytes = await f.readAsBytes();
           if (bytes.isNotEmpty) {
+            _thumbnailCache[cacheKey] = bytes;
             _thumbnailCache[assetId] = bytes;
             return bytes;
           }
@@ -494,7 +516,7 @@ class MediaScannerService {
           await PhotoManager.editor.deleteWithIds([assetId]);
       final success = deletedIds.contains(assetId);
       await _db.deleteMediaItem(assetId);
-      _thumbnailCache.remove(assetId);
+      _removeThumbnailFromCache(assetId);
       return success;
     } catch (e) {
       debugPrint('Error deleting media from device: $e');
@@ -505,7 +527,7 @@ class MediaScannerService {
           if (await f.exists()) await f.delete();
         }
         await _db.deleteMediaItem(assetId);
-        _thumbnailCache.remove(assetId);
+        _removeThumbnailFromCache(assetId);
         return true;
       } catch (_) {}
       return false;
@@ -743,7 +765,7 @@ class MediaScannerService {
       if (toDelete.isNotEmpty) {
         debugPrint('Safely pruned ${toDelete.length} confirmed deleted items from database');
         for (final id in toDelete) {
-          _thumbnailCache.remove(id);
+          _removeThumbnailFromCache(id);
         }
         await _db.deleteMediaItems(toDelete.toList());
       }

@@ -81,7 +81,7 @@ class MediaItemTile extends StatelessWidget {
                 tag: 'media_tile_${item.localId}',
                 child: CachedThumbnailImage(
                   localId: item.localId,
-                  size: 320,
+                  size: 500,
                   placeholder: _buildPlaceholder(),
                 ),
               ),

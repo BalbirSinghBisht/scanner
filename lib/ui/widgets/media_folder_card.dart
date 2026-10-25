@@ -135,7 +135,7 @@ class MediaFolderCard extends StatelessWidget {
                 if (coverItem != null)
                   CachedThumbnailImage(
                     localId: coverItem!.localId,
-                    size: 400,
+                    size: 500,
                     fit: BoxFit.cover,
                     placeholder: _buildPlaceholder(badgeColor),
                   )

@@ -195,7 +195,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                           // High-res cover image (flicker-free cached)
                           CachedThumbnailImage(
                             localId: item.localId,
-                            size: 500,
+                            size: 600,
                             fit: BoxFit.cover,
                             placeholder: Container(
                               color: AppTheme.darkCardElevated,

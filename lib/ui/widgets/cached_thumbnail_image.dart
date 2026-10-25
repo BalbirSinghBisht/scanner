@@ -14,7 +14,7 @@ class CachedThumbnailImage extends StatefulWidget {
   const CachedThumbnailImage({
     super.key,
     required this.localId,
-    this.size = 320,
+    this.size = 500,
     this.fit = BoxFit.cover,
     required this.placeholder,
   });
@@ -30,7 +30,8 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
   @override
   void initState() {
     super.initState();
-    _bytes = MediaScannerService.instance.getCachedThumbnail(widget.localId);
+    _bytes = MediaScannerService.instance
+        .getCachedThumbnail(widget.localId, size: widget.size);
     if (_bytes == null) {
       _loadThumbnail();
     }
@@ -39,8 +40,9 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
   @override
   void didUpdateWidget(CachedThumbnailImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.localId != widget.localId) {
-      _bytes = MediaScannerService.instance.getCachedThumbnail(widget.localId);
+    if (oldWidget.localId != widget.localId || oldWidget.size != widget.size) {
+      _bytes = MediaScannerService.instance
+          .getCachedThumbnail(widget.localId, size: widget.size);
       if (_bytes == null) {
         _loadThumbnail();
       }
@@ -52,7 +54,7 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
     _isLoading = true;
     try {
       final data = await MediaScannerService.instance
-          .getThumbnail(widget.localId, size: widget.size);
+          .getThumbnail(widget.localId, size: widget.size, quality: 95);
       if (mounted) {
         setState(() {
           _bytes = data;

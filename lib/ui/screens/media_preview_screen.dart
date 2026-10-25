@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/theme/app_theme.dart';
@@ -758,44 +759,11 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
   }
 
   Widget _buildImagePage(MediaItem item) {
-    final cachedBytes = MediaScannerService.instance.getCachedThumbnail(item.localId);
-
-    return FutureBuilder<Uint8List?>(
-      future: MediaScannerService.instance.getThumbnail(item.localId, size: 1080),
-      builder: (context, snapshot) {
-        final displayBytes = snapshot.data ?? cachedBytes;
-
-        if (displayBytes != null && displayBytes.isNotEmpty) {
-          return InteractiveViewer(
-            transformationController: _transformationController,
-            minScale: 1.0,
-            maxScale: 4.5,
-            child: Center(
-              child: Hero(
-                tag: 'media_tile_${item.localId}',
-                child: Image.memory(
-                  displayBytes,
-                  fit: BoxFit.contain,
-                  gaplessPlayback: true,
-                  errorBuilder: (context, error, stackTrace) =>
-                      _buildMissingFileError(),
-                ),
-              ),
-            ),
-          );
-        }
-
-        if (snapshot.connectionState == ConnectionState.done) {
-          return _buildMissingFileError();
-        }
-
-        return const Center(
-          child: CircularProgressIndicator(
-            color: AppTheme.primaryAccent,
-            strokeWidth: 2.5,
-          ),
-        );
-      },
+    return _FullImagePreviewPage(
+      key: ValueKey('preview_full_${item.localId}'),
+      item: item,
+      transformationController: _transformationController,
+      errorBuilder: _buildMissingFileError,
     );
   }
 
@@ -845,9 +813,32 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       );
     }
 
-    // Fallback thumbnail while video initializes
+    // High quality video thumbnail fallback
+    final cachedBytes =
+        MediaScannerService.instance.getCachedThumbnail(item.localId);
+    if (cachedBytes != null && cachedBytes.isNotEmpty) {
+      return Center(
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Image.memory(
+              cachedBytes,
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stackTrace) =>
+                  _buildMissingFileError(),
+            ),
+            const CircularProgressIndicator(
+              color: AppTheme.primaryAccent,
+              strokeWidth: 2.5,
+            ),
+          ],
+        ),
+      );
+    }
+
     return FutureBuilder<Uint8List?>(
-      future: MediaScannerService.instance.getThumbnail(item.localId, size: 800),
+      future: MediaScannerService.instance.getThumbnail(item.localId, size: 800, quality: 95),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.done) {
           if (snapshot.data != null && snapshot.data!.isNotEmpty) {
@@ -920,6 +911,175 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Dedicated full-resolution image viewer: renders the original uncompressed file
+/// from storage for 100% true camera quality, while displaying the cached thumbnail
+/// instantaneously on frame 0 to eliminate blank flickers during hero transitions.
+class _FullImagePreviewPage extends StatefulWidget {
+  final MediaItem item;
+  final TransformationController transformationController;
+  final Widget Function() errorBuilder;
+
+  const _FullImagePreviewPage({
+    super.key,
+    required this.item,
+    required this.transformationController,
+    required this.errorBuilder,
+  });
+
+  @override
+  State<_FullImagePreviewPage> createState() => _FullImagePreviewPageState();
+}
+
+class _FullImagePreviewPageState extends State<_FullImagePreviewPage> {
+  File? _resolvedFile;
+  Uint8List? _resolvedBytes;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveFullResolutionMedia();
+  }
+
+  @override
+  void didUpdateWidget(_FullImagePreviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.localId != widget.item.localId) {
+      _resolvedFile = null;
+      _resolvedBytes = null;
+      _hasError = false;
+      _resolveFullResolutionMedia();
+    }
+  }
+
+  Future<void> _resolveFullResolutionMedia() async {
+    // 1. Check direct local file path if available
+    if (widget.item.localFilePath != null && widget.item.localFilePath!.isNotEmpty) {
+      final f = File(widget.item.localFilePath!);
+      if (await f.exists()) {
+        if (mounted) {
+          setState(() {
+            _resolvedFile = f;
+          });
+          return;
+        }
+      }
+    }
+
+    // 2. Resolve origin / full file via MediaScannerService
+    try {
+      final file = await MediaScannerService.instance.getMediaFile(widget.item.localId);
+      if (file != null && await file.exists()) {
+        if (mounted) {
+          setState(() {
+            _resolvedFile = file;
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // 3. Fallback: retrieve origin uncompressed bytes from AssetEntity
+    try {
+      final asset = await AssetEntity.fromId(widget.item.localId);
+      if (asset != null) {
+        final originBytes = await asset.originBytes;
+        if (originBytes != null && originBytes.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _resolvedBytes = originBytes;
+            });
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _hasError = true;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cachedThumbnail =
+        MediaScannerService.instance.getCachedThumbnail(widget.item.localId);
+
+    // 1. Full original file: 100% raw uncompressed camera/download quality
+    if (_resolvedFile != null) {
+      return InteractiveViewer(
+        transformationController: widget.transformationController,
+        minScale: 1.0,
+        maxScale: 5.0,
+        child: Center(
+          child: Hero(
+            tag: 'media_tile_${widget.item.localId}',
+            child: Image.file(
+              _resolvedFile!,
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stackTrace) => widget.errorBuilder(),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 2. Full origin bytes fallback
+    if (_resolvedBytes != null && _resolvedBytes!.isNotEmpty) {
+      return InteractiveViewer(
+        transformationController: widget.transformationController,
+        minScale: 1.0,
+        maxScale: 5.0,
+        child: Center(
+          child: Hero(
+            tag: 'media_tile_${widget.item.localId}',
+            child: Image.memory(
+              _resolvedBytes!,
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stackTrace) => widget.errorBuilder(),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 3. Error state if file no longer exists
+    if (_hasError) {
+      return widget.errorBuilder();
+    }
+
+    // 4. Instant frame-0 placeholder: show cached thumbnail while full file decodes
+    if (cachedThumbnail != null && cachedThumbnail.isNotEmpty) {
+      return InteractiveViewer(
+        transformationController: widget.transformationController,
+        minScale: 1.0,
+        maxScale: 5.0,
+        child: Center(
+          child: Hero(
+            tag: 'media_tile_${widget.item.localId}',
+            child: Image.memory(
+              cachedThumbnail,
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const Center(
+      child: CircularProgressIndicator(
+        color: AppTheme.primaryAccent,
+        strokeWidth: 2.5,
       ),
     );
   }

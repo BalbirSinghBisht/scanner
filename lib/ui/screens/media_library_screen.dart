@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/backup_provider.dart';
 import '../../services/device_settings_helper.dart';
 import '../../services/favorites_service.dart';
@@ -15,7 +14,6 @@ import '../../services/media_scanner_service.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
 import '../widgets/three_d_carousel.dart';
-import '../widgets/three_d_cloud_hub_sheet.dart';
 import 'media_preview_screen.dart';
 
 enum SortMode {
@@ -794,9 +792,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             tooltip: 'Sort Options',
             onTap: _showSortOptionsDialog,
           ),
-
-          // Cloud Hub Avatar / Sync Status Button
-          _buildCloudHubButton(backup),
         ],
       ),
     );
@@ -842,99 +837,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         padding: EdgeInsets.zero,
         tooltip: tooltip,
         onPressed: onTap,
-      ),
-    );
-  }
-
-  Widget _buildCloudHubButton(BackupProvider backup) {
-    final auth = context.watch<AuthProvider>();
-    final isSyncing = backup.isSyncing;
-    final isAuth = auth.isAuthenticated;
-    final photoUrl = auth.currentUser?.photoUrl;
-
-    return InkWell(
-      onTap: () => showThreeDCloudHubSheet(context),
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        width: 36,
-        height: 36,
-        margin: const EdgeInsets.only(left: 6),
-        decoration: BoxDecoration(
-          color: AppTheme.darkCard,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isSyncing
-                ? AppTheme.primaryAccent
-                : (isAuth
-                    ? AppTheme.emeraldGreen.withOpacity(0.5)
-                    : Colors.white.withOpacity(0.12)),
-            width: isSyncing ? 1.5 : 1.0,
-          ),
-          boxShadow: isSyncing
-              ? [
-                  BoxShadow(
-                    color: AppTheme.primaryAccent.withOpacity(0.4),
-                    blurRadius: 8,
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (photoUrl != null)
-              Image.network(
-                photoUrl,
-                width: 36,
-                height: 36,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const Icon(
-                  Icons.cloud_done_rounded,
-                  size: 18,
-                  color: AppTheme.emeraldGreen,
-                ),
-              )
-            else if (isSyncing)
-              const SizedBox(
-                width: 17,
-                height: 17,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppTheme.primaryAccent,
-                ),
-              )
-            else
-              Icon(
-                isAuth ? Icons.cloud_done_rounded : Icons.cloud_outlined,
-                size: 18,
-                color: isAuth ? AppTheme.emeraldGreen : Colors.white70,
-              ),
-
-            // Live status badge dot
-            Positioned(
-              right: 1,
-              bottom: 1,
-              child: Container(
-                width: 7.5,
-                height: 7.5,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isSyncing
-                      ? AppTheme.primaryAccent
-                      : (isAuth ? AppTheme.emeraldGreen : AppTheme.amberWarning),
-                  border: Border.all(color: AppTheme.darkBg, width: 1.4),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
