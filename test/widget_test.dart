@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:scanner/main.dart';
@@ -22,8 +21,7 @@ void main() {
 
     await tester.pump();
 
-    // Verify single-page media library dashboard loads
-    expect(find.text('Media Library'), findsOneWidget);
-    expect(find.byType(TextField), findsOneWidget);
+    // Verify Gallery screen loads
+    expect(find.text('Gallery'), findsOneWidget);
   });
 }

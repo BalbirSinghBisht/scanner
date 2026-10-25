@@ -43,28 +43,15 @@ class MediaItemTile extends StatelessWidget {
               future: MediaScannerService.instance.getThumbnail(item.localId, size: 300),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.done &&
-                    snapshot.data != null) {
+                    snapshot.data != null &&
+                    snapshot.data!.isNotEmpty) {
                   return Image.memory(
                     snapshot.data!,
                     fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
                   );
                 }
-                if (snapshot.connectionState == ConnectionState.done &&
-                    snapshot.data == null) {
-                  return const SizedBox.shrink();
-                }
-                return Container(
-                  color: Colors.white.withOpacity(0.05),
-                  child: Center(
-                    child: Icon(
-                      item.mediaType == AppMediaType.video
-                          ? Icons.videocam_outlined
-                          : Icons.image_outlined,
-                      color: Colors.white24,
-                      size: 28,
-                    ),
-                  ),
-                );
+                return _buildPlaceholder();
               },
             ),
 
@@ -99,6 +86,21 @@ class MediaItemTile extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      color: Colors.white.withOpacity(0.05),
+      child: Center(
+        child: Icon(
+          item.mediaType == AppMediaType.video
+              ? Icons.videocam_outlined
+              : Icons.image_outlined,
+          color: Colors.white24,
+          size: 28,
         ),
       ),
     );

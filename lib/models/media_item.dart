@@ -196,6 +196,24 @@ class MediaItem {
     };
   }
 
+  static DateTime? _parseDate(dynamic val) {
+    if (val == null) return null;
+    if (val is num) return DateTime.fromMillisecondsSinceEpoch(val.toInt());
+    if (val is String) {
+      final asInt = int.tryParse(val);
+      if (asInt != null) return DateTime.fromMillisecondsSinceEpoch(asInt);
+      return DateTime.tryParse(val);
+    }
+    return null;
+  }
+
+  static int? _parseInt(dynamic val) {
+    if (val == null) return null;
+    if (val is num) return val.toInt();
+    if (val is String) return int.tryParse(val);
+    return null;
+  }
+
   factory MediaItem.fromMap(Map<String, dynamic> map) {
     return MediaItem(
       localId: map['local_id'] as String,
@@ -205,31 +223,23 @@ class MediaItem {
         orElse: () => AppMediaType.image,
       ),
       mimeType: map['mime_type'] as String? ?? 'application/octet-stream',
-      fileSize: (map['file_size'] as num?)?.toInt() ?? 0,
-      width: (map['width'] as num?)?.toInt(),
-      height: (map['height'] as num?)?.toInt(),
-      durationSeconds: (map['duration_seconds'] as num?)?.toInt(),
-      createdAt: DateTime.fromMillisecondsSinceEpoch(
-        (map['created_at'] as num?)?.toInt() ?? 0,
-      ),
-      modifiedAt: map['modified_at'] != null
-          ? DateTime.fromMillisecondsSinceEpoch((map['modified_at'] as num).toInt())
-          : null,
+      fileSize: _parseInt(map['file_size']) ?? 0,
+      width: _parseInt(map['width']),
+      height: _parseInt(map['height']),
+      durationSeconds: _parseInt(map['duration_seconds']),
+      createdAt: _parseDate(map['created_at']) ?? DateTime.now(),
+      modifiedAt: _parseDate(map['modified_at']),
       contentHash: map['content_hash'] as String?,
       driveFileId: map['drive_file_id'] as String?,
       uploadState: UploadState.values.firstWhere(
         (e) => e.name == map['upload_state'],
         orElse: () => UploadState.DISCOVERED,
       ),
-      lastAttemptAt: map['last_attempt_at'] != null
-          ? DateTime.fromMillisecondsSinceEpoch((map['last_attempt_at'] as num).toInt())
-          : null,
-      uploadedAt: map['uploaded_at'] != null
-          ? DateTime.fromMillisecondsSinceEpoch((map['uploaded_at'] as num).toInt())
-          : null,
+      lastAttemptAt: _parseDate(map['last_attempt_at']),
+      uploadedAt: _parseDate(map['uploaded_at']),
       errorMessage: map['error_message'] as String?,
-      retryCount: (map['retry_count'] as num?)?.toInt() ?? 0,
-      bytesUploaded: (map['bytes_uploaded'] as num?)?.toInt() ?? 0,
+      retryCount: _parseInt(map['retry_count']) ?? 0,
+      bytesUploaded: _parseInt(map['bytes_uploaded']) ?? 0,
       driveFolderPath: map['drive_folder_path'] as String?,
       localFilePath: map['local_file_path'] as String?,
       folderName: map['folder_name'] as String?,

@@ -66,10 +66,12 @@ class MediaFolderCard extends StatelessWidget {
                     .getThumbnail(coverItem!.localId, size: 360),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.done &&
-                      snapshot.data != null) {
+                      snapshot.data != null &&
+                      snapshot.data!.isNotEmpty) {
                     return Image.memory(
                       snapshot.data!,
                       fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => _placeholder(),
                     );
                   }
                   return _placeholder();

@@ -3,7 +3,7 @@ import 'package:scanner/models/media_item.dart';
 
 void main() {
   group('MediaItem Tests', () {
-    test('computes target folder path by media creation date', () {
+    test('computes target folder path by folder name and device', () {
       final photo = MediaItem(
         localId: '101',
         fileName: 'IMG_20260115_091522.jpg',
@@ -11,9 +11,10 @@ void main() {
         mimeType: 'image/jpeg',
         fileSize: 2048576,
         createdAt: DateTime(2026, 1, 15, 9, 15, 22),
+        folderName: 'Camera',
       );
 
-      expect(photo.computeTargetFolderPath(), equals('PhoneBackup/Photos/2026/01'));
+      expect(photo.computeTargetFolderPath(deviceFolder: 'MyPhone'), equals('PhoneBackup/MyPhone/Camera'));
 
       final video = MediaItem(
         localId: '102',
@@ -22,9 +23,10 @@ void main() {
         mimeType: 'video/mp4',
         fileSize: 52428800,
         createdAt: DateTime(2026, 11, 2, 14, 30, 0),
+        folderName: 'WhatsApp Videos',
       );
 
-      expect(video.computeTargetFolderPath(), equals('PhoneBackup/Videos/2026/11'));
+      expect(video.computeTargetFolderPath(deviceFolder: 'MyPhone'), equals('PhoneBackup/MyPhone/WhatsApp Videos'));
     });
 
     test('serializes to map and deserializes back correctly', () {

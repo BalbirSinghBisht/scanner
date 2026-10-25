@@ -93,9 +93,9 @@ class DatabaseHelper {
   /// to ensure active transfers running in another isolate/thread are not disrupted.
   Future<int> recoverInterruptedUploads({int timeoutMinutes = 5}) async {
     final db = await database;
-    final cutoff = DateTime.now()
+    final cutoffMs = DateTime.now()
         .subtract(Duration(minutes: timeoutMinutes))
-        .toIso8601String();
+        .millisecondsSinceEpoch;
     return await db.rawUpdate('''
       UPDATE ${AppConstants.manifestTableName}
       SET upload_state = ?,
@@ -105,7 +105,7 @@ class DatabaseHelper {
       UploadState.RETRY_PENDING.name,
       'Interrupted transfer timed out. Queued for resume.',
       UploadState.UPLOADING.name,
-      cutoff,
+      cutoffMs,
     ]);
   }
 
@@ -183,7 +183,7 @@ class DatabaseHelper {
           {
             'upload_state': UploadState.UPLOADED.name,
             'drive_file_id': driveId,
-            'uploaded_at': DateTime.now().toIso8601String(),
+            'uploaded_at': DateTime.now().millisecondsSinceEpoch,
           },
           where: 'local_id = ?',
           whereArgs: [localId],
@@ -297,6 +297,16 @@ class DatabaseHelper {
     await db.update(
       AppConstants.manifestTableName,
       {'content_hash': hash},
+      where: 'local_id = ?',
+      whereArgs: [localId],
+    );
+  }
+
+  Future<void> updateLocalFilePath(String localId, String path) async {
+    final db = await database;
+    await db.update(
+      AppConstants.manifestTableName,
+      {'local_file_path': path},
       where: 'local_id = ?',
       whereArgs: [localId],
     );
@@ -583,7 +593,10 @@ class DatabaseHelper {
     final sizeRes = await db.rawQuery('''
       SELECT SUM(file_size) as total_size FROM ${AppConstants.manifestTableName}
     ''');
-    final totalSize = (sizeRes.first['total_size'] as num?)?.toInt() ?? 0;
+    final rawSize = sizeRes.isNotEmpty ? sizeRes.first['total_size'] : null;
+    final totalSize = rawSize is num
+        ? rawSize.toInt()
+        : (int.tryParse(rawSize?.toString() ?? '') ?? 0);
 
     final uploadedRes = await db.rawQuery('''
       SELECT COUNT(*) as count, SUM(file_size) as cloud_bytes
@@ -591,7 +604,10 @@ class DatabaseHelper {
       WHERE upload_state = ?
     ''', [UploadState.UPLOADED.name]);
     final uploadedCount = Sqflite.firstIntValue(uploadedRes) ?? 0;
-    final cloudBytes = (uploadedRes.first['cloud_bytes'] as num?)?.toInt() ?? 0;
+    final rawCloudBytes = uploadedRes.isNotEmpty ? uploadedRes.first['cloud_bytes'] : null;
+    final cloudBytes = rawCloudBytes is num
+        ? rawCloudBytes.toInt()
+        : (int.tryParse(rawCloudBytes?.toString() ?? '') ?? 0);
 
     final pendingRes = await db.rawQuery('''
       SELECT COUNT(*) as count FROM ${AppConstants.manifestTableName}
@@ -616,10 +632,18 @@ class DatabaseHelper {
       FROM ${AppConstants.manifestTableName}
       WHERE upload_state = ?
     ''', [UploadState.UPLOADED.name]);
-    final lastSuccessVal = lastSuccessRes.first['last_success'] as num?;
-    final lastSuccessfulTime = lastSuccessVal != null
-        ? DateTime.fromMillisecondsSinceEpoch(lastSuccessVal.toInt())
-        : null;
+    final rawSuccess = lastSuccessRes.isNotEmpty ? lastSuccessRes.first['last_success'] : null;
+    DateTime? lastSuccessfulTime;
+    if (rawSuccess is num) {
+      lastSuccessfulTime = DateTime.fromMillisecondsSinceEpoch(rawSuccess.toInt());
+    } else if (rawSuccess is String) {
+      final parsedInt = int.tryParse(rawSuccess);
+      if (parsedInt != null) {
+        lastSuccessfulTime = DateTime.fromMillisecondsSinceEpoch(parsedInt);
+      } else {
+        lastSuccessfulTime = DateTime.tryParse(rawSuccess);
+      }
+    }
 
     final duplicateGroups = await getDuplicateGroups();
     final duplicateItemsCount = duplicateGroups.fold<int>(
@@ -703,6 +727,16 @@ class DatabaseHelper {
       AppConstants.manifestTableName,
       where: 'local_id IN ($placeholders)',
       whereArgs: localIds,
+    );
+  }
+
+  /// Deletes all media items belonging to a folder
+  Future<int> deleteMediaItemsByFolder(String folderName) async {
+    final db = await database;
+    return await db.delete(
+      AppConstants.manifestTableName,
+      where: 'folder_name = ?',
+      whereArgs: [folderName],
     );
   }
 

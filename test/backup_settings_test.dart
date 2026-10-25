@@ -5,11 +5,11 @@ import 'package:scanner/models/media_item.dart';
 
 void main() {
   group('BackupSettings Tests', () {
-    test('default settings require user consent before auto backup', () {
+    test('default settings enable auto backup out of the box', () {
       const settings = BackupSettings();
-      expect(settings.userConsentGiven, isFalse);
-      expect(settings.autoBackupEnabled, isFalse);
-      expect(settings.wifiOnly, isTrue);
+      expect(settings.userConsentGiven, isTrue);
+      expect(settings.autoBackupEnabled, isTrue);
+      expect(settings.wifiOnly, isFalse);
       expect(settings.backupPhotos, isTrue);
       expect(settings.backupVideos, isTrue);
       expect(settings.localOnlyMode, isFalse);

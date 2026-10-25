@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_constants.dart';
-import '../core/errors/app_exceptions.dart';
 import '../models/backup_settings.dart';
 import '../models/media_item.dart';
 import 'auth_service.dart';
@@ -244,10 +243,17 @@ class BackupSyncService {
       }
 
       if (file == null || !await file.exists()) {
-        throw BackupException(
-          'Media file could not be read from device storage.',
-          code: 'FILE_NOT_FOUND',
-        );
+        debugPrint('Media item ${item.fileName} (${item.localId}) no longer exists on device storage - removing from database.');
+        await _db.deleteMediaItem(item.localId);
+        _scanner.invalidateCache(item.localId);
+        _progressController.add(UploadProgressEvent(
+          item: item,
+          bytesSent: 0,
+          totalBytes: item.fileSize,
+          progress: 0.0,
+          statusMessage: 'Item removed (deleted on device)',
+        ));
+        return;
       }
 
       // 2. Ensure content hash is computed for duplicate verification

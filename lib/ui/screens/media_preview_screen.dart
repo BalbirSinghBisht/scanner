@@ -502,17 +502,22 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
     return FutureBuilder<Uint8List?>(
       future: MediaScannerService.instance.getThumbnail(item.localId, size: 1080),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
-          return InteractiveViewer(
-            minScale: 1.0,
-            maxScale: 4.0,
-            child: Center(
-              child: Image.memory(
-                snapshot.data!,
-                fit: BoxFit.contain,
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (snapshot.data != null && snapshot.data!.isNotEmpty) {
+            return InteractiveViewer(
+              minScale: 1.0,
+              maxScale: 4.0,
+              child: Center(
+                child: Image.memory(
+                  snapshot.data!,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => _buildMissingFileError(),
+                ),
               ),
-            ),
-          );
+            );
+          } else {
+            return _buildMissingFileError();
+          }
         }
         return const Center(
           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
@@ -552,21 +557,66 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
     return FutureBuilder<Uint8List?>(
       future: MediaScannerService.instance.getThumbnail(item.localId, size: 800),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
-          return Center(
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Image.memory(snapshot.data!, fit: BoxFit.contain),
-                const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-              ],
-            ),
-          );
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (snapshot.data != null && snapshot.data!.isNotEmpty) {
+            return Center(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Image.memory(
+                    snapshot.data!,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => _buildMissingFileError(),
+                  ),
+                  const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                ],
+              ),
+            );
+          } else {
+            return _buildMissingFileError();
+          }
         }
         return const Center(
           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
         );
       },
+    );
+  }
+
+  Widget _buildMissingFileError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.broken_image_outlined, color: Colors.white38, size: 64),
+            const SizedBox(height: 16),
+            const Text(
+              'File no longer exists on device',
+              style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This media item was deleted from device storage by another file manager or gallery.',
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back, size: 16),
+              label: const Text('Back to Gallery'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white12,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

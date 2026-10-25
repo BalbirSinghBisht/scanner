@@ -41,9 +41,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       final backup = context.read<BackupProvider>();
-      if (backup.mediaItems.isEmpty && !backup.isScanning) {
-        backup.startScan(forceFullScan: true);
-      }
+      // Re-verify permissions and run a scan to immediately detect external deletions
+      MediaScannerService.instance.requestPermission().then((_) {
+        if (MediaScannerService.instance.isPermissionGranted) {
+          if (!backup.isScanning) {
+            backup.startScan(forceFullScan: true);
+          }
+        }
+      });
     }
   }
 
@@ -55,11 +60,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
     final backup = context.read<BackupProvider>();
 
-    // 2. Scan device media library immediately so albums load on screen and new media is discovered
-    if (backup.mediaItems.isEmpty && !backup.isScanning) {
+    // 2. Scan device media library immediately so albums load on screen and deletions are pruned
+    if (!backup.isScanning) {
       await backup.startScan(forceFullScan: true);
-    } else if (!backup.isScanning) {
-      await backup.startScan(forceFullScan: false);
     }
 
     if (!mounted) return;
@@ -86,6 +89,17 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     // Sort folders by item count descending so prominent albums (Camera, WhatsApp, Screenshots) appear first
     final sortedFolderNames = groupedFolders.keys.toList()
       ..sort((a, b) => groupedFolders[b]!.length.compareTo(groupedFolders[a]!.length));
+
+    // If currently opened folder was deleted from disk, gracefully reset back to albums grid
+    if (_openedFolder != null &&
+        _openedFolder != 'All Photos & Videos' &&
+        !groupedFolders.containsKey(_openedFolder)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _openedFolder != null && !groupedFolders.containsKey(_openedFolder)) {
+          setState(() => _openedFolder = null);
+        }
+      });
+    }
 
     // Intercept back button: if inside a folder, return to the Folders grid
     return PopScope(
@@ -149,9 +163,21 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           ],
         ),
         body: SafeArea(
-          child: _openedFolder == null
-              ? _buildFoldersGrid(backup, groupedFolders, sortedFolderNames)
-              : _buildFolderMediaGrid(backup, groupedFolders),
+          child: Column(
+            children: [
+              if (backup.isScanning && backup.mediaItems.isNotEmpty)
+                const LinearProgressIndicator(
+                  minHeight: 2,
+                  backgroundColor: Colors.transparent,
+                  color: AppTheme.primaryAccent,
+                ),
+              Expanded(
+                child: _openedFolder == null
+                    ? _buildFoldersGrid(backup, groupedFolders, sortedFolderNames)
+                    : _buildFolderMediaGrid(backup, groupedFolders),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -164,10 +190,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     List<String> sortedFolderNames,
   ) {
     if (backup.mediaItems.isEmpty) {
+      final hasPerm = MediaScannerService.instance.isPermissionGranted;
       return RefreshIndicator(
         color: AppTheme.primaryAccent,
         backgroundColor: AppTheme.darkCard,
-        onRefresh: () => backup.startScan(forceFullScan: true),
+        onRefresh: () => backup.startScan(forceFullScan: false),
         child: LayoutBuilder(
           builder: (context, constraints) => SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -180,7 +207,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        backup.isScanning ? Icons.sync : Icons.photo_library_outlined,
+                        backup.isScanning
+                            ? Icons.sync
+                            : (!hasPerm ? Icons.lock_person_outlined : Icons.photo_library_outlined),
                         size: 56,
                         color: backup.isScanning ? AppTheme.primaryAccent : Colors.white24,
                       ),
@@ -188,7 +217,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       Text(
                         backup.isScanning
                             ? 'Scanning device albums...'
-                            : 'No albums found on device',
+                            : (!hasPerm ? 'Media Permission Required' : 'No albums found on device'),
                         style: const TextStyle(
                           fontSize: 16,
                           color: Colors.white,
@@ -199,7 +228,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       Text(
                         backup.isScanning
                             ? 'Indexing photos and videos from your device'
-                            : 'Pull down to refresh or tap below to scan device albums',
+                            : (!hasPerm
+                                ? 'Please grant photo and video access to allow Gallery to back up and view your albums.'
+                                : 'Pull down to refresh or tap below to scan device albums'),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontSize: 12,
@@ -208,22 +239,50 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       ),
                       if (!backup.isScanning) ...[
                         const SizedBox(height: 20),
-                        ElevatedButton.icon(
-                          onPressed: () => backup.startScan(forceFullScan: true),
-                          icon: const Icon(Icons.refresh_rounded, size: 18),
-                          label: const Text('Scan Device Media'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryAccent,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
+                        if (!hasPerm) ...[
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              await MediaScannerService.instance.requestPermission();
+                              await backup.startScan(forceFullScan: true);
+                            },
+                            icon: const Icon(Icons.security, size: 18),
+                            label: const Text('Grant Media Permission'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryAccent,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 10),
+                          TextButton.icon(
+                            onPressed: () => MediaScannerService.instance.openSettings(),
+                            icon: const Icon(Icons.settings, size: 16, color: Colors.white54),
+                            label: const Text('Open App Settings', style: TextStyle(color: Colors.white70)),
+                          ),
+                        ] else ...[
+                          ElevatedButton.icon(
+                            onPressed: () => backup.startScan(forceFullScan: false),
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('Scan Device Media'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryAccent,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),

@@ -147,9 +147,9 @@ class BackupProvider extends ChangeNotifier {
       // Also scan standard device directories for downloads & camera media
       await _scanner.scanDirectDirectories();
 
-      if (forceFullScan) {
-        await _scanner.pruneDeletedItems();
-      }
+      // Always prune deleted items so that any albums or files deleted outside the app
+      // (via another file manager, gallery, etc.) are immediately cleaned up.
+      await _scanner.pruneDeletedItems();
 
       _lastScanTime = DateTime.now();
       await _settingsRepo.saveLastScanTime(_lastScanTime!);
@@ -157,6 +157,8 @@ class BackupProvider extends ChangeNotifier {
       await _autoStartUpload();
     } catch (e) {
       _errorMessage = e.toString();
+      debugPrint('Scan error: $e');
+      await refreshData();
     } finally {
       _isScanning = false;
       notifyListeners();

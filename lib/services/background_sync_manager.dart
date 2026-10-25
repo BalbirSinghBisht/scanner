@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:photo_manager/photo_manager.dart';
 import 'backup_sync_service.dart';
 import 'media_scanner_service.dart';
 import 'settings_repository.dart';
@@ -39,18 +38,7 @@ void onStartBackgroundService(ServiceInstance service) async {
     _runBackgroundSyncCycle();
   });
 
-  // Listen to photo library changes in real-time in the background
-  try {
-    PhotoManager.addChangeCallback((call) async {
-      debugPrint('Background photo change detected: ${call.method}. Syncing...');
-      await _runBackgroundSyncCycle();
-    });
-    PhotoManager.startChangeNotify();
-  } catch (e) {
-    debugPrint('Background change notify error: $e');
-  }
-
-  // Fast background check every 15 seconds to catch newly downloaded/saved media immediately
+  // Fast background check every 15 seconds to catch newly downloaded/saved media immediately and sync pending items
   Timer.periodic(const Duration(seconds: 15), (timer) async {
     await _runBackgroundSyncCycle();
   });
@@ -66,24 +54,20 @@ Future<void> _runBackgroundSyncCycle() async {
     final settings = await settingsRepo.loadSettings();
     if (settings.isPaused) return;
 
-    // Refresh PhotoManager cache so newly saved/downloaded media appears immediately
-    try {
-      await PhotoManager.clearFileCache();
-    } catch (_) {}
+    // 1. Direct directory scan so any downloaded or camera media is captured even if MediaStore hasn't indexed
+    await MediaScannerService.instance.scanDirectDirectories();
 
-    // Auto-scan new photos/videos since last scan time (isBackground: true bypasses Activity requirement)
+    // 2. Incremental media library scan
     final lastScan = await settingsRepo.getLastScanTime();
     await MediaScannerService.instance.scanMedia(
       forceFullScan: false,
       scanSince: lastScan,
       isBackground: true,
     );
-    // Direct directory scan so any downloaded or camera media is captured even if MediaStore hasn't indexed
-    await MediaScannerService.instance.scanDirectDirectories();
 
     await settingsRepo.saveLastScanTime(DateTime.now());
 
-    // Automatically trigger upload of any pending items to Google Drive
+    // 3. Automatically trigger upload of any pending items to Google Drive
     await BackupSyncService.instance.startSync(settings: settings);
   } catch (e) {
     debugPrint('Background sync cycle error: $e');
