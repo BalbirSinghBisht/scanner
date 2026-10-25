@@ -103,6 +103,45 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_PATH", "Path is null", null)
                     }
                 }
+                "shareMultipleFiles" -> {
+                    val paths = call.argument<List<String>>("paths") ?: emptyList()
+                    val mimeType = call.argument<String>("mimeType") ?: "*/*"
+                    if (paths.isNotEmpty()) {
+                        try {
+                            val uris = java.util.ArrayList<Uri>()
+                            for (p in paths) {
+                                val file = java.io.File(p)
+                                if (file.exists()) {
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file
+                                    )
+                                    uris.add(uri)
+                                }
+                            }
+                            if (uris.isNotEmpty()) {
+                                val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                                    type = mimeType
+                                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                val chooser = Intent.createChooser(intent, "Share Media").apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(chooser)
+                                result.success(true)
+                            } else {
+                                result.error("FILES_NOT_FOUND", "No files found on disk", null)
+                            }
+                        } catch (e: Exception) {
+                            result.error("SHARE_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.error("INVALID_PATHS", "Paths list is empty", null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

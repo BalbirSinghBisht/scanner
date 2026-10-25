@@ -54,6 +54,20 @@ class DeviceSettingsHelper {
     }
   }
 
+  /// Shares multiple local media files via native Android share sheet
+  static Future<bool> shareMultipleMediaFiles(List<String> filePaths, {String mimeType = '*/*'}) async {
+    if (!Platform.isAndroid || filePaths.isEmpty) return false;
+    try {
+      final res = await _channel.invokeMethod<bool>('shareMultipleFiles', {
+        'paths': filePaths,
+        'mimeType': mimeType,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Opens the App Info details page
   static Future<bool> openAppInfoSettings() async {
     if (!Platform.isAndroid) return false;

@@ -6,6 +6,7 @@ import 'providers/auth_provider.dart';
 import 'providers/backup_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/background_sync_manager.dart';
+import 'services/favorites_service.dart';
 import 'ui/screens/media_library_screen.dart';
 
 void main() async {
@@ -34,6 +35,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthProvider()..init()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()..init()),
         ChangeNotifierProvider(create: (_) => BackupProvider()..init()),
+        ChangeNotifierProvider.value(value: FavoritesService.instance..init()),
       ],
       child: const MediaBackupApp(),
     ),

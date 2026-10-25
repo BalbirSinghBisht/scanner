@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
 import '../../providers/backup_provider.dart';
 import '../../services/device_settings_helper.dart';
+import '../../services/favorites_service.dart';
 import '../../services/media_scanner_service.dart';
 
 class MediaPreviewScreen extends StatefulWidget {
@@ -32,7 +34,8 @@ class MediaPreviewScreen extends StatefulWidget {
   State<MediaPreviewScreen> createState() => _MediaPreviewScreenState();
 }
 
-class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
+class _MediaPreviewScreenState extends State<MediaPreviewScreen>
+    with SingleTickerProviderStateMixin {
   late PageController _pageController;
   late List<MediaItem> _items;
   late int _currentIndex;
@@ -43,12 +46,28 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
   int? _activeVideoIndex;
   bool _isVideoInitialized = false;
 
+  // Zoom controller for interactive viewer
+  final TransformationController _transformationController =
+      TransformationController();
+  late AnimationController _zoomAnimController;
+  Animation<Matrix4>? _zoomAnimation;
+
   @override
   void initState() {
     super.initState();
     _items = List<MediaItem>.from(widget.items);
-    _currentIndex = widget.initialIndex.clamp(0, _items.isEmpty ? 0 : _items.length - 1);
+    _currentIndex =
+        widget.initialIndex.clamp(0, _items.isEmpty ? 0 : _items.length - 1);
     _pageController = PageController(initialPage: _currentIndex);
+
+    _zoomAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 240),
+    )..addListener(() {
+        if (_zoomAnimation != null) {
+          _transformationController.value = _zoomAnimation!.value;
+        }
+      });
 
     if (_items.isNotEmpty) {
       _checkAndInitVideo(_currentIndex);
@@ -59,6 +78,8 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
   void dispose() {
     _videoController?.dispose();
     _pageController.dispose();
+    _zoomAnimController.dispose();
+    _transformationController.dispose();
     super.dispose();
   }
 
@@ -72,7 +93,33 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
     setState(() {
       _currentIndex = index;
     });
+    _transformationController.value = Matrix4.identity();
     _checkAndInitVideo(index);
+  }
+
+  void _handleDoubleTapZoom(TapDownDetails details) {
+    final currentMatrix = _transformationController.value;
+    final isZoomed = !currentMatrix.isIdentity();
+
+    Matrix4 targetMatrix;
+    if (isZoomed) {
+      targetMatrix = Matrix4.identity();
+    } else {
+      final pos = details.localPosition;
+      targetMatrix = Matrix4.identity()
+        ..translate(-pos.dx * 1.5, -pos.dy * 1.5)
+        ..scale(2.5);
+    }
+
+    _zoomAnimation = Matrix4Tween(
+      begin: currentMatrix,
+      end: targetMatrix,
+    ).animate(CurvedAnimation(
+      parent: _zoomAnimController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _zoomAnimController.forward(from: 0);
   }
 
   Future<void> _checkAndInitVideo(int index) async {
@@ -134,7 +181,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('File not found on device storage'),
-            backgroundColor: Colors.redAccent,
+            backgroundColor: AppTheme.roseDanger,
           ),
         );
       }
@@ -148,11 +195,23 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete from device?', style: TextStyle(color: Colors.white, fontSize: 18)),
+        backgroundColor: const Color(0xFF131D31),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: BorderSide(
+            color: Colors.white.withOpacity(0.12),
+            width: 1.2,
+          ),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_forever_rounded, color: AppTheme.roseDanger, size: 24),
+            SizedBox(width: 10),
+            Text('Delete File?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
         content: Text(
-          'Are you sure you want to delete "${item.fileName}" from your device storage?',
+          'Are you sure you want to delete "${item.fileName}" from device storage?',
           style: const TextStyle(color: Colors.white70, fontSize: 14),
         ),
         actions: [
@@ -162,12 +221,13 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
+              backgroundColor: AppTheme.roseDanger,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 4,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Delete Permanently'),
           ),
         ],
       ),
@@ -192,7 +252,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(deleted ? 'Item deleted from device' : 'Removed from gallery'),
-            backgroundColor: const Color(0xFF2C2C2C),
+            backgroundColor: const Color(0xFF1C2740),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -206,71 +266,250 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
     if (_items.isEmpty) return;
     final item = _items[_currentIndex];
     final df = DateFormat('d MMMM yyyy, h:mm a');
+    final isUploaded = item.uploadState == UploadState.UPLOADED;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0C1322),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.12),
+            width: 1.2,
+          ),
+          boxShadow: AppTheme.depthShadow(
+            depth: 20,
+            glowColor: AppTheme.primaryAccent,
+            glowOpacity: 0.12,
+          ),
+        ),
+        padding: EdgeInsets.only(
+          top: 14,
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.of(context).padding.bottom + 20,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(
               child: Container(
-                width: 36,
+                width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
-              'Details',
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [AppTheme.primaryAccent, AppTheme.primaryBlue],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryAccent.withOpacity(0.3),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.info_outline_rounded, color: Colors.black, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Media Details & EXIF',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Cloud Backup Status 3D Banner
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isUploaded
+                    ? AppTheme.emeraldGreen.withOpacity(0.12)
+                    : AppTheme.primaryBlue.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isUploaded
+                      ? AppTheme.emeraldGreen.withOpacity(0.4)
+                      : AppTheme.neonAzure.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isUploaded ? Icons.cloud_done_rounded : Icons.cloud_queue_rounded,
+                    color: isUploaded ? AppTheme.emeraldGreen : AppTheme.neonAzure,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isUploaded ? 'Backed Up to Google Drive' : 'Cloud Backup Pending',
+                          style: TextStyle(
+                            color: isUploaded ? AppTheme.emeraldGreen : Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          isUploaded
+                              ? (item.driveFolderPath ?? 'PhoneBackup/Camera')
+                              : 'Queued for automatic sync',
+                          style: const TextStyle(color: Colors.white54, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
-            _buildDetailRow(Icons.description_outlined, 'Name', item.fileName),
-            _buildDetailRow(Icons.folder_outlined, 'Album', item.displayFolderName),
-            _buildDetailRow(Icons.calendar_today_outlined, 'Date', df.format(item.createdAt)),
-            _buildDetailRow(Icons.data_usage_outlined, 'File Size', item.formattedSize),
-            if (item.width != null && item.height != null && item.width! > 0 && item.height! > 0)
-              _buildDetailRow(Icons.aspect_ratio_outlined, 'Resolution', '${item.width} × ${item.height}'),
-            if (item.mediaType == AppMediaType.video && item.durationSeconds != null)
-              _buildDetailRow(Icons.timer_outlined, 'Duration', item.formattedDuration),
+
+            // 3D Grid of Stat Cards
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetailCard(
+                    Icons.aspect_ratio_rounded,
+                    'Resolution',
+                    item.formattedDimensions.isNotEmpty
+                        ? item.formattedDimensions
+                        : 'Standard',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildDetailCard(
+                    Icons.data_usage_rounded,
+                    'File Size',
+                    item.formattedSize,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetailCard(
+                    Icons.folder_outlined,
+                    'Album',
+                    item.displayFolderName,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildDetailCard(
+                    Icons.extension_outlined,
+                    'Format',
+                    item.mimeType.split('/').last.toUpperCase(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            _buildDetailRow(Icons.description_outlined, 'File Name', item.fileName),
+            _buildDetailRow(Icons.calendar_today_outlined, 'Date Taken', df.format(item.createdAt)),
             if (item.localFilePath != null)
-              _buildDetailRow(Icons.sd_storage_outlined, 'Path', item.localFilePath!),
-            const SizedBox(height: 12),
+              _buildDetailRow(Icons.sd_storage_outlined, 'Storage Path', item.localFilePath!),
+            const SizedBox(height: 8),
           ],
         ),
       ),
     );
   }
 
+  Widget _buildDetailCard(IconData icon, String title, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.darkCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.25),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.primaryAccent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDetailRow(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: Colors.white54),
-          const SizedBox(width: 14),
+          Icon(icon, size: 18, color: Colors.white38),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 2,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
@@ -291,21 +530,26 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
     if (_items.isEmpty) {
       return const Scaffold(
         backgroundColor: Colors.black,
-        body: Center(child: Text('No media items', style: TextStyle(color: Colors.white54))),
+        body: Center(
+          child: Text('No media items', style: TextStyle(color: Colors.white54)),
+        ),
       );
     }
 
     final currentItem = _items[_currentIndex];
     final isVideo = currentItem.mediaType == AppMediaType.video;
+    final isFavorite = FavoritesService.instance.isFavorite(currentItem.localId);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Swipeable Full-Screen PageView
+          // 1. Swipeable Full-Screen PageView with Double-Tap Zoom
           GestureDetector(
             onTap: _toggleControls,
+            onDoubleTapDown: _handleDoubleTapZoom,
+            onDoubleTap: () {},
             behavior: HitTestBehavior.opaque,
             child: PageView.builder(
               controller: _pageController,
@@ -323,33 +567,44 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
             ),
           ),
 
-          // 2. Top Header Bar
+          // 2. Top Frosted Header Bar
           AnimatedPositioned(
-            duration: const Duration(milliseconds: 200),
-            top: _showControls ? 0 : -100,
+            duration: const Duration(milliseconds: 220),
+            top: _showControls ? 0 : -120,
             left: 0,
             right: 0,
             child: Container(
               padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 4,
-                left: 8,
+                top: MediaQuery.of(context).padding.top + 6,
+                left: 10,
                 right: 16,
-                bottom: 12,
+                bottom: 14,
               ),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.black87, Colors.transparent],
+                  colors: [
+                    Colors.black.withOpacity(0.85),
+                    Colors.black.withOpacity(0.4),
+                    Colors.transparent,
+                  ],
                 ),
               ),
               child: Row(
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => Navigator.of(context).pop(),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -367,37 +622,60 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                         ),
                         Text(
                           '${currentItem.displayFolderName} • ${_currentIndex + 1} of ${_items.length}',
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.7),
                             fontSize: 12,
                           ),
                         ),
                       ],
                     ),
                   ),
+                  // Backup status chip in header
+                  if (currentItem.uploadState == UploadState.UPLOADED)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.emeraldGreen.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppTheme.emeraldGreen.withOpacity(0.5),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.cloud_done_rounded, size: 12, color: AppTheme.emeraldGreen),
+                          SizedBox(width: 4),
+                          Text('Backed Up', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
 
-          // 3. Bottom Action Bar (Share, Info, Delete) + Video Scrubber
+          // 3. Bottom Floating 3D Frosted Capsule Action Bar
           AnimatedPositioned(
-            duration: const Duration(milliseconds: 200),
-            bottom: _showControls ? 0 : -120,
+            duration: const Duration(milliseconds: 220),
+            bottom: _showControls ? 0 : -140,
             left: 0,
             right: 0,
             child: Container(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).padding.bottom + 12,
-                left: 24,
-                right: 24,
-                top: 12,
+                bottom: MediaQuery.of(context).padding.bottom + 16,
+                left: 20,
+                right: 20,
+                top: 8,
               ),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [Colors.black87, Colors.transparent],
+                  colors: [
+                    Colors.black.withOpacity(0.85),
+                    Colors.transparent,
+                  ],
                 ),
               ),
               child: Column(
@@ -409,16 +687,16 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                       children: [
                         Text(
                           _formatDuration(_videoController!.value.position),
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                         ),
                         Expanded(
                           child: SliderTheme(
                             data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: Colors.white,
+                              activeTrackColor: AppTheme.primaryAccent,
                               inactiveTrackColor: Colors.white24,
-                              thumbColor: Colors.white,
+                              thumbColor: AppTheme.primaryAccent,
                               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                              trackHeight: 3,
+                              trackHeight: 3.5,
                             ),
                             child: Slider(
                               value: _videoController!.value.position.inMilliseconds
@@ -434,34 +712,60 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                         ),
                         Text(
                           _formatDuration(_videoController!.value.duration),
-                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          style: const TextStyle(color: Colors.white70, fontSize: 11),
                         ),
                       ],
                     ),
                     const SizedBox(height: 6),
                   ],
 
-                  // Action Buttons: Share, Info, Delete
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildActionButton(
-                        icon: Icons.share_outlined,
-                        label: 'Share',
-                        onTap: _shareCurrentItem,
+                  // 3D Floating Action Capsule
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A).withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.14),
+                        width: 1.2,
                       ),
-                      _buildActionButton(
-                        icon: Icons.info_outline,
-                        label: 'Details',
-                        onTap: _showItemDetailsBottomSheet,
+                      boxShadow: AppTheme.depthShadow(
+                        depth: 12,
+                        glowColor: AppTheme.primaryAccent,
+                        glowOpacity: 0.15,
                       ),
-                      _buildActionButton(
-                        icon: Icons.delete_outline,
-                        label: 'Delete',
-                        color: Colors.redAccent,
-                        onTap: _confirmAndDeleteCurrentItem,
-                      ),
-                    ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildCapsuleAction(
+                          icon: Icons.share_rounded,
+                          label: 'Share',
+                          onTap: _shareCurrentItem,
+                        ),
+                        _buildCapsuleAction(
+                          icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                          label: 'Favorite',
+                          color: isFavorite ? AppTheme.roseDanger : Colors.white,
+                          iconGlow: isFavorite,
+                          onTap: () async {
+                            await FavoritesService.instance.toggleFavorite(currentItem.localId);
+                            setState(() {});
+                          },
+                        ),
+                        _buildCapsuleAction(
+                          icon: Icons.info_outline_rounded,
+                          label: 'Details',
+                          onTap: _showItemDetailsBottomSheet,
+                        ),
+                        _buildCapsuleAction(
+                          icon: Icons.delete_outline_rounded,
+                          label: 'Delete',
+                          color: AppTheme.roseDanger,
+                          onTap: _confirmAndDeleteCurrentItem,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -472,25 +776,43 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildCapsuleAction({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
     Color color = Colors.white,
+    bool iconGlow = false,
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(20),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 4),
+            Container(
+              decoration: iconGlow
+                  ? BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: color.withOpacity(0.5),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    )
+                  : null,
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(height: 3),
             Text(
               label,
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                color: color.withOpacity(0.85),
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -505,13 +827,15 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
         if (snapshot.connectionState == ConnectionState.done) {
           if (snapshot.data != null && snapshot.data!.isNotEmpty) {
             return InteractiveViewer(
+              transformationController: _transformationController,
               minScale: 1.0,
-              maxScale: 4.0,
+              maxScale: 4.5,
               child: Center(
                 child: Image.memory(
                   snapshot.data!,
                   fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) => _buildMissingFileError(),
+                  errorBuilder: (context, error, stackTrace) =>
+                      _buildMissingFileError(),
                 ),
               ),
             );
@@ -520,7 +844,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
           }
         }
         return const Center(
-          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+          child: CircularProgressIndicator(
+            color: AppTheme.primaryAccent,
+            strokeWidth: 2.5,
+          ),
         );
       },
     );
@@ -538,15 +865,34 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                   : 16 / 9,
               child: VideoPlayer(_videoController!),
             ),
-            // Play/Pause Center Button
+            // 3D Frosted Play/Pause Center Button
             if (!_videoController!.value.isPlaying)
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  shape: BoxShape.circle,
+              GestureDetector(
+                onTap: () {
+                  _videoController!.play();
+                  setState(() {});
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.55),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1.5,
+                    ),
+                    boxShadow: AppTheme.depthShadow(
+                      depth: 12,
+                      glowColor: AppTheme.primaryAccent,
+                      glowOpacity: 0.3,
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: AppTheme.primaryAccent,
+                    size: 48,
+                  ),
                 ),
-                padding: const EdgeInsets.all(12),
-                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 48),
               ),
           ],
         ),
@@ -566,9 +912,13 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                   Image.memory(
                     snapshot.data!,
                     fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => _buildMissingFileError(),
+                    errorBuilder: (context, error, stackTrace) =>
+                        _buildMissingFileError(),
                   ),
-                  const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  const CircularProgressIndicator(
+                    color: AppTheme.primaryAccent,
+                    strokeWidth: 2.5,
+                  ),
                 ],
               ),
             );
@@ -577,7 +927,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
           }
         }
         return const Center(
-          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+          child: CircularProgressIndicator(
+            color: AppTheme.primaryAccent,
+            strokeWidth: 2.5,
+          ),
         );
       },
     );
@@ -590,11 +943,15 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.broken_image_outlined, color: Colors.white38, size: 64),
+            const Icon(Icons.broken_image_outlined,
+                color: Colors.white38, size: 64),
             const SizedBox(height: 16),
             const Text(
               'File no longer exists on device',
-              style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
@@ -609,9 +966,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
               icon: const Icon(Icons.arrow_back, size: 16),
               label: const Text('Back to Gallery'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white12,
+                backgroundColor: AppTheme.darkCardBorder,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ],
