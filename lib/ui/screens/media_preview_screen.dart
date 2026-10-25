@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -649,52 +650,58 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     const SizedBox(height: 6),
                   ],
 
-                  // 3D Floating Action Capsule
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A).withOpacity(0.85),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.14),
-                        width: 1.2,
+                  // 3D Floating Action Capsule with Glass Blur
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A).withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(28),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.14),
+                            width: 1.2,
+                          ),
+                          boxShadow: AppTheme.depthShadow(
+                            depth: 12,
+                            glowColor: AppTheme.primaryAccent,
+                            glowOpacity: 0.15,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildCapsuleAction(
+                              icon: Icons.share_rounded,
+                              label: 'Share',
+                              onTap: _shareCurrentItem,
+                            ),
+                            _buildCapsuleAction(
+                              icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                              label: 'Favorite',
+                              color: isFavorite ? AppTheme.roseDanger : Colors.white,
+                              iconGlow: isFavorite,
+                              onTap: () async {
+                                await FavoritesService.instance.toggleFavorite(currentItem.localId);
+                                setState(() {});
+                              },
+                            ),
+                            _buildCapsuleAction(
+                              icon: Icons.info_outline_rounded,
+                              label: 'Details',
+                              onTap: _showItemDetailsBottomSheet,
+                            ),
+                            _buildCapsuleAction(
+                              icon: Icons.delete_outline_rounded,
+                              label: 'Delete',
+                              color: AppTheme.roseDanger,
+                              onTap: _confirmAndDeleteCurrentItem,
+                            ),
+                          ],
+                        ),
                       ),
-                      boxShadow: AppTheme.depthShadow(
-                        depth: 12,
-                        glowColor: AppTheme.primaryAccent,
-                        glowOpacity: 0.15,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildCapsuleAction(
-                          icon: Icons.share_rounded,
-                          label: 'Share',
-                          onTap: _shareCurrentItem,
-                        ),
-                        _buildCapsuleAction(
-                          icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          label: 'Favorite',
-                          color: isFavorite ? AppTheme.roseDanger : Colors.white,
-                          iconGlow: isFavorite,
-                          onTap: () async {
-                            await FavoritesService.instance.toggleFavorite(currentItem.localId);
-                            setState(() {});
-                          },
-                        ),
-                        _buildCapsuleAction(
-                          icon: Icons.info_outline_rounded,
-                          label: 'Details',
-                          onTap: _showItemDetailsBottomSheet,
-                        ),
-                        _buildCapsuleAction(
-                          icon: Icons.delete_outline_rounded,
-                          label: 'Delete',
-                          color: AppTheme.roseDanger,
-                          onTap: _confirmAndDeleteCurrentItem,
-                        ),
-                      ],
                     ),
                   ),
                 ],
@@ -751,28 +758,37 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
   }
 
   Widget _buildImagePage(MediaItem item) {
+    final cachedBytes = MediaScannerService.instance.getCachedThumbnail(item.localId);
+
     return FutureBuilder<Uint8List?>(
       future: MediaScannerService.instance.getThumbnail(item.localId, size: 1080),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done) {
-          if (snapshot.data != null && snapshot.data!.isNotEmpty) {
-            return InteractiveViewer(
-              transformationController: _transformationController,
-              minScale: 1.0,
-              maxScale: 4.5,
-              child: Center(
+        final displayBytes = snapshot.data ?? cachedBytes;
+
+        if (displayBytes != null && displayBytes.isNotEmpty) {
+          return InteractiveViewer(
+            transformationController: _transformationController,
+            minScale: 1.0,
+            maxScale: 4.5,
+            child: Center(
+              child: Hero(
+                tag: 'media_tile_${item.localId}',
                 child: Image.memory(
-                  snapshot.data!,
+                  displayBytes,
                   fit: BoxFit.contain,
+                  gaplessPlayback: true,
                   errorBuilder: (context, error, stackTrace) =>
                       _buildMissingFileError(),
                 ),
               ),
-            );
-          } else {
-            return _buildMissingFileError();
-          }
+            ),
+          );
         }
+
+        if (snapshot.connectionState == ConnectionState.done) {
+          return _buildMissingFileError();
+        }
+
         return const Center(
           child: CircularProgressIndicator(
             color: AppTheme.primaryAccent,

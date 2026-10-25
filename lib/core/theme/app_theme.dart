@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Vibrant holographic accents
@@ -10,19 +11,31 @@ class AppTheme {
   static const Color roseDanger = Color(0xFFF43F5E);
   static const Color indigoPurple = Color(0xFF6366F1);
   static const Color electricViolet = Color(0xFF8B5CF6);
+  static const Color pureWhite = Color(0xFFFFFFFF);
 
-  // Deep Obsidian 3D Palette
-  static const Color darkBg = Color(0xFF070B14);
-  static const Color darkBgSecondary = Color(0xFF0D1527);
-  static const Color darkCard = Color(0xFF131D31);
-  static const Color darkCardElevated = Color(0xFF1A2744);
-  static const Color darkCardBorder = Color(0xFF243656);
-  static const Color darkCardBorderLight = Color(0xFF364E78);
+  // Deep Obsidian 3D Palette (Flagship luxury OLED)
+  static const Color darkBg = Color(0xFF060911);
+  static const Color darkBgSecondary = Color(0xFF0B111E);
+  static const Color darkCard = Color(0xFF111A2E);
+  static const Color darkCardElevated = Color(0xFF18243E);
+  static const Color darkCardBorder = Color(0xFF20304E);
+  static const Color darkCardBorderLight = Color(0xFF354B75);
   static const Color darkTextPrimary = Color(0xFFF8FAFC);
   static const Color darkTextSecondary = Color(0xFF94A3B8);
+  static const Color darkTextTertiary = Color(0xFF64748B);
+
+  /// Premium Holographic/Specular Gradient for titles & highlights
+  static const LinearGradient holographicGradient = LinearGradient(
+    colors: [
+      Color(0xFFFFFFFF),
+      Color(0xFFD6EEFF),
+      primaryAccent,
+    ],
+    stops: [0.0, 0.55, 1.0],
+  );
 
   /// 3D Multi-tiered Depth Shadow:
-  /// Combines top-left specular rim reflection, deep ambient drop shadow,
+  /// Combines top specular rim highlight, deep ambient drop shadow,
   /// directional contact shadow, and optional color glow.
   static List<BoxShadow> depthShadow({
     double depth = 8.0,
@@ -33,20 +46,20 @@ class AppTheme {
     return [
       // Top-left specular rim reflection
       BoxShadow(
-        color: Colors.white.withOpacity(0.08),
+        color: Colors.white.withOpacity(0.09),
         blurRadius: 1.5,
         offset: const Offset(-0.8, -0.8),
       ),
       // Sharp contact shadow
       BoxShadow(
-        color: shadowColor.withOpacity(0.45),
+        color: shadowColor.withOpacity(0.48),
         blurRadius: depth * 0.8,
         offset: Offset(0, depth * 0.45),
       ),
       // Deep ambient diffuse drop shadow
       BoxShadow(
-        color: shadowColor.withOpacity(0.35),
-        blurRadius: depth * 2.2,
+        color: shadowColor.withOpacity(0.38),
+        blurRadius: depth * 2.4,
         offset: Offset(0, depth * 1.2),
       ),
       // Optional volumetric color glow
@@ -60,7 +73,7 @@ class AppTheme {
     ];
   }
 
-  /// 3D Floating Pill Decoration with specular top highlight and soft bottom depth
+  /// 3D Floating Pill / Capsule Decoration
   static BoxDecoration pill3DDecoration({
     Color backgroundColor = darkCard,
     Color? borderColor,
@@ -98,7 +111,36 @@ class AppTheme {
     );
   }
 
+  /// Frosted Glass Capsule Decoration (VisionOS / Dynamic Island style)
+  static BoxDecoration glassCapsuleDecoration({
+    Color backgroundColor = const Color(0xCC0D1527),
+    Color? borderColor,
+    double borderRadius = 32.0,
+    double depth = 14.0,
+    Color? glowColor,
+  }) {
+    return BoxDecoration(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(borderRadius),
+      border: Border.all(
+        color: borderColor ?? Colors.white.withOpacity(0.14),
+        width: 1.0,
+      ),
+      boxShadow: depthShadow(
+        depth: depth,
+        glowColor: glowColor,
+        glowOpacity: 0.16,
+      ),
+    );
+  }
+
   static ThemeData get darkTheme {
+    final baseTextTheme = ThemeData.dark().textTheme;
+    final textTheme = GoogleFonts.outfitTextTheme(baseTextTheme).apply(
+      bodyColor: darkTextPrimary,
+      displayColor: darkTextPrimary,
+    );
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
@@ -111,23 +153,24 @@ class AppTheme {
         onPrimary: Colors.black,
         onSurface: darkTextPrimary,
       ),
-      appBarTheme: const AppBarTheme(
+      textTheme: textTheme,
+      appBarTheme: AppBarTheme(
         backgroundColor: darkBg,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.outfit(
           color: darkTextPrimary,
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.5,
+          fontSize: 21,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.4,
         ),
-        iconTheme: IconThemeData(color: darkTextPrimary),
+        iconTheme: const IconThemeData(color: darkTextPrimary),
       ),
       cardTheme: CardThemeData(
         color: darkCard,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           side: const BorderSide(color: darkCardBorder, width: 1),
         ),
       ),
@@ -138,9 +181,13 @@ class AppTheme {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          textStyle: GoogleFonts.outfit(
+            fontWeight: FontWeight.w700,
+            fontSize: 14.5,
+            letterSpacing: 0.2,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -149,9 +196,13 @@ class AppTheme {
           side: const BorderSide(color: primaryAccent, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          textStyle: GoogleFonts.outfit(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            letterSpacing: 0.2,
+          ),
         ),
       ),
       dividerColor: darkCardBorder,

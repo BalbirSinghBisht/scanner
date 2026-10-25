@@ -29,182 +29,197 @@ class MediaItemTile extends StatelessWidget {
       onTap: onTap ??
           () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => MediaPreviewScreen.single(item: item),
+                PageRouteBuilder(
+                  pageBuilder: (_, _, _) => MediaPreviewScreen.single(item: item),
+                  transitionsBuilder: (_, animation, _, child) =>
+                      FadeTransition(opacity: animation, child: child),
+                  transitionDuration: const Duration(milliseconds: 200),
                 ),
               ),
       onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(14),
-      splashColor: AppTheme.primaryAccent.withOpacity(0.15),
+      splashColor: AppTheme.primaryAccent.withOpacity(0.12),
       highlightColor: Colors.transparent,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        decoration: BoxDecoration(
-          color: AppTheme.darkCard,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected
-                ? AppTheme.primaryAccent
-                : Colors.white.withOpacity(0.09),
-            width: isSelected ? 2.0 : 0.8,
+      child: AnimatedScale(
+        scale: isSelected ? 0.94 : 1.0,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          decoration: BoxDecoration(
+            color: AppTheme.darkCard,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primaryAccent
+                  : Colors.white.withOpacity(0.09),
+              width: isSelected ? 2.2 : 0.8,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: AppTheme.primaryAccent.withOpacity(0.4),
+                      blurRadius: 10,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.35),
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.white.withOpacity(0.04),
-              blurRadius: 1,
-              offset: const Offset(-0.5, -0.5),
-            ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.35),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
-            ),
-            if (isSelected)
-              BoxShadow(
-                color: AppTheme.primaryAccent.withOpacity(0.4),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Flicker-free cached thumbnail
-            CachedThumbnailImage(
-              localId: item.localId,
-              size: 320,
-              placeholder: _buildPlaceholder(),
-            ),
-
-            // Top gradient overlay for icon contrast
-            if (isFavorite || isSelectionMode)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 36,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.45),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Hero-wrapped flicker-free cached thumbnail
+              Hero(
+                tag: 'media_tile_${item.localId}',
+                child: CachedThumbnailImage(
+                  localId: item.localId,
+                  size: 320,
+                  placeholder: _buildPlaceholder(),
                 ),
               ),
 
-            // Top-Right: Favorite Heart (if favorited)
-            if (isFavorite && !isSelectionMode)
-              Positioned(
-                top: 6,
-                right: 6,
-                child: Container(
-                  padding: const EdgeInsets.all(3.5),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppTheme.roseDanger.withOpacity(0.5),
-                      width: 0.8,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.favorite_rounded,
-                    size: 11,
-                    color: AppTheme.roseDanger,
-                  ),
-                ),
-              ),
-
-            // Selection Mode Indicator (Top-Right)
-            if (isSelectionMode)
-              Positioned(
-                top: 6,
-                right: 6,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isSelected
-                        ? AppTheme.primaryAccent
-                        : Colors.black.withOpacity(0.45),
-                    border: Border.all(
-                      color: isSelected
-                          ? Colors.white
-                          : Colors.white.withOpacity(0.6),
-                      width: 1.5,
-                    ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: AppTheme.primaryAccent.withOpacity(0.5),
-                              blurRadius: 6,
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: isSelected
-                      ? const Icon(Icons.check, size: 14, color: Colors.black)
-                      : null,
-                ),
-              ),
-
-            // Bottom-Right: Video Duration Pill
-            if (item.mediaType == AppMediaType.video)
-              Positioned(
-                bottom: 6,
-                right: 6,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.72),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.12),
-                      width: 0.6,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
-                        blurRadius: 4,
+              // Top gradient overlay for icon contrast
+              if (isFavorite || isSelectionMode)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 36,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.45),
+                          Colors.transparent,
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.play_arrow_rounded,
-                        size: 11,
-                        color: AppTheme.primaryAccent,
+                ),
+
+              // Top-Right: Favorite Heart (if favorited)
+              if (isFavorite && !isSelectionMode)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(3.5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.65),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppTheme.roseDanger.withOpacity(0.5),
+                        width: 0.8,
                       ),
-                      if (item.durationSeconds != null &&
-                          item.durationSeconds! > 0) ...[
-                        const SizedBox(width: 2),
-                        Text(
-                          item.formattedDuration,
-                          style: const TextStyle(
-                            fontSize: 9.5,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.2,
-                          ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.roseDanger.withOpacity(0.3),
+                          blurRadius: 6,
                         ),
                       ],
-                    ],
+                    ),
+                    child: const Icon(
+                      Icons.favorite_rounded,
+                      size: 11,
+                      color: AppTheme.roseDanger,
+                    ),
                   ),
                 ),
-              ),
-          ],
+
+              // Selection Mode Indicator (Top-Right)
+              if (isSelectionMode)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSelected
+                          ? AppTheme.primaryAccent
+                          : Colors.black.withOpacity(0.45),
+                      border: Border.all(
+                        color: isSelected
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.6),
+                        width: 1.5,
+                      ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: AppTheme.primaryAccent.withOpacity(0.5),
+                                blurRadius: 6,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: isSelected
+                        ? const Icon(Icons.check, size: 14, color: Colors.black)
+                        : null,
+                  ),
+                ),
+
+              // Bottom-Right: Video Duration Pill
+              if (item.mediaType == AppMediaType.video)
+                Positioned(
+                  bottom: 6,
+                  right: 6,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.72),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.12),
+                        width: 0.6,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.4),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.play_arrow_rounded,
+                          size: 11,
+                          color: AppTheme.primaryAccent,
+                        ),
+                        if (item.durationSeconds != null &&
+                            item.durationSeconds! > 0) ...[
+                          const SizedBox(width: 2),
+                          Text(
+                            item.formattedDuration,
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
