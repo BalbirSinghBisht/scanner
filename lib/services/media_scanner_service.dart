@@ -43,6 +43,9 @@ class MediaScannerService {
 
   final Map<String, Uint8List> _thumbnailCache = {};
 
+  /// Synchronously returns cached thumbnail bytes if already loaded in memory
+  Uint8List? getCachedThumbnail(String assetId) => _thumbnailCache[assetId];
+
   bool get isPermissionGranted =>
       _lastPermissionState == PermissionState.authorized ||
       _lastPermissionState == PermissionState.limited;

@@ -266,7 +266,6 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     if (_items.isEmpty) return;
     final item = _items[_currentIndex];
     final df = DateFormat('d MMMM yyyy, h:mm a');
-    final isUploaded = item.uploadState == UploadState.UPLOADED;
 
     showModalBottomSheet(
       context: context,
@@ -337,55 +336,6 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               ],
             ),
             const SizedBox(height: 18),
-
-            // Cloud Backup Status 3D Banner
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isUploaded
-                    ? AppTheme.emeraldGreen.withOpacity(0.12)
-                    : AppTheme.primaryBlue.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: isUploaded
-                      ? AppTheme.emeraldGreen.withOpacity(0.4)
-                      : AppTheme.neonAzure.withOpacity(0.3),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isUploaded ? Icons.cloud_done_rounded : Icons.cloud_queue_rounded,
-                    color: isUploaded ? AppTheme.emeraldGreen : AppTheme.neonAzure,
-                    size: 22,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isUploaded ? 'Backed Up to Google Drive' : 'Cloud Backup Pending',
-                          style: TextStyle(
-                            color: isUploaded ? AppTheme.emeraldGreen : Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          isUploaded
-                              ? (item.driveFolderPath ?? 'PhoneBackup/Camera')
-                              : 'Queued for automatic sync',
-                          style: const TextStyle(color: Colors.white54, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
 
             // 3D Grid of Stat Cards
             Row(
@@ -630,26 +580,6 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                       ],
                     ),
                   ),
-                  // Backup status chip in header
-                  if (currentItem.uploadState == UploadState.UPLOADED)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppTheme.emeraldGreen.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppTheme.emeraldGreen.withOpacity(0.5),
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.cloud_done_rounded, size: 12, color: AppTheme.emeraldGreen),
-                          SizedBox(width: 4),
-                          Text('Backed Up', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
                 ],
               ),
             ),

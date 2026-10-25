@@ -7,10 +7,10 @@ import '../../providers/backup_provider.dart';
 import '../../services/device_settings_helper.dart';
 import '../../services/favorites_service.dart';
 import '../../services/media_scanner_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
 import '../widgets/three_d_carousel.dart';
-import '../widgets/three_d_cloud_hub_sheet.dart';
 import 'media_preview_screen.dart';
 
 enum SortMode {
@@ -51,6 +51,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   int _gridColumns = 3;
 
   // Featured 3D Coverflow visibility
+  static const String _keyShowFeatured = 'gallery_show_featured_moments';
   bool _showFeaturedShowcase = true;
 
   // Multi-Selection state
@@ -61,9 +62,28 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadFeaturedPreference();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initAutoScanAndBackup();
     });
+  }
+
+  Future<void> _loadFeaturedPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pref = prefs.getBool(_keyShowFeatured);
+      if (pref != null && mounted) {
+        setState(() => _showFeaturedShowcase = pref);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFeaturedMoments(bool show) async {
+    setState(() => _showFeaturedShowcase = show);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyShowFeatured, show);
+    } catch (_) {}
   }
 
   @override
@@ -436,13 +456,17 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   // Top 3D Glass App Bar / Selection Bar
                   _buildTopBar(backup),
 
-                  // Scanning indicator
-                  if (backup.isScanning && backup.mediaItems.isNotEmpty)
-                    const LinearProgressIndicator(
-                      minHeight: 2,
-                      backgroundColor: Colors.transparent,
-                      color: AppTheme.primaryAccent,
-                    ),
+                  // Fixed 2px scanning indicator so layout never shifts or flickers
+                  SizedBox(
+                    height: 2,
+                    child: backup.isScanning && backup.mediaItems.isNotEmpty
+                        ? const LinearProgressIndicator(
+                            minHeight: 2,
+                            backgroundColor: Colors.transparent,
+                            color: AppTheme.primaryAccent,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
 
                   // Animated Search Bar
                   if (_isSearchOpen) _buildSearchBar(),
@@ -595,9 +619,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             ),
           ),
 
-          // 3D Cloud Sync Quick Hub Pill
-          _buildCloudSyncPill(backup),
-          const SizedBox(width: 4),
+
 
           // Density Switcher (2 -> 3 -> 4 columns)
           if (_openedFolder != null)
@@ -615,6 +637,18 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   _gridColumns = _gridColumns == 2 ? 3 : (_gridColumns == 3 ? 4 : 2);
                 });
               },
+            ),
+
+          // Toggle Featured Moments (when in main albums view)
+          if (_openedFolder == null && backup.mediaItems.isNotEmpty)
+            IconButton(
+              icon: Icon(
+                _showFeaturedShowcase ? Icons.auto_awesome : Icons.auto_awesome_outlined,
+                color: _showFeaturedShowcase ? AppTheme.primaryAccent : Colors.white60,
+                size: 21,
+              ),
+              tooltip: _showFeaturedShowcase ? 'Hide Featured Moments' : 'Show Featured Moments',
+              onPressed: () => _toggleFeaturedMoments(!_showFeaturedShowcase),
             ),
 
           // Search Button
@@ -647,81 +681,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  /// 3D Cloud Backup Status Pill in top app bar
-  Widget _buildCloudSyncPill(BackupProvider backup) {
-    final stats = backup.stats;
-    final isSyncing = backup.isSyncing;
-    final isAllUploaded = stats.totalAccessibleMedia > 0 && stats.pendingUploads == 0 && stats.failedUploads == 0;
 
-    return InkWell(
-      onTap: () => showThreeDCloudHubSheet(context),
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        decoration: BoxDecoration(
-          color: AppTheme.darkCard,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSyncing
-                ? AppTheme.primaryAccent.withOpacity(0.5)
-                : (isAllUploaded
-                    ? AppTheme.emeraldGreen.withOpacity(0.4)
-                    : Colors.white.withOpacity(0.12)),
-            width: 1.0,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isSyncing
-                  ? AppTheme.primaryAccent.withOpacity(0.25)
-                  : Colors.black.withOpacity(0.3),
-              blurRadius: isSyncing ? 8 : 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isSyncing) ...[
-              const SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppTheme.primaryAccent,
-                ),
-              ),
-              const SizedBox(width: 5),
-              const Text(
-                'Syncing',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryAccent,
-                ),
-              ),
-            ] else if (isAllUploaded) ...[
-              const Icon(Icons.cloud_done_rounded, size: 14, color: AppTheme.emeraldGreen),
-              const SizedBox(width: 4),
-              const Text(
-                'Backed up',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.emeraldGreen),
-              ),
-            ] else ...[
-              const Icon(Icons.cloud_queue_rounded, size: 14, color: AppTheme.neonAzure),
-              if (stats.pendingUploads > 0) ...[
-                const SizedBox(width: 4),
-                Text(
-                  '${stats.pendingUploads}',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70),
-                ),
-              ],
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 
   /// Animated 3D Search Input Bar
   Widget _buildSearchBar() {
@@ -882,7 +842,75 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 padding: const EdgeInsets.only(bottom: 8),
                 child: ThreeDShowcaseCarousel(
                   items: backup.mediaItems,
-                  onDismiss: () => setState(() => _showFeaturedShowcase = false),
+                  onDismiss: () => _toggleFeaturedMoments(false),
+                ),
+              ),
+            )
+          else if (!_showFeaturedShowcase &&
+              _searchQuery.isEmpty &&
+              _activeFilter == MediaFilter.all &&
+              backup.mediaItems.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: InkWell(
+                  onTap: () => _toggleFeaturedMoments(true),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.darkCard,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: AppTheme.primaryAccent.withOpacity(0.35),
+                        width: 1.0,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryAccent.withOpacity(0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [AppTheme.primaryAccent, AppTheme.electricViolet],
+                            ),
+                          ),
+                          child: const Icon(Icons.auto_awesome, size: 13, color: Colors.black),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          'Show Featured Moments',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.06),
+                          ),
+                          child: const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: AppTheme.primaryAccent,
+                            size: 18,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

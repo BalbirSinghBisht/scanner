@@ -1,11 +1,9 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
 import '../../services/favorites_service.dart';
-import '../../services/media_scanner_service.dart';
 import '../screens/media_preview_screen.dart';
-import 'three_d_touch_card.dart';
+import 'cached_thumbnail_image.dart';
 
 class MediaItemTile extends StatelessWidget {
   final MediaItem item;
@@ -13,7 +11,6 @@ class MediaItemTile extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool isSelectionMode;
   final bool isSelected;
-  final bool showBackupStatus;
 
   const MediaItemTile({
     super.key,
@@ -22,15 +19,13 @@ class MediaItemTile extends StatelessWidget {
     this.onLongPress,
     this.isSelectionMode = false,
     this.isSelected = false,
-    this.showBackupStatus = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final isFavorite = FavoritesService.instance.isFavorite(item.localId);
-    final isUploaded = item.uploadState == UploadState.UPLOADED;
 
-    return ThreeDTouchCard(
+    return InkWell(
       onTap: onTap ??
           () => Navigator.push(
                 context,
@@ -40,11 +35,10 @@ class MediaItemTile extends StatelessWidget {
               ),
       onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(14),
-      pressScale: 0.955,
-      maxTiltAngle: 0.08,
-      isSelected: isSelected,
-      glowColor: AppTheme.primaryAccent,
-      child: Container(
+      splashColor: AppTheme.primaryAccent.withOpacity(0.15),
+      highlightColor: Colors.transparent,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
         decoration: BoxDecoration(
           color: AppTheme.darkCard,
           borderRadius: BorderRadius.circular(14),
@@ -52,7 +46,7 @@ class MediaItemTile extends StatelessWidget {
             color: isSelected
                 ? AppTheme.primaryAccent
                 : Colors.white.withOpacity(0.09),
-            width: isSelected ? 1.8 : 0.8,
+            width: isSelected ? 2.0 : 0.8,
           ),
           boxShadow: [
             BoxShadow(
@@ -65,68 +59,42 @@ class MediaItemTile extends StatelessWidget {
               blurRadius: 6,
               offset: const Offset(0, 3),
             ),
+            if (isSelected)
+              BoxShadow(
+                color: AppTheme.primaryAccent.withOpacity(0.4),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
           ],
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Thumbnail
-            FutureBuilder<Uint8List?>(
-              future: MediaScannerService.instance.getThumbnail(item.localId, size: 320),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.done &&
-                    snapshot.data != null &&
-                    snapshot.data!.isNotEmpty) {
-                  return Image.memory(
-                    snapshot.data!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
-                  );
-                }
-                return _buildPlaceholder();
-              },
+            // Flicker-free cached thumbnail
+            CachedThumbnailImage(
+              localId: item.localId,
+              size: 320,
+              placeholder: _buildPlaceholder(),
             ),
 
-            // Subtle top shadow gradient for badges visibility
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 36,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.4),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // Top-Left: Cloud backup badge (if uploaded)
-            if (showBackupStatus && isUploaded)
+            // Top gradient overlay for icon contrast
+            if (isFavorite || isSelectionMode)
               Positioned(
-                top: 6,
-                left: 6,
-                child: Container(
-                  padding: const EdgeInsets.all(3.5),
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 36,
+                child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppTheme.emeraldGreen.withOpacity(0.6),
-                      width: 0.8,
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.45),
+                        Colors.transparent,
+                      ],
                     ),
-                  ),
-                  child: const Icon(
-                    Icons.cloud_done_rounded,
-                    size: 11,
-                    color: AppTheme.emeraldGreen,
                   ),
                 ),
               ),
@@ -160,7 +128,7 @@ class MediaItemTile extends StatelessWidget {
                 top: 6,
                 right: 6,
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration: const Duration(milliseconds: 160),
                   width: 22,
                   height: 22,
                   decoration: BoxDecoration(
@@ -169,7 +137,9 @@ class MediaItemTile extends StatelessWidget {
                         ? AppTheme.primaryAccent
                         : Colors.black.withOpacity(0.45),
                     border: Border.all(
-                      color: isSelected ? Colors.white : Colors.white.withOpacity(0.6),
+                      color: isSelected
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.6),
                       width: 1.5,
                     ),
                     boxShadow: isSelected
@@ -193,7 +163,8 @@ class MediaItemTile extends StatelessWidget {
                 bottom: 6,
                 right: 6,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.72),
                     borderRadius: BorderRadius.circular(6),
@@ -216,7 +187,8 @@ class MediaItemTile extends StatelessWidget {
                         size: 11,
                         color: AppTheme.primaryAccent,
                       ),
-                      if (item.durationSeconds != null && item.durationSeconds! > 0) ...[
+                      if (item.durationSeconds != null &&
+                          item.durationSeconds! > 0) ...[
                         const SizedBox(width: 2),
                         Text(
                           item.formattedDuration,

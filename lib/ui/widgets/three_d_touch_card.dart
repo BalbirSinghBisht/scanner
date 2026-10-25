@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 /// An interactive widget that responds to touches and taps with genuine
 /// 3D perspective tilt, elevation depression, and a dynamic specular shine reflection.
+/// Designed for zero-rebuild overhead so child widgets never flicker or re-render.
 class ThreeDTouchCard extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
@@ -35,8 +36,8 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
 
-  double _targetTiltX = 0.0;
-  double _targetTiltY = 0.0;
+  double _tiltX = 0.0;
+  double _tiltY = 0.0;
   double _shineX = 0.5;
   double _shineY = 0.5;
   bool _isPressed = false;
@@ -60,41 +61,29 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
   }
 
   void _handlePointerDown(PointerDownEvent details, BoxConstraints constraints) {
-    setState(() {
-      _isPressed = true;
-      _updateTilt(details.localPosition, constraints);
-    });
-    _animController.forward();
-  }
-
-  void _handlePointerMove(PointerMoveEvent details, BoxConstraints constraints) {
-    if (!_isPressed) return;
-    setState(() {
-      _updateTilt(details.localPosition, constraints);
-    });
-  }
-
-  void _updateTilt(Offset pos, BoxConstraints constraints) {
     final w = constraints.maxWidth;
     final h = constraints.maxHeight;
     if (w <= 0 || h <= 0) return;
 
-    // Normalized from -1.0 to 1.0
-    final nx = ((pos.dx / w) * 2 - 1).clamp(-1.0, 1.0);
-    final ny = ((pos.dy / h) * 2 - 1).clamp(-1.0, 1.0);
+    final nx = ((details.localPosition.dx / w) * 2 - 1).clamp(-1.0, 1.0);
+    final ny = ((details.localPosition.dy / h) * 2 - 1).clamp(-1.0, 1.0);
 
-    _targetTiltX = -ny * widget.maxTiltAngle;
-    _targetTiltY = nx * widget.maxTiltAngle;
-    _shineX = (pos.dx / w).clamp(0.0, 1.0);
-    _shineY = (pos.dy / h).clamp(0.0, 1.0);
+    setState(() {
+      _isPressed = true;
+      _tiltX = -ny * widget.maxTiltAngle;
+      _tiltY = nx * widget.maxTiltAngle;
+      _shineX = (details.localPosition.dx / w).clamp(0.0, 1.0);
+      _shineY = (details.localPosition.dy / h).clamp(0.0, 1.0);
+    });
+    _animController.forward();
   }
 
   void _handlePointerUpOrCancel() {
     if (!_isPressed) return;
     setState(() {
       _isPressed = false;
-      _targetTiltX = 0.0;
-      _targetTiltY = 0.0;
+      _tiltX = 0.0;
+      _tiltY = 0.0;
     });
     _animController.reverse();
   }
@@ -107,7 +96,6 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
       builder: (context, constraints) {
         return Listener(
           onPointerDown: (e) => _handlePointerDown(e, constraints),
-          onPointerMove: (e) => _handlePointerMove(e, constraints),
           onPointerUp: (_) => _handlePointerUpOrCancel(),
           onPointerCancel: (_) => _handlePointerUpOrCancel(),
           child: GestureDetector(
@@ -116,14 +104,15 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
             behavior: HitTestBehavior.opaque,
             child: AnimatedBuilder(
               animation: _animController,
-              builder: (context, child) {
+              child: widget.child, // Crucial: caches child RenderObject so it never rebuilds or flickers
+              builder: (context, cachedChild) {
                 final scale = _scaleAnimation.value;
-                final currentTiltX = _isPressed ? _targetTiltX : 0.0;
-                final currentTiltY = _isPressed ? _targetTiltY : 0.0;
+                final currentTiltX = _isPressed ? _tiltX : 0.0;
+                final currentTiltY = _isPressed ? _tiltY : 0.0;
 
                 // 3D perspective matrix
                 final transform = Matrix4.identity()
-                  ..setEntry(3, 2, 0.0014) // Depth perspective factor
+                  ..setEntry(3, 2, 0.0014)
                   ..rotateX(currentTiltX)
                   ..rotateY(currentTiltY)
                   ..scale(scale);
@@ -134,10 +123,10 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
                   child: Stack(
                     fit: StackFit.passthrough,
                     children: [
-                      // Base Child
-                      widget.child,
+                      // Cached base child (zero rebuild overhead)
+                      cachedChild!,
 
-                      // Dynamic 3D Specular Glare Overlay
+                      // Specular Glare Overlay
                       if (widget.enableShine && _isPressed)
                         Positioned.fill(
                           child: IgnorePointer(

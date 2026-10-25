@@ -73,14 +73,13 @@ class BackupProvider extends ChangeNotifier {
 
     // 3. Listen to scanning progress
     _scanSub = _scanner.scanProgressStream.listen((report) async {
-      _scanProgress = report;
       if (report.isCompleted) {
         _isScanning = false;
         await refreshData();
         // Auto-start upload as soon as files are in the dashboard
         await _autoStartUpload();
+        notifyListeners();
       }
-      notifyListeners();
     });
 
     // 4. Listen to upload progress (only notify on completion or failure in-place to prevent UI flickering)

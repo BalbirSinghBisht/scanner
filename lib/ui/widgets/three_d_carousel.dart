@@ -1,10 +1,9 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
-import '../../services/media_scanner_service.dart';
 import '../screens/media_preview_screen.dart';
+import 'cached_thumbnail_image.dart';
 
 /// A 3D Spatial Coverflow Carousel that displays featured media items
 /// with realistic depth perspective, Y-axis rotation, and dynamic reflections.
@@ -193,30 +192,21 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // High-res cover image
-                          FutureBuilder<Uint8List?>(
-                            future: MediaScannerService.instance
-                                .getThumbnail(item.localId, size: 500),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState == ConnectionState.done &&
-                                  snapshot.data != null &&
-                                  snapshot.data!.isNotEmpty) {
-                                return Image.memory(
-                                  snapshot.data!,
-                                  fit: BoxFit.cover,
-                                );
-                              }
-                              return Container(
-                                color: AppTheme.darkCardElevated,
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.photo_outlined,
-                                    color: Colors.white24,
-                                    size: 36,
-                                  ),
+                          // High-res cover image (flicker-free cached)
+                          CachedThumbnailImage(
+                            localId: item.localId,
+                            size: 500,
+                            fit: BoxFit.cover,
+                            placeholder: Container(
+                              color: AppTheme.darkCardElevated,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.photo_outlined,
+                                  color: Colors.white24,
+                                  size: 36,
                                 ),
-                              );
-                            },
+                              ),
+                            ),
                           ),
 
                           // Dramatic 3D lighting vignette

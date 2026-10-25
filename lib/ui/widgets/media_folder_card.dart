@@ -1,8 +1,8 @@
-import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
-import '../../services/media_scanner_service.dart';
+import 'cached_thumbnail_image.dart';
 import 'three_d_touch_card.dart';
 
 class MediaFolderCard extends StatelessWidget {
@@ -51,30 +51,30 @@ class MediaFolderCard extends StatelessWidget {
 
     return ThreeDTouchCard(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      maxTiltAngle: 0.09,
-      pressScale: 0.96,
+      borderRadius: BorderRadius.circular(20),
+      maxTiltAngle: 0.08,
+      pressScale: 0.965,
       glowColor: badgeColor,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // 1. 3D Under-layer Card 1 (Tilted left for physical photo stack look)
+          // 1. 3D Under-layer Card 1 (Refined subtle left tilt)
           Positioned.fill(
             child: Transform.rotate(
-              angle: -0.055, // ~ -3.2 degrees
+              angle: -0.038, // ~ -2.2 degrees
               alignment: Alignment.bottomCenter,
               child: Container(
                 margin: const EdgeInsets.only(bottom: 6, left: 3, right: 3),
                 decoration: BoxDecoration(
-                  color: AppTheme.darkCardBorder.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(18),
+                  color: const Color(0xFF141F36),
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.06),
+                    color: Colors.white.withOpacity(0.08),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
+                      color: Colors.black.withOpacity(0.45),
                       blurRadius: 10,
                       offset: const Offset(0, 6),
                     ),
@@ -84,18 +84,18 @@ class MediaFolderCard extends StatelessWidget {
             ),
           ),
 
-          // 2. 3D Under-layer Card 2 (Tilted right for physical photo stack look)
+          // 2. 3D Under-layer Card 2 (Refined subtle right tilt)
           Positioned.fill(
             child: Transform.rotate(
-              angle: 0.038, // ~ +2.2 degrees
+              angle: 0.026, // ~ +1.5 degrees
               alignment: Alignment.bottomCenter,
               child: Container(
                 margin: const EdgeInsets.only(bottom: 3, left: 2, right: 2),
                 decoration: BoxDecoration(
-                  color: AppTheme.darkCardElevated.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(18),
+                  color: const Color(0xFF192642),
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.09),
+                    color: Colors.white.withOpacity(0.10),
                     width: 1,
                   ),
                   boxShadow: [
@@ -110,52 +110,39 @@ class MediaFolderCard extends StatelessWidget {
             ),
           ),
 
-          // 3. Top Main Photo Card with 3D Depth
+          // 3. Top Main Photo Card
           Container(
             decoration: BoxDecoration(
               color: AppTheme.darkCard,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isAll
-                    ? AppTheme.primaryAccent.withOpacity(0.45)
-                    : Colors.white.withOpacity(0.12),
-                width: isAll ? 1.8 : 1.2,
+                    ? AppTheme.primaryAccent.withOpacity(0.5)
+                    : Colors.white.withOpacity(0.14),
+                width: isAll ? 1.6 : 1.0,
               ),
               boxShadow: AppTheme.depthShadow(
                 depth: 10,
                 glowColor: isAll ? AppTheme.primaryAccent : null,
-                glowOpacity: 0.22,
+                glowOpacity: 0.2,
               ),
             ),
             clipBehavior: Clip.antiAlias,
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // Cover Thumbnail
+                // Cover Thumbnail with CachedThumbnailImage (zero flicker)
                 if (coverItem != null)
-                  FutureBuilder<Uint8List?>(
-                    future: MediaScannerService.instance.getThumbnail(
-                      coverItem!.localId,
-                      size: 400,
-                    ),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.done &&
-                          snapshot.data != null &&
-                          snapshot.data!.isNotEmpty) {
-                        return Image.memory(
-                          snapshot.data!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _buildPlaceholder(badgeColor),
-                        );
-                      }
-                      return _buildPlaceholder(badgeColor);
-                    },
+                  CachedThumbnailImage(
+                    localId: coverItem!.localId,
+                    size: 400,
+                    fit: BoxFit.cover,
+                    placeholder: _buildPlaceholder(badgeColor),
                   )
                 else
                   _buildPlaceholder(badgeColor),
 
-                // Multi-layered 3D Lighting & Vignette Gradient
+                // Cinematic multi-stop gradient for text readability
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -163,12 +150,12 @@ class MediaFolderCard extends StatelessWidget {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.black.withOpacity(0.18),
+                          Colors.black.withOpacity(0.15),
                           Colors.transparent,
-                          Colors.black.withOpacity(0.45),
-                          Colors.black.withOpacity(0.92),
+                          Colors.black.withOpacity(0.4),
+                          Colors.black.withOpacity(0.88),
                         ],
-                        stops: const [0.0, 0.35, 0.65, 1.0],
+                        stops: const [0.0, 0.4, 0.65, 1.0],
                       ),
                     ),
                   ),
@@ -179,16 +166,16 @@ class MediaFolderCard extends StatelessWidget {
                   top: 0,
                   left: 0,
                   right: 0,
-                  height: 1.5,
+                  height: 1.2,
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
                           Colors.transparent,
-                          Colors.white.withOpacity(0.35),
+                          Colors.white.withOpacity(0.4),
                           isAll
-                              ? AppTheme.primaryAccent.withOpacity(0.7)
-                              : Colors.white.withOpacity(0.35),
+                              ? AppTheme.primaryAccent.withOpacity(0.8)
+                              : Colors.white.withOpacity(0.4),
                           Colors.transparent,
                         ],
                       ),
@@ -196,146 +183,128 @@ class MediaFolderCard extends StatelessWidget {
                   ),
                 ),
 
-                // Top Badge: "ALL" indicator or Folder Category
+                // Top-right Item Count Pill
                 Positioned(
                   top: 10,
                   right: 10,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.55),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.15),
-                        width: 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 4,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _getFolderIcon(),
-                          size: 11,
-                          color: badgeColor,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          isAll ? 'ALL' : '$itemCount',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white.withOpacity(0.9),
-                            letterSpacing: 0.5,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.15),
+                            width: 0.8,
                           ),
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _getFolderIcon(),
+                              size: 11,
+                              color: badgeColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isAll ? 'ALL' : '$itemCount',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white.withOpacity(0.95),
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
 
-                // Bottom Content Capsule
+                // Bottom Frosted Glass Metadata Capsule
                 Positioned(
                   left: 10,
                   right: 10,
                   bottom: 10,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0B1322).withOpacity(0.82),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.12),
-                        width: 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.5),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF090F1C).withOpacity(0.82),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.14),
+                            width: 0.8,
+                          ),
                         ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            // 3D Category Orb Icon
-                            Container(
-                              padding: const EdgeInsets.all(5),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    badgeColor.withOpacity(0.4),
-                                    badgeColor.withOpacity(0.1),
-                                  ],
-                                ),
-                                border: Border.all(
-                                  color: badgeColor.withOpacity(0.6),
-                                  width: 1.0,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: badgeColor.withOpacity(0.3),
-                                    blurRadius: 6,
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(4.5),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        badgeColor.withOpacity(0.35),
+                                        badgeColor.withOpacity(0.1),
+                                      ],
+                                    ),
+                                    border: Border.all(
+                                      color: badgeColor.withOpacity(0.6),
+                                      width: 1.0,
+                                    ),
                                   ),
-                                ],
-                              ),
-                              child: Icon(
-                                _getFolderIcon(),
-                                size: 13,
-                                color: badgeColor,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                folderName,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                  letterSpacing: 0.2,
+                                  child: Icon(
+                                    _getFolderIcon(),
+                                    size: 12,
+                                    color: badgeColor,
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    folderName,
+                                    style: const TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      letterSpacing: 0.1,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 25),
+                              child: Text(
+                                itemCount == 1 ? '1 item' : '$itemCount items',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white.withOpacity(0.65),
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const SizedBox(width: 31),
-                            Text(
-                              itemCount == 1 ? '1 item' : '$itemCount items',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.white.withOpacity(0.65),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const Spacer(),
-                            Icon(
-                              Icons.arrow_forward_ios_rounded,
-                              size: 10,
-                              color: Colors.white.withOpacity(0.4),
-                            ),
-                          ],
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
