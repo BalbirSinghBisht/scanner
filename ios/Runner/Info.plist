@@ -26,6 +26,9 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Bypasses manual export compliance prompt in TestFlight -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 
 	<!-- Media Library Usage Descriptions -->
 	<key>NSPhotoLibraryUsageDescription</key>
