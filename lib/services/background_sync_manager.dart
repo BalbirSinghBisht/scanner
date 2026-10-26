@@ -79,6 +79,11 @@ Future<void> _runBackgroundSyncCycle() async {
 @pragma('vm:entry-point')
 Future<bool> onIosBackground(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  try {
+    await _runBackgroundSyncCycle();
+  } catch (e) {
+    debugPrint('iOS background sync cycle error: $e');
+  }
   return true;
 }
 

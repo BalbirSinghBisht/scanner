@@ -40,9 +40,9 @@ class DeviceSettingsHelper {
     return await openAutostartSettings();
   }
 
-  /// Shares a local media file via native Android share sheet
+  /// Shares a local media file via native share sheet (Android & iOS)
   static Future<bool> shareMediaFile(String filePath, String mimeType) async {
-    if (!Platform.isAndroid) return false;
+    if (!Platform.isAndroid && !Platform.isIOS) return false;
     try {
       final res = await _channel.invokeMethod<bool>('shareFile', {
         'path': filePath,
@@ -54,9 +54,9 @@ class DeviceSettingsHelper {
     }
   }
 
-  /// Shares multiple local media files via native Android share sheet
+  /// Shares multiple local media files via native share sheet (Android & iOS)
   static Future<bool> shareMultipleMediaFiles(List<String> filePaths, {String mimeType = '*/*'}) async {
-    if (!Platform.isAndroid || filePaths.isEmpty) return false;
+    if ((!Platform.isAndroid && !Platform.isIOS) || filePaths.isEmpty) return false;
     try {
       final res = await _channel.invokeMethod<bool>('shareMultipleFiles', {
         'paths': filePaths,
@@ -68,9 +68,9 @@ class DeviceSettingsHelper {
     }
   }
 
-  /// Opens the App Info details page
+  /// Opens the App Info details page (Android App Info / iOS Settings)
   static Future<bool> openAppInfoSettings() async {
-    if (!Platform.isAndroid) return false;
+    if (!Platform.isAndroid && !Platform.isIOS) return false;
     try {
       final res = await _channel.invokeMethod<bool>('openAppInfoSettings');
       return res ?? false;
@@ -101,15 +101,26 @@ class DeviceSettingsHelper {
     }
   }
 
-  /// Requests notification permission on Android 13+ (essential for continuous background auto-sync)
+  /// Requests notification permission on Android 13+ and iOS (essential for continuous background auto-sync)
   static Future<bool> requestNotificationPermission() async {
-    if (!Platform.isAndroid) return true;
     try {
       final plugin = FlutterLocalNotificationsPlugin();
-      final android = plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
-      final granted = await android?.requestNotificationsPermission();
-      return granted ?? false;
+      if (Platform.isAndroid) {
+        final android = plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        final granted = await android?.requestNotificationsPermission();
+        return granted ?? false;
+      } else if (Platform.isIOS) {
+        final ios = plugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+        final granted = await ios?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        return granted ?? false;
+      }
+      return true;
     } catch (_) {
       return false;
     }

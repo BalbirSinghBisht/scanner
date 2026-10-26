@@ -32,6 +32,21 @@
 	<string>This app requires access to your photo library to discover photos and videos for automated Google Drive backup.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This app requires access to save backup records and manage media.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access if capturing photos or videos directly for backup.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app requires microphone access for video recording with sound.</string>
+
+	<!-- Background Modes for automatic background backup and sync -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>dev.flutter.background.refresh</string>
+	</array>
 
 	<!-- Google Sign-In URL Scheme placeholder for iOS -->
 	<key>CFBundleURLTypes</key>

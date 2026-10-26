@@ -41,8 +41,12 @@ class DeviceStateService {
         }
       } else if (Platform.isIOS) {
         final iosInfo = await deviceInfo.iosInfo;
-        _cachedDeviceFolderName =
-            iosInfo.name.replaceAll(RegExp(r'[^\w\-]'), '_');
+        final model = iosInfo.utsname.machine.trim();
+        final name = iosInfo.name.trim();
+        final cleanName = name.isNotEmpty && name.toLowerCase() != 'iphone' && name.toLowerCase() != 'ipad'
+            ? name
+            : 'iOS_${model.isNotEmpty ? model : "Device"}';
+        _cachedDeviceFolderName = cleanName.replaceAll(RegExp(r'[^\w\-]'), '_');
       }
 
       _cachedDeviceFolderName ??= 'Phone_Device';
