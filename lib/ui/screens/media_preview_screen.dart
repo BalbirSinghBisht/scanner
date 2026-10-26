@@ -37,7 +37,7 @@ class MediaPreviewScreen extends StatefulWidget {
 }
 
 class _MediaPreviewScreenState extends State<MediaPreviewScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late PageController _pageController;
   late List<MediaItem> _items;
   late int _currentIndex;
@@ -53,6 +53,23 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       TransformationController();
   late AnimationController _zoomAnimController;
   Animation<Matrix4>? _zoomAnimation;
+
+  // Swipe-down-to-close drag tracking state
+  double _dragOffsetY = 0.0;
+  bool _isDraggingDown = false;
+  double _pointerDownY = 0.0;
+  double _pointerDownX = 0.0;
+  DateTime _pointerDownTime = DateTime.now();
+  int? _activePointerId;
+  int _pointerCount = 0;
+
+  late AnimationController _dismissAnimController;
+  Animation<double>? _dismissAnimation;
+
+  bool get _isZoomed {
+    final matrix = _transformationController.value;
+    return matrix.storage[0] > 1.05 || matrix.storage[5] > 1.05;
+  }
 
   @override
   void initState() {
@@ -71,6 +88,17 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
         }
       });
 
+    _dismissAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    )..addListener(() {
+        if (_dismissAnimation != null) {
+          setState(() {
+            _dragOffsetY = _dismissAnimation!.value;
+          });
+        }
+      });
+
     if (_items.isNotEmpty) {
       _checkAndInitVideo(_currentIndex);
     }
@@ -78,6 +106,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 
   @override
   void dispose() {
+    _dismissAnimController.dispose();
     _videoController?.dispose();
     _pageController.dispose();
     _zoomAnimController.dispose();
@@ -85,7 +114,111 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     super.dispose();
   }
 
+  void _onPointerDown(PointerDownEvent event) {
+    _pointerCount++;
+    if (_pointerCount == 1 && !_isZoomed) {
+      _activePointerId = event.pointer;
+      _pointerDownY = event.position.dy;
+      _pointerDownX = event.position.dx;
+      _pointerDownTime = DateTime.now();
+      _isDraggingDown = false;
+    } else if (_pointerCount > 1 && _isDraggingDown) {
+      _animateSnapBack();
+    }
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    if (event.pointer != _activePointerId || _pointerCount > 1 || _isZoomed) return;
+
+    final dy = event.position.dy - _pointerDownY;
+    final dx = event.position.dx - _pointerDownX;
+
+    if (!_isDraggingDown) {
+      // Must be moving predominantly downwards (angle > 45 degrees downwards)
+      if (dy > 14 && dy > dx.abs() * 1.3) {
+        setState(() {
+          _isDraggingDown = true;
+          _dragOffsetY = dy;
+        });
+      }
+    } else {
+      setState(() {
+        // Smooth dampening if pulled upwards above rest
+        _dragOffsetY = dy >= 0 ? dy : dy * 0.15;
+      });
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    _pointerCount = (_pointerCount - 1).clamp(0, 10);
+    if (event.pointer == _activePointerId) {
+      _activePointerId = null;
+      if (_isDraggingDown) {
+        final elapsedMs = DateTime.now().difference(_pointerDownTime).inMilliseconds;
+        final velocityY = elapsedMs > 0 ? (_dragOffsetY / elapsedMs) * 1000 : 0.0;
+
+        // Dismiss if dragged down > 90 logical px OR swiped/flicked downwards (> 400 px/sec)
+        final bool shouldDismiss = _dragOffsetY > 90 || (velocityY > 400 && _dragOffsetY > 25);
+        if (shouldDismiss) {
+          _animateAndDismiss();
+        } else {
+          _animateSnapBack();
+        }
+      }
+    }
+  }
+
+  void _onPointerCancel(PointerCancelEvent event) {
+    _pointerCount = (_pointerCount - 1).clamp(0, 10);
+    if (event.pointer == _activePointerId) {
+      _activePointerId = null;
+      if (_isDraggingDown) {
+        _animateSnapBack();
+      }
+    }
+  }
+
+  void _animateAndDismiss() {
+    if (!mounted) return;
+    _videoController?.pause();
+    final screenHeight = MediaQuery.of(context).size.height;
+    _dismissAnimation = Tween<double>(
+      begin: _dragOffsetY,
+      end: screenHeight,
+    ).animate(CurvedAnimation(
+      parent: _dismissAnimController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _dismissAnimController.forward(from: 0).then((_) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
+  void _animateSnapBack() {
+    if (!mounted) return;
+    _dismissAnimation = Tween<double>(
+      begin: _dragOffsetY,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _dismissAnimController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _dismissAnimController.forward(from: 0).then((_) {
+      if (mounted) {
+        setState(() {
+          _isDraggingDown = false;
+          _dragOffsetY = 0.0;
+        });
+      }
+    });
+  }
+
   void _toggleControls() {
+    if (_isDraggingDown) return;
     setState(() {
       _showControls = !_showControls;
     });
@@ -492,97 +625,127 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     final isVideo = currentItem.mediaType == AppMediaType.video;
     final isFavorite = FavoritesService.instance.isFavorite(currentItem.localId);
 
+    // Dynamic swipe-down dismiss values
+    final dragProgress = (_dragOffsetY.abs() / 280.0).clamp(0.0, 1.0);
+    final bgOpacity = (1.0 - dragProgress * 0.9).clamp(0.0, 1.0);
+    final contentScale = (1.0 - dragProgress * 0.14).clamp(0.86, 1.0);
+    final controlsOpacity = _showControls ? (1.0 - dragProgress * 2.5).clamp(0.0, 1.0) : 0.0;
+
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 1. Swipeable Full-Screen PageView with Double-Tap Zoom
-          GestureDetector(
-            onTap: _toggleControls,
-            onDoubleTapDown: _handleDoubleTapZoom,
-            onDoubleTap: () {},
-            behavior: HitTestBehavior.opaque,
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: _items.length,
-              onPageChanged: _onPageChanged,
-              physics: const BouncingScrollPhysics(),
-              itemBuilder: (context, index) {
-                final item = _items[index];
-                if (item.mediaType == AppMediaType.video) {
-                  return _buildVideoPage(index, item);
-                } else {
-                  return _buildImagePage(item);
-                }
-              },
+      backgroundColor: Colors.transparent,
+      body: Listener(
+        onPointerDown: _onPointerDown,
+        onPointerMove: _onPointerMove,
+        onPointerUp: _onPointerUp,
+        onPointerCancel: _onPointerCancel,
+        behavior: HitTestBehavior.translucent,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Dark Frosted Backdrop that smoothly fades out as dragged down
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withOpacity(bgOpacity),
+              ),
             ),
-          ),
+
+            // 1. Swipeable Full-Screen PageView with Double-Tap Zoom & Downward Drag Transform
+            Transform.translate(
+              offset: Offset(0, _dragOffsetY),
+              child: Transform.scale(
+                scale: contentScale,
+                child: GestureDetector(
+                  onTap: _toggleControls,
+                  onDoubleTapDown: _handleDoubleTapZoom,
+                  onDoubleTap: () {},
+                  behavior: HitTestBehavior.opaque,
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: _items.length,
+                    onPageChanged: _onPageChanged,
+                    physics: _isDraggingDown
+                        ? const NeverScrollableScrollPhysics()
+                        : const BouncingScrollPhysics(),
+                    itemBuilder: (context, index) {
+                      final item = _items[index];
+                      if (item.mediaType == AppMediaType.video) {
+                        return _buildVideoPage(index, item);
+                      } else {
+                        return _buildImagePage(item);
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ),
 
           // 2. Top Frosted Header Bar
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
-            top: _showControls ? 0 : -120,
+            top: (_showControls && !_isDraggingDown) ? 0 : -120,
             left: 0,
             right: 0,
-            child: Container(
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 6,
-                left: 10,
-                right: 16,
-                bottom: 14,
-              ),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.85),
-                    Colors.black.withOpacity(0.4),
-                    Colors.transparent,
+            child: Opacity(
+              opacity: controlsOpacity,
+              child: Container(
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 6,
+                  left: 10,
+                  right: 16,
+                  bottom: 14,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.85),
+                      Colors.black.withOpacity(0.4),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.4),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white.withOpacity(0.12)),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            currentItem.fileName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            '${currentItem.displayFolderName} • ${_currentIndex + 1} of ${_items.length}',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.7),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.4),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withOpacity(0.12)),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          currentItem.fileName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          '${currentItem.displayFolderName} • ${_currentIndex + 1} of ${_items.length}',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ),
             ),
           ),
@@ -590,128 +753,132 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           // 3. Bottom Floating 3D Frosted Capsule Action Bar
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
-            bottom: _showControls ? 0 : -140,
+            bottom: (_showControls && !_isDraggingDown) ? 0 : -140,
             left: 0,
             right: 0,
-            child: Container(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).padding.bottom + 16,
-                left: 20,
-                right: 20,
-                top: 8,
-              ),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.85),
-                    Colors.transparent,
-                  ],
+            child: Opacity(
+              opacity: controlsOpacity,
+              child: Container(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom + 16,
+                  left: 20,
+                  right: 20,
+                  top: 8,
                 ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Video Scrubber (if video is currently active)
-                  if (isVideo && _isVideoInitialized && _videoController != null) ...[
-                    Row(
-                      children: [
-                        Text(
-                          _formatDuration(_videoController!.value.position),
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        Expanded(
-                          child: SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: AppTheme.primaryAccent,
-                              inactiveTrackColor: Colors.white24,
-                              thumbColor: AppTheme.primaryAccent,
-                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                              trackHeight: 3.5,
-                            ),
-                            child: Slider(
-                              value: _videoController!.value.position.inMilliseconds
-                                  .toDouble()
-                                  .clamp(0.0, _videoController!.value.duration.inMilliseconds.toDouble()),
-                              min: 0.0,
-                              max: _videoController!.value.duration.inMilliseconds.toDouble(),
-                              onChanged: (val) {
-                                _videoController!.seekTo(Duration(milliseconds: val.toInt()));
-                              },
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.85),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Video Scrubber (if video is currently active)
+                    if (isVideo && _isVideoInitialized && _videoController != null) ...[
+                      Row(
+                        children: [
+                          Text(
+                            _formatDuration(_videoController!.value.position),
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                          Expanded(
+                            child: SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                activeTrackColor: AppTheme.primaryAccent,
+                                inactiveTrackColor: Colors.white24,
+                                thumbColor: AppTheme.primaryAccent,
+                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                trackHeight: 3.5,
+                              ),
+                              child: Slider(
+                                value: _videoController!.value.position.inMilliseconds
+                                    .toDouble()
+                                    .clamp(0.0, _videoController!.value.duration.inMilliseconds.toDouble()),
+                                min: 0.0,
+                                max: _videoController!.value.duration.inMilliseconds.toDouble(),
+                                onChanged: (val) {
+                                  _videoController!.seekTo(Duration(milliseconds: val.toInt()));
+                                },
+                              ),
                             ),
                           ),
-                        ),
-                        Text(
-                          _formatDuration(_videoController!.value.duration),
-                          style: const TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                  ],
+                          Text(
+                            _formatDuration(_videoController!.value.duration),
+                            style: const TextStyle(color: Colors.white70, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                    ],
 
-                  // 3D Floating Action Capsule with Glass Blur
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A).withOpacity(0.85),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.14),
-                            width: 1.2,
+                    // 3D Floating Action Capsule with Glass Blur
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(28),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A).withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.14),
+                              width: 1.2,
+                            ),
+                            boxShadow: AppTheme.depthShadow(
+                              depth: 12,
+                              glowColor: AppTheme.primaryAccent,
+                              glowOpacity: 0.15,
+                            ),
                           ),
-                          boxShadow: AppTheme.depthShadow(
-                            depth: 12,
-                            glowColor: AppTheme.primaryAccent,
-                            glowOpacity: 0.15,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildCapsuleAction(
+                                icon: Icons.share_rounded,
+                                label: 'Share',
+                                onTap: _shareCurrentItem,
+                              ),
+                              _buildCapsuleAction(
+                                icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                label: 'Favorite',
+                                color: isFavorite ? AppTheme.roseDanger : Colors.white,
+                                iconGlow: isFavorite,
+                                onTap: () async {
+                                  await FavoritesService.instance.toggleFavorite(currentItem.localId);
+                                  setState(() {});
+                                },
+                              ),
+                              _buildCapsuleAction(
+                                icon: Icons.info_outline_rounded,
+                                label: 'Details',
+                                onTap: _showItemDetailsBottomSheet,
+                              ),
+                              _buildCapsuleAction(
+                                icon: Icons.delete_outline_rounded,
+                                label: 'Delete',
+                                color: AppTheme.roseDanger,
+                                onTap: _confirmAndDeleteCurrentItem,
+                              ),
+                            ],
                           ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _buildCapsuleAction(
-                              icon: Icons.share_rounded,
-                              label: 'Share',
-                              onTap: _shareCurrentItem,
-                            ),
-                            _buildCapsuleAction(
-                              icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                              label: 'Favorite',
-                              color: isFavorite ? AppTheme.roseDanger : Colors.white,
-                              iconGlow: isFavorite,
-                              onTap: () async {
-                                await FavoritesService.instance.toggleFavorite(currentItem.localId);
-                                setState(() {});
-                              },
-                            ),
-                            _buildCapsuleAction(
-                              icon: Icons.info_outline_rounded,
-                              label: 'Details',
-                              onTap: _showItemDetailsBottomSheet,
-                            ),
-                            _buildCapsuleAction(
-                              icon: Icons.delete_outline_rounded,
-                              label: 'Delete',
-                              color: AppTheme.roseDanger,
-                              onTap: _confirmAndDeleteCurrentItem,
-                            ),
-                          ],
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildCapsuleAction({
@@ -764,6 +931,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       item: item,
       transformationController: _transformationController,
       errorBuilder: _buildMissingFileError,
+      isDraggingDown: _isDraggingDown,
     );
   }
 
@@ -923,12 +1091,14 @@ class _FullImagePreviewPage extends StatefulWidget {
   final MediaItem item;
   final TransformationController transformationController;
   final Widget Function() errorBuilder;
+  final bool isDraggingDown;
 
   const _FullImagePreviewPage({
     super.key,
     required this.item,
     required this.transformationController,
     required this.errorBuilder,
+    this.isDraggingDown = false,
   });
 
   @override
@@ -1018,6 +1188,8 @@ class _FullImagePreviewPageState extends State<_FullImagePreviewPage> {
         transformationController: widget.transformationController,
         minScale: 1.0,
         maxScale: 5.0,
+        panEnabled: !widget.isDraggingDown,
+        scaleEnabled: !widget.isDraggingDown,
         child: Center(
           child: Hero(
             tag: 'media_tile_${widget.item.localId}',
@@ -1038,6 +1210,8 @@ class _FullImagePreviewPageState extends State<_FullImagePreviewPage> {
         transformationController: widget.transformationController,
         minScale: 1.0,
         maxScale: 5.0,
+        panEnabled: !widget.isDraggingDown,
+        scaleEnabled: !widget.isDraggingDown,
         child: Center(
           child: Hero(
             tag: 'media_tile_${widget.item.localId}',
@@ -1063,6 +1237,8 @@ class _FullImagePreviewPageState extends State<_FullImagePreviewPage> {
         transformationController: widget.transformationController,
         minScale: 1.0,
         maxScale: 5.0,
+        panEnabled: !widget.isDraggingDown,
+        scaleEnabled: !widget.isDraggingDown,
         child: Center(
           child: Hero(
             tag: 'media_tile_${widget.item.localId}',

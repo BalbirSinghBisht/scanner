@@ -161,11 +161,17 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => MediaPreviewScreen(
+                        PageRouteBuilder(
+                          opaque: false,
+                          barrierColor: Colors.black.withOpacity(0.01),
+                          reverseTransitionDuration: Duration.zero,
+                          pageBuilder: (_, _, _) => MediaPreviewScreen(
                             items: widget.items,
                             initialIndex: widget.items.indexOf(item),
                           ),
+                          transitionsBuilder: (_, animation, _, child) =>
+                              FadeTransition(opacity: animation, child: child),
+                          transitionDuration: const Duration(milliseconds: 200),
                         ),
                       );
                     },

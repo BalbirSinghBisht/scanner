@@ -353,7 +353,7 @@ class DatabaseHelper {
       AppConstants.manifestTableName,
       where: whereClause,
       whereArgs: args,
-      orderBy: 'created_at ASC',
+      orderBy: 'created_at DESC',
       limit: limit,
     );
 
@@ -361,6 +361,7 @@ class DatabaseHelper {
   }
 
   /// Atomically claims a single pending item by transitioning its state to UPLOADING in a transaction.
+  /// Prioritizes newest media first (created_at DESC) so recently taken photos sync immediately while older items wait in queue.
   /// Prevents race conditions between multiple isolates (e.g. background service and foreground app).
   Future<MediaItem?> claimNextPendingUpload({
     bool includePhotos = true,
@@ -402,7 +403,7 @@ class DatabaseHelper {
         AppConstants.manifestTableName,
         where: whereClause,
         whereArgs: args,
-        orderBy: 'created_at ASC',
+        orderBy: 'created_at DESC',
         limit: 1,
       );
 
@@ -411,13 +412,13 @@ class DatabaseHelper {
       }
 
       final item = MediaItem.fromMap(maps.first);
-      final now = DateTime.now().toIso8601String();
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
 
       await txn.update(
         AppConstants.manifestTableName,
         {
           'upload_state': UploadState.UPLOADING.name,
-          'last_attempt_at': now,
+          'last_attempt_at': nowMs,
         },
         where: 'local_id = ?',
         whereArgs: [item.localId],
@@ -425,7 +426,7 @@ class DatabaseHelper {
 
       return item.copyWith(
         uploadState: UploadState.UPLOADING,
-        lastAttemptAt: DateTime.parse(now),
+        lastAttemptAt: DateTime.fromMillisecondsSinceEpoch(nowMs),
       );
     });
   }

@@ -51,6 +51,9 @@ class BackupSyncService {
   bool _isPaused = false;
   bool get isPaused => _isPaused;
 
+  bool _isWaitingForNetwork = false;
+  bool get isWaitingForNetwork => _isWaitingForNetwork;
+
   bool _hasAuthError = false;
   bool get hasAuthError => _hasAuthError;
 
@@ -77,6 +80,59 @@ class BackupSyncService {
   }
 
   static bool _inProcessSyncLock = false;
+
+  /// Waits until network constraints are met, retrying every 15 seconds without pausing background sync.
+  Future<bool> _waitForNetwork(BackupSettings settings, SharedPreferences prefs) async {
+    var networkOk = await _device.isNetworkPermitted(settings);
+    if (networkOk) {
+      if (_isWaitingForNetwork) {
+        _isWaitingForNetwork = false;
+        debugPrint('Internet / Wi-Fi restored! Resuming backup sync...');
+      }
+      return true;
+    }
+
+    _isWaitingForNetwork = true;
+    debugPrint('Internet or Wi-Fi is off. Retrying in 15 seconds to check connection...');
+
+    while (!networkOk && _isSyncing && !_isPaused) {
+      _progressController.add(UploadProgressEvent(
+        item: MediaItem(
+          localId: 'network_waiting',
+          fileName: 'Waiting for connection',
+          mediaType: AppMediaType.other,
+          mimeType: 'text/plain',
+          fileSize: 0,
+          createdAt: DateTime.now(),
+        ),
+        bytesSent: 0,
+        totalBytes: 0,
+        progress: 0.0,
+        statusMessage: settings.wifiOnly
+            ? 'Waiting for Wi-Fi (retrying every 15s)...'
+            : 'Waiting for internet (retrying every 15s)...',
+      ));
+
+      // Keep lock refreshed and count down 15 seconds before retrying
+      for (int i = 0; i < 15 && _isSyncing && !_isPaused; i++) {
+        await Future.delayed(const Duration(seconds: 1));
+        await prefs.setInt(_lockKey, DateTime.now().millisecondsSinceEpoch);
+      }
+
+      if (!_isSyncing || _isPaused) break;
+
+      networkOk = await _device.isNetworkPermitted(settings);
+      if (networkOk) {
+        _isWaitingForNetwork = false;
+        debugPrint('Internet / Wi-Fi restored! Resuming backup sync...');
+        return true;
+      }
+      debugPrint('Internet / Wi-Fi still unavailable. Retrying again in 15 seconds...');
+    }
+
+    _isWaitingForNetwork = false;
+    return networkOk;
+  }
 
   /// Main synchronization loop with cross-isolate mutex lock, Drive reconciliation, and atomic item claims
   Future<void> startSync({
@@ -122,6 +178,13 @@ class BackupSyncService {
       await _db.recoverInterruptedUploads(timeoutMinutes: 1);
       await _db.resetAllFailedToReady();
 
+      // Ensure network is available before remote operations (retries every 15s without pausing)
+      final initialNetworkOk = await _waitForNetwork(settings, prefs);
+      if (!initialNetworkOk) {
+        debugPrint('Sync ended: User paused or cancelled during network wait.');
+        return;
+      }
+
       // 3. Two-way reconciliation with Google Drive:
       // - If user removed data from Drive, reset SQLite so it automatically re-syncs without clearing app data
       // - If data is already on Drive, mark SQLite as UPLOADED so it never duplicates
@@ -142,15 +205,11 @@ class BackupSyncService {
         // Keep lock alive while active
         await prefs.setInt(_lockKey, DateTime.now().millisecondsSinceEpoch);
 
-        // Verify network & battery constraints before each item
-        var networkOk = await _device.isNetworkPermitted(settings);
+        // Verify network & retry every 15s if internet/wifi is off without pausing the background service
+        final networkOk = await _waitForNetwork(settings, prefs);
         if (!networkOk) {
-          await Future.delayed(const Duration(seconds: 2));
-          networkOk = await _device.isNetworkPermitted(settings);
-          if (!networkOk) {
-            debugPrint('Sync paused: Network constraints not met.');
-            break;
-          }
+          debugPrint('Sync exited: User paused while waiting for network.');
+          break;
         }
 
         final batteryOk = await _device.isBatteryPermitted(settings);
@@ -190,6 +249,7 @@ class BackupSyncService {
       debugPrint('Error during backup sync: $e');
     } finally {
       _isSyncing = false;
+      _isWaitingForNetwork = false;
       _inProcessSyncLock = false;
       _currentUploadingItem = null;
       _progressController.add(null);
@@ -336,6 +396,40 @@ class BackupSyncService {
         _hasAuthError = true;
         _authErrorMessage =
             'Google Drive authentication expired (401). Please update your access token or reconnect.';
+      }
+
+      // Check if failure was caused by internet / network dropping
+      final isNetworkPermitted = await _device.isNetworkPermitted(settings);
+      final isNetworkError = !isNetworkPermitted ||
+          e is SocketException ||
+          e.toString().contains('SocketException') ||
+          e.toString().contains('Network is unreachable') ||
+          e.toString().contains('Failed host lookup') ||
+          e.toString().contains('Connection refused') ||
+          e.toString().contains('Connection timed out') ||
+          e.toString().contains('ClientException');
+
+      if (isNetworkError) {
+        debugPrint('Upload of ${item.fileName} interrupted by network loss. Will retry every 15s.');
+        // Do not increment retryCount for network dropouts; keep ready for retry
+        await _db.updateUploadState(
+          item.localId,
+          UploadState.RETRY_PENDING,
+          errorMessage: 'Waiting for network connection',
+          retryCount: item.retryCount,
+          lastAttemptAt: DateTime.now(),
+        );
+
+        _progressController.add(UploadProgressEvent(
+          item: item,
+          bytesSent: 0,
+          totalBytes: item.fileSize,
+          progress: 0.0,
+          statusMessage: settings.wifiOnly
+              ? 'Waiting for Wi-Fi (retrying every 15s)...'
+              : 'Waiting for internet (retrying every 15s)...',
+        ));
+        return;
       }
 
       final newRetryCount = item.retryCount + 1;

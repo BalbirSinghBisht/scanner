@@ -30,6 +30,9 @@ class MediaItemTile extends StatelessWidget {
           () => Navigator.push(
                 context,
                 PageRouteBuilder(
+                  opaque: false,
+                  barrierColor: Colors.black.withOpacity(0.01),
+                  reverseTransitionDuration: Duration.zero,
                   pageBuilder: (_, _, _) => MediaPreviewScreen.single(item: item),
                   transitionsBuilder: (_, animation, _, child) =>
                       FadeTransition(opacity: animation, child: child),

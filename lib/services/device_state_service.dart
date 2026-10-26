@@ -59,20 +59,32 @@ class DeviceStateService {
 
   /// Checks if current network connection meets backup criteria (supports both Wi-Fi and mobile data)
   Future<bool> isNetworkPermitted(BackupSettings settings) async {
+    if (settings.localOnlyMode) return true;
     try {
       final connectivityResult = await _connectivity.checkConnectivity();
 
       // Check for completely disconnected state
-      if (connectivityResult.contains(ConnectivityResult.none) &&
-          connectivityResult.length == 1) {
+      if (connectivityResult.isEmpty ||
+          (connectivityResult.contains(ConnectivityResult.none) &&
+              connectivityResult.length == 1)) {
         return false;
       }
 
-      // Both Mobile Data (4G/5G/LTE) and Wi-Fi are fully supported
-      return !connectivityResult.contains(ConnectivityResult.none);
+      // If user specified wifiOnly in settings, ensure Wi-Fi is active
+      if (settings.wifiOnly && !connectivityResult.contains(ConnectivityResult.wifi)) {
+        return false;
+      }
+
+      // Quick active internet reachability check
+      try {
+        final result = await InternetAddress.lookup('google.com')
+            .timeout(const Duration(seconds: 3));
+        return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      } catch (_) {
+        return false;
+      }
     } catch (_) {
-      // Default to true on platforms where connectivity plugin isn't supported
-      return true;
+      return false;
     }
   }
 

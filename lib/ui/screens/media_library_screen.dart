@@ -1177,6 +1177,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           Navigator.push(
                             context,
                             PageRouteBuilder(
+                              opaque: false,
+                              barrierColor: Colors.black.withOpacity(0.01),
+                              reverseTransitionDuration: Duration.zero,
                               pageBuilder: (_, _, _) => MediaPreviewScreen(
                                 items: filtered,
                                 initialIndex: globalIndex != -1 ? globalIndex : 0,
@@ -1472,6 +1475,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 Navigator.push(
                   context,
                   PageRouteBuilder(
+                    opaque: false,
+                    barrierColor: Colors.black.withOpacity(0.01),
+                    reverseTransitionDuration: Duration.zero,
                     pageBuilder: (_, _, _) => MediaPreviewScreen(
                       items: items,
                       initialIndex: index,
