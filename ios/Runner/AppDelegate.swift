@@ -30,9 +30,9 @@ class SilentAudioPlayer {
       var cSize = chunkSize.littleEndian
       header.append(Data(bytes: &cSize, count: 4))
       header.append(contentsOf: "WAVEfmt ".utf8)
-      var sub1Size: Int32 = 16.littleEndian
+      var sub1Size = Int32(16).littleEndian
       header.append(Data(bytes: &sub1Size, count: 4))
-      var audioFormat: Int16 = 1.littleEndian
+      var audioFormat = Int16(1).littleEndian
       header.append(Data(bytes: &audioFormat, count: 2))
       var channels = numChannels.littleEndian
       header.append(Data(bytes: &channels, count: 2))
