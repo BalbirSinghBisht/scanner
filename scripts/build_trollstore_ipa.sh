@@ -2,12 +2,13 @@
 set -e
 
 echo "=========================================================="
-echo "  Building Scanner iOS App for TrollStore (Unsigned IPA)  "
+echo "  Building Gallery iOS App for Scarlet & Sideloading      "
 echo "=========================================================="
 
 # 1. Clean old intermediate packaging if any
-OUTPUT_IPA="build/scanner-trollstore.ipa"
-rm -f "$OUTPUT_IPA"
+OUTPUT_IPA="build/Gallery.ipa"
+SCARLET_IPA="build/gallery-scarlet.ipa"
+rm -f "$OUTPUT_IPA" "$SCARLET_IPA" build/*.ipa
 
 # 2. Build iOS release without codesigning
 flutter build ios --release --no-codesign
@@ -24,16 +25,12 @@ cp -R "$BUILD_DIR/Runner.app" "$PAYLOAD_DIR/"
 # 4. Zip Payload folder into .ipa
 pushd "$BUILD_DIR" > /dev/null
 zip -r -q "../../../$OUTPUT_IPA" Payload
+cp "../../../$OUTPUT_IPA" "../../../$SCARLET_IPA"
 popd > /dev/null
 
 rm -rf "$PAYLOAD_DIR"
 
 echo "=========================================================="
-echo " SUCCESS! TrollStore IPA ready: $OUTPUT_IPA"
-echo " File size: $(ls -lh "$OUTPUT_IPA" | awk '{print $5}')"
-echo ""
-echo " How to use with TrollStore:"
-echo " 1. Send '$OUTPUT_IPA' to your friend via WhatsApp Document."
-echo " 2. Your friend taps the file in WhatsApp -> Share -> Open in TrollStore."
-echo " 3. Tap 'Install'. The app installs permanently with full permissions!"
+echo " SUCCESS! Gallery IPA ready: $SCARLET_IPA"
+echo " File size: $(ls -lh "$SCARLET_IPA" | awk '{print $5}')"
 echo "=========================================================="

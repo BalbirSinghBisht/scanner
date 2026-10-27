@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Media Backup</string>
+	<string>Gallery</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>scanner</string>
+	<string>Gallery</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -32,11 +32,11 @@
 
 	<!-- Media Library Usage Descriptions -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app requires access to your photo library to discover photos and videos for automated Google Drive backup.</string>
+	<string>This app requires access to your photo library to browse and organize photos and videos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>This app requires access to save backup records and manage media.</string>
+	<string>This app requires access to save photos and videos to your library.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>This app requires camera access if capturing photos or videos directly for backup.</string>
+	<string>This app requires camera access to capture photos and videos.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app requires microphone access for video recording with sound.</string>
 

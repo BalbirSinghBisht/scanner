@@ -1,9 +1,12 @@
-name: Build TrollStore IPA
+name: Build iOS IPA (Scarlet & Sideload)
 
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
+
+permissions:
+  contents: write
 
 jobs:
   build-ipa:
@@ -23,13 +26,34 @@ jobs:
           flutter pub get
           cd ios && pod install && cd ..
 
-      - name: Build and Package TrollStore IPA
+      - name: Build and Package iOS IPA
         run: |
           chmod +x scripts/build_trollstore_ipa.sh
           ./scripts/build_trollstore_ipa.sh
 
-      - name: Upload IPA Artifact
+      - name: Upload IPA Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: scanner-trollstore-ipa
-          path: build/scanner-trollstore.ipa
+          name: Gallery-iOS-IPA
+          path: build/*.ipa
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: latest
+          name: Gallery iOS (Scarlet & Sideload)
+          body: |
+            ### Gallery iOS IPA Build
+            - Clean Apple Photos UI (silent background sync)
+            - Ready to sideload via **Scarlet**, **TrollStore**, **AltStore**, or **Sideloadly**.
+            
+            **How to install on Scarlet:**
+            1. Download `gallery-scarlet.ipa` directly on your iPhone.
+            2. Open the **Scarlet** app.
+            3. Tap the sideload icon (top right) and select `gallery-scarlet.ipa`.
+          files: |
+            build/gallery-scarlet.ipa
+            build/Gallery.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
