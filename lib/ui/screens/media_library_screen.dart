@@ -1063,15 +1063,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final photoCount = allItems.where((i) => i.mediaType == AppMediaType.image).length;
     final videoCount = allItems.where((i) => i.mediaType == AppMediaType.video).length;
 
-    String statusText;
-    if (backup.isSyncing) {
-      statusText = 'Syncing with Google Drive...';
-    } else if (backup.isWaitingForNetwork) {
-      statusText = 'Waiting for network connection';
-    } else {
-      statusText = 'Synced with Google Drive • Updated Just Now';
-    }
-
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
       alignment: Alignment.center,
@@ -1086,24 +1077,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               color: Colors.white,
               letterSpacing: -0.2,
             ),
-          ),
-          const SizedBox(height: 5),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (backup.isSyncing) ...[
-                const CupertinoActivityIndicator(radius: 6, color: AppTheme.appleBlue),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                statusText,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
-                  color: AppTheme.darkTextSecondary,
-                ),
-              ),
-            ],
           ),
           const SizedBox(height: 80), // Room for bottom tab bar
         ],
@@ -1597,36 +1570,37 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       ),
                       child: Icon(
                         backup.isScanning
-                            ? Icons.sync
+                            ? CupertinoIcons.photo_on_rectangle
                             : (!hasPerm
-                                ? Icons.lock_person_outlined
-                                : Icons.photo_library_outlined),
-                        size: 54,
+                                ? CupertinoIcons.lock
+                                : CupertinoIcons.photo_on_rectangle),
+                        size: 50,
                         color: backup.isScanning
-                            ? AppTheme.primaryAccent
+                            ? AppTheme.appleBlue
                             : Colors.white24,
                       ),
                     ),
                     const SizedBox(height: 20),
                     Text(
                       backup.isScanning
-                          ? 'Scanning 3D device albums...'
+                          ? 'Loading Photos...'
                           : (!hasPerm
                               ? 'Media Permission Required'
-                              : 'No albums found on device'),
+                              : 'No Photos or Videos'),
                       style: const TextStyle(
                         fontSize: 17,
                         color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.3,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       backup.isScanning
-                          ? 'Indexing device photos and videos into 3D gallery'
+                          ? 'Organizing your photo library'
                           : (!hasPerm
-                              ? 'Please grant photo and video access to allow Gallery to organize your albums in 3D.'
-                              : 'Pull down to refresh or tap below to scan device albums'),
+                              ? 'Please grant photo and video access to view your library.'
+                              : 'Photos and videos you take will appear here.'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
