@@ -49,6 +49,7 @@ class BackupProvider extends ChangeNotifier {
 
   bool get isSyncing => _sync.isSyncing;
   bool get isPaused => _sync.isPaused;
+  bool get isWaitingForNetwork => _sync.isWaitingForNetwork;
   bool get isPartialAccess => _scanner.isPartialAccess;
 
   String? _errorMessage;

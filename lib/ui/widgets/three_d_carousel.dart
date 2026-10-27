@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/app_theme.dart';
@@ -5,8 +6,8 @@ import '../../models/media_item.dart';
 import '../screens/media_preview_screen.dart';
 import 'cached_thumbnail_image.dart';
 
-/// A 3D Spatial Coverflow Carousel that displays featured media items
-/// with realistic depth perspective, Y-axis rotation, and dynamic reflections.
+/// Apple Photos "Memories & Featured" Showcase Carousel:
+/// Features clean, rounded iOS cards with smooth depth and native typography.
 class ThreeDShowcaseCarousel extends StatefulWidget {
   final List<MediaItem> items;
   final VoidCallback? onDismiss;
@@ -29,7 +30,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
   void initState() {
     super.initState();
     _pageController = PageController(
-      viewportFraction: 0.76,
+      viewportFraction: 0.82,
       initialPage: 0,
     );
     _pageController.addListener(() {
@@ -51,76 +52,47 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) return const SizedBox.shrink();
 
-    // Show up to 12 recent featured items
-    final featuredItems = widget.items.take(12).toList();
+    final featuredItems = widget.items.take(10).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section Header with 3D Pill and Dismiss/Toggle button
+        // Apple Section Header
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              const Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        colors: [AppTheme.primaryAccent, AppTheme.electricViolet],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primaryAccent.withOpacity(0.4),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.auto_awesome,
-                      size: 13,
-                      color: Colors.black,
-                    ),
+                  Icon(
+                    CupertinoIcons.sparkles,
+                    size: 16,
+                    color: AppTheme.appleBlue,
                   ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Featured Moments',
+                  SizedBox(width: 8),
+                  Text(
+                    'Featured Photos',
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 17,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
-                      letterSpacing: 0.2,
+                      letterSpacing: -0.3,
                     ),
                   ),
                 ],
               ),
               if (widget.onDismiss != null)
-                InkWell(
-                  onTap: widget.onDismiss,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Hide',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white.withOpacity(0.5),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        Icon(
-                          Icons.keyboard_arrow_up_rounded,
-                          size: 16,
-                          color: Colors.white.withOpacity(0.5),
-                        ),
-                      ],
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minSize: 0,
+                  onPressed: widget.onDismiss,
+                  child: const Text(
+                    'Hide',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppTheme.appleBlue,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -128,9 +100,9 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
           ),
         ),
 
-        // 3D Perspective Carousel
+        // Apple Carousel Cards
         SizedBox(
-          height: 200,
+          height: 210,
           child: PageView.builder(
             controller: _pageController,
             itemCount: featuredItems.length,
@@ -139,31 +111,23 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
               final item = featuredItems[index];
               final diff = index - _currentPage;
 
-              // 3D Perspective Transform
-              final clampedDiff = diff.clamp(-2.0, 2.0);
-              final rotationY = clampedDiff * 0.32; // In radians
-              final scale = (1.0 - (diff.abs() * 0.12)).clamp(0.82, 1.0);
-              final opacity = (1.0 - (diff.abs() * 0.35)).clamp(0.4, 1.0);
+              final scale = (1.0 - (diff.abs() * 0.08)).clamp(0.88, 1.0);
+              final opacity = (1.0 - (diff.abs() * 0.25)).clamp(0.5, 1.0);
 
-              final transform = Matrix4.identity()
-                ..setEntry(3, 2, 0.0016) // Perspective depth
-                ..rotateY(rotationY)
-                ..scale(scale);
+              final df = DateFormat('MMMM d');
 
-              final df = DateFormat('MMM d, yyyy');
-
-              return Transform(
-                transform: transform,
-                alignment: diff > 0 ? Alignment.centerLeft : Alignment.centerRight,
+              return Transform.scale(
+                scale: scale,
                 child: Opacity(
                   opacity: opacity,
-                  child: GestureDetector(
-                    onTap: () {
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
                       Navigator.push(
                         context,
                         PageRouteBuilder(
                           opaque: false,
-                          barrierColor: Colors.black.withOpacity(0.01),
+                          barrierColor: Colors.black,
                           reverseTransitionDuration: Duration.zero,
                           pageBuilder: (_, _, _) => MediaPreviewScreen(
                             items: widget.items,
@@ -171,51 +135,49 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                           ),
                           transitionsBuilder: (_, animation, _, child) =>
                               FadeTransition(opacity: animation, child: child),
-                          transitionDuration: const Duration(milliseconds: 200),
+                          transitionDuration: const Duration(milliseconds: 180),
                         ),
                       );
                     },
                     child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                       decoration: BoxDecoration(
                         color: AppTheme.darkCard,
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: diff.abs() < 0.5
-                              ? AppTheme.primaryAccent.withOpacity(0.4)
-                              : Colors.white.withOpacity(0.1),
-                          width: diff.abs() < 0.5 ? 1.5 : 1.0,
+                          color: Colors.white.withOpacity(0.08),
+                          width: 0.5,
                         ),
-                        boxShadow: AppTheme.depthShadow(
-                          depth: 10,
-                          glowColor: diff.abs() < 0.5
-                              ? AppTheme.primaryAccent
-                              : null,
-                          glowOpacity: 0.25,
-                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.4),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // High-res cover image (flicker-free cached)
+                          // Cover Image
                           CachedThumbnailImage(
                             localId: item.localId,
                             size: 600,
                             fit: BoxFit.cover,
                             placeholder: Container(
-                              color: AppTheme.darkCardElevated,
+                              color: AppTheme.darkCard,
                               child: const Center(
                                 child: Icon(
-                                  Icons.photo_outlined,
+                                  CupertinoIcons.photo,
                                   color: Colors.white24,
-                                  size: 36,
+                                  size: 32,
                                 ),
                               ),
                             ),
                           ),
 
-                          // Dramatic 3D lighting vignette
+                          // Gradient Vignette
                           Positioned.fill(
                             child: DecoratedBox(
                               decoration: BoxDecoration(
@@ -223,10 +185,10 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    Colors.black.withOpacity(0.2),
+                                    Colors.black.withOpacity(0.1),
                                     Colors.transparent,
-                                    Colors.black.withOpacity(0.5),
-                                    Colors.black.withOpacity(0.88),
+                                    Colors.black.withOpacity(0.35),
+                                    Colors.black.withOpacity(0.75),
                                   ],
                                   stops: const [0.0, 0.4, 0.7, 1.0],
                                 ),
@@ -234,32 +196,27 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                             ),
                           ),
 
-                          // Top-right Video / Image Chip
+                          // Video Indicator
                           if (item.mediaType == AppMediaType.video)
                             Positioned(
                               top: 10,
                               right: 10,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.65),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.15),
-                                    width: 0.8,
-                                  ),
+                                  color: Colors.black.withOpacity(0.6),
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     const Icon(
-                                      Icons.play_circle_fill_rounded,
-                                      size: 13,
-                                      color: AppTheme.primaryAccent,
+                                      CupertinoIcons.play_fill,
+                                      size: 9,
+                                      color: Colors.white,
                                     ),
                                     if (item.durationSeconds != null) ...[
-                                      const SizedBox(width: 4),
+                                      const SizedBox(width: 3),
                                       Text(
                                         item.formattedDuration,
                                         style: const TextStyle(
@@ -274,45 +231,35 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                               ),
                             ),
 
-                          // Bottom Metadata Pill
+                          // Bottom Title & Date (Apple Photos style)
                           Positioned(
-                            left: 12,
-                            right: 12,
+                            left: 14,
+                            right: 14,
                             bottom: 12,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  item.fileName,
+                                  df.format(item.createdAt).toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white.withOpacity(0.7),
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  item.displayFolderName,
                                   style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
                                     color: Colors.white,
+                                    letterSpacing: -0.3,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                Row(
-                                  children: [
-                                    Text(
-                                      df.format(item.createdAt),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.white.withOpacity(0.7),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '•  ${item.displayFolderName}',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppTheme.primaryAccent,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
                                 ),
                               ],
                             ),

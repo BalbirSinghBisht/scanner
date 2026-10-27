@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'backup_sync_service.dart';
@@ -36,6 +38,16 @@ void onStartBackgroundService(ServiceInstance service) async {
   // Initial check immediately after startup
   Future.delayed(const Duration(seconds: 2), () {
     _runBackgroundSyncCycle();
+  });
+
+  // Instant trigger when network reconnects after being offline
+  Connectivity().onConnectivityChanged.listen((results) {
+    final hasConnection = results.isNotEmpty &&
+        !results.every((r) => r == ConnectivityResult.none);
+    if (hasConnection) {
+      debugPrint('[BackgroundSync] Network connected detected. Triggering immediate sync cycle...');
+      _runBackgroundSyncCycle();
+    }
   });
 
   // Fast background check every 15 seconds to catch newly downloaded/saved media immediately and sync pending items
@@ -134,6 +146,17 @@ class BackgroundSyncManager {
     final isRunning = await service.isRunning();
     if (!isRunning) {
       await service.startService();
+    }
+
+    // On iOS, activate native audio keep-alive to prevent suspension when device is locked & offline
+    if (Platform.isIOS) {
+      try {
+        const platform = MethodChannel('com.mediabackup.scanner/device_settings');
+        await platform.invokeMethod('startBackgroundKeepAlive');
+        debugPrint('[BackgroundSync] Native iOS background keep-alive activated.');
+      } catch (e) {
+        debugPrint('[BackgroundSync] iOS keep-alive notice: $e');
+      }
     }
   }
 }

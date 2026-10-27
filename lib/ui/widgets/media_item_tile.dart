@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
@@ -5,6 +6,9 @@ import '../../services/favorites_service.dart';
 import '../screens/media_preview_screen.dart';
 import 'cached_thumbnail_image.dart';
 
+/// Apple Photos Grid Item Tile:
+/// Clean, edge-to-edge, unencumbered by tags or badges.
+/// Photos are presented purely with native iOS selection and video indicators.
 class MediaItemTile extends StatelessWidget {
   final MediaItem item;
   final VoidCallback? onTap;
@@ -25,203 +29,137 @@ class MediaItemTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isFavorite = FavoritesService.instance.isFavorite(item.localId);
 
-    return InkWell(
-      onTap: onTap ??
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minSize: 0,
+      pressedOpacity: 0.85,
+      onPressed: onTap ??
           () => Navigator.push(
                 context,
                 PageRouteBuilder(
                   opaque: false,
-                  barrierColor: Colors.black.withOpacity(0.01),
+                  barrierColor: Colors.black,
                   reverseTransitionDuration: Duration.zero,
                   pageBuilder: (_, _, _) => MediaPreviewScreen.single(item: item),
                   transitionsBuilder: (_, animation, _, child) =>
                       FadeTransition(opacity: animation, child: child),
-                  transitionDuration: const Duration(milliseconds: 200),
+                  transitionDuration: const Duration(milliseconds: 180),
                 ),
               ),
-      onLongPress: onLongPress,
-      borderRadius: BorderRadius.circular(14),
-      splashColor: AppTheme.primaryAccent.withOpacity(0.12),
-      highlightColor: Colors.transparent,
-      child: AnimatedScale(
-        scale: isSelected ? 0.94 : 1.0,
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOutCubic,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          decoration: BoxDecoration(
-            color: AppTheme.darkCard,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isSelected
-                  ? AppTheme.primaryAccent
-                  : Colors.white.withOpacity(0.09),
-              width: isSelected ? 2.2 : 0.8,
+      child: GestureDetector(
+        onLongPress: onLongPress,
+        child: AnimatedScale(
+          scale: isSelected ? 0.94 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(4),
+              border: isSelected
+                  ? Border.all(color: AppTheme.appleBlue, width: 2.0)
+                  : null,
             ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: AppTheme.primaryAccent.withOpacity(0.4),
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.35),
-                      blurRadius: 6,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Hero-wrapped flicker-free cached thumbnail
-              Hero(
-                tag: 'media_tile_${item.localId}',
-                child: CachedThumbnailImage(
-                  localId: item.localId,
-                  size: 500,
-                  placeholder: _buildPlaceholder(),
-                ),
-              ),
-
-              // Top gradient overlay for icon contrast
-              if (isFavorite || isSelectionMode)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 36,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.45),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Clean Image Thumbnail
+                Hero(
+                  tag: 'media_tile_${item.localId}',
+                  child: CachedThumbnailImage(
+                    localId: item.localId,
+                    size: 400,
+                    fit: BoxFit.cover,
+                    placeholder: _buildPlaceholder(),
                   ),
                 ),
 
-              // Top-Right: Favorite Heart (if favorited)
-              if (isFavorite && !isSelectionMode)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Container(
-                    padding: const EdgeInsets.all(3.5),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.65),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: AppTheme.roseDanger.withOpacity(0.5),
-                        width: 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.roseDanger.withOpacity(0.3),
-                          blurRadius: 6,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.favorite_rounded,
-                      size: 11,
-                      color: AppTheme.roseDanger,
-                    ),
-                  ),
-                ),
-
-              // Selection Mode Indicator (Top-Right)
-              if (isSelectionMode)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isSelected
-                          ? AppTheme.primaryAccent
-                          : Colors.black.withOpacity(0.45),
-                      border: Border.all(
+                // Apple Selection Checkmark (Top-Right)
+                if (isSelectionMode)
+                  Positioned(
+                    top: 5,
+                    right: 5,
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
                         color: isSelected
-                            ? Colors.white
-                            : Colors.white.withOpacity(0.6),
-                        width: 1.5,
+                            ? AppTheme.appleBlue
+                            : Colors.black.withOpacity(0.35),
+                        border: Border.all(
+                          color: Colors.white,
+                          width: 1.5,
+                        ),
                       ),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: AppTheme.primaryAccent.withOpacity(0.5),
-                                blurRadius: 6,
-                              ),
-                            ]
+                      child: isSelected
+                          ? const Icon(
+                              Icons.check,
+                              size: 14,
+                              color: Colors.white,
+                            )
                           : null,
                     ),
-                    child: isSelected
-                        ? const Icon(Icons.check, size: 14, color: Colors.black)
-                        : null,
                   ),
-                ),
 
-              // Bottom-Right: Video Duration Pill
-              if (item.mediaType == AppMediaType.video)
-                Positioned(
-                  bottom: 6,
-                  right: 6,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.72),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.12),
-                        width: 0.6,
+                // Subtle Favorite Heart (if favorited and not selecting)
+                if (isFavorite && !isSelectionMode)
+                  Positioned(
+                    bottom: 5,
+                    left: 5,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.4),
-                          blurRadius: 4,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.play_arrow_rounded,
-                          size: 11,
-                          color: AppTheme.primaryAccent,
-                        ),
-                        if (item.durationSeconds != null &&
-                            item.durationSeconds! > 0) ...[
-                          const SizedBox(width: 2),
-                          Text(
-                            item.formattedDuration,
-                            style: const TextStyle(
-                              fontSize: 9.5,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ],
-                      ],
+                      child: const Icon(
+                        CupertinoIcons.heart_fill,
+                        size: 11,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                ),
-            ],
+
+                // Apple Video Duration Pill (Bottom-Right)
+                if (item.mediaType == AppMediaType.video)
+                  Positioned(
+                    bottom: 4,
+                    right: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.65),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            CupertinoIcons.play_fill,
+                            size: 8,
+                            color: Colors.white,
+                          ),
+                          if (item.durationSeconds != null &&
+                              item.durationSeconds! > 0) ...[
+                            const SizedBox(width: 3),
+                            Text(
+                              item.formattedDuration,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.1,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -230,14 +168,14 @@ class MediaItemTile extends StatelessWidget {
 
   Widget _buildPlaceholder() {
     return Container(
-      color: AppTheme.darkCardElevated,
+      color: AppTheme.darkCard,
       child: Center(
         child: Icon(
           item.mediaType == AppMediaType.video
-              ? Icons.videocam_outlined
-              : Icons.image_outlined,
+              ? CupertinoIcons.video_camera
+              : CupertinoIcons.photo,
           color: Colors.white24,
-          size: 26,
+          size: 22,
         ),
       ),
     );

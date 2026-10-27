@@ -1,142 +1,130 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+/// Apple Human Interface Guidelines (HIG) Photos Theme
 class AppTheme {
-  // Vibrant holographic accents
-  static const Color primaryBlue = Color(0xFF2563EB);
-  static const Color primaryAccent = Color(0xFF00E5FF); // Electric Cyan
-  static const Color neonAzure = Color(0xFF38BDF8);
-  static const Color emeraldGreen = Color(0xFF10B981);
-  static const Color amberWarning = Color(0xFFF59E0B);
-  static const Color roseDanger = Color(0xFFF43F5E);
-  static const Color indigoPurple = Color(0xFF6366F1);
-  static const Color electricViolet = Color(0xFF8B5CF6);
+  // Apple System iOS Colors
+  static const Color appleBlue = Color(0xFF0A84FF); // iOS System Blue (Dark)
+  static const Color primaryBlue = Color(0xFF007AFF);
+  static const Color primaryAccent = Color(0xFF0A84FF); // Apple Tint
+  static const Color neonAzure = Color(0xFF64D2FF); // iOS Cyan
+  static const Color emeraldGreen = Color(0xFF30D158); // iOS System Green
+  static const Color amberWarning = Color(0xFFFF9F0A); // iOS System Orange
+  static const Color roseDanger = Color(0xFFFF453A); // iOS System Red
+  static const Color indigoPurple = Color(0xFF5E5CE6); // iOS System Indigo
+  static const Color electricViolet = Color(0xFFBF5AF2); // iOS System Purple
   static const Color pureWhite = Color(0xFFFFFFFF);
 
-  // Deep Obsidian 3D Palette (Flagship luxury OLED)
-  static const Color darkBg = Color(0xFF060911);
-  static const Color darkBgSecondary = Color(0xFF0B111E);
-  static const Color darkCard = Color(0xFF111A2E);
-  static const Color darkCardElevated = Color(0xFF18243E);
-  static const Color darkCardBorder = Color(0xFF20304E);
-  static const Color darkCardBorderLight = Color(0xFF354B75);
-  static const Color darkTextPrimary = Color(0xFFF8FAFC);
-  static const Color darkTextSecondary = Color(0xFF94A3B8);
-  static const Color darkTextTertiary = Color(0xFF64748B);
+  // Apple OLED Photos Dark Palette
+  static const Color darkBg = Color(0xFF000000); // Pure Apple OLED Black
+  static const Color darkBgSecondary = Color(0xFF121214); // Apple elevated base
+  static const Color darkCard = Color(0xFF1C1C1E); // Apple System Gray 6
+  static const Color darkCardElevated = Color(0xFF2C2C2E); // Apple System Gray 5
+  static const Color darkCardBorder = Color(0xFF38383A);
+  static const Color darkCardBorderLight = Color(0xFF48484A);
+  static const Color darkTextPrimary = Color(0xFFFFFFFF);
+  static const Color darkTextSecondary = Color(0xFF8E8E93); // Apple System Gray
+  static const Color darkTextTertiary = Color(0xFF636366);
 
-  /// Premium Holographic/Specular Gradient for titles & highlights
+  /// Clean Apple Header Gradient (Subtle white to light mist)
   static const LinearGradient holographicGradient = LinearGradient(
     colors: [
       Color(0xFFFFFFFF),
-      Color(0xFFD6EEFF),
-      primaryAccent,
+      Color(0xFFF2F2F7),
+      Color(0xFFE5E5EA),
     ],
-    stops: [0.0, 0.55, 1.0],
+    stops: [0.0, 0.7, 1.0],
   );
 
-  /// 3D Multi-tiered Depth Shadow:
-  /// Combines top specular rim highlight, deep ambient drop shadow,
-  /// directional contact shadow, and optional color glow.
+  /// Apple Cupertino Translucent Blur Bar Decoration
+  static BoxDecoration appleBlurBar({
+    Color backgroundColor = const Color(0xB8141416),
+    bool showBottomBorder = true,
+    bool showTopBorder = false,
+  }) {
+    return BoxDecoration(
+      color: backgroundColor,
+      border: Border(
+        bottom: showBottomBorder
+            ? BorderSide(color: Colors.white.withOpacity(0.08), width: 0.5)
+            : BorderSide.none,
+        top: showTopBorder
+            ? BorderSide(color: Colors.white.withOpacity(0.08), width: 0.5)
+            : BorderSide.none,
+      ),
+    );
+  }
+
+  /// Apple Minimalist Ambient Shadow
   static List<BoxShadow> depthShadow({
-    double depth = 8.0,
+    double depth = 6.0,
     Color? glowColor,
-    double glowOpacity = 0.25,
+    double glowOpacity = 0.15,
     Color shadowColor = Colors.black,
   }) {
     return [
-      // Top-left specular rim reflection
       BoxShadow(
-        color: Colors.white.withOpacity(0.09),
-        blurRadius: 1.5,
-        offset: const Offset(-0.8, -0.8),
+        color: shadowColor.withOpacity(0.35),
+        blurRadius: depth * 1.5,
+        offset: Offset(0, depth * 0.4),
       ),
-      // Sharp contact shadow
-      BoxShadow(
-        color: shadowColor.withOpacity(0.48),
-        blurRadius: depth * 0.8,
-        offset: Offset(0, depth * 0.45),
-      ),
-      // Deep ambient diffuse drop shadow
-      BoxShadow(
-        color: shadowColor.withOpacity(0.38),
-        blurRadius: depth * 2.4,
-        offset: Offset(0, depth * 1.2),
-      ),
-      // Optional volumetric color glow
       if (glowColor != null)
         BoxShadow(
           color: glowColor.withOpacity(glowOpacity),
-          blurRadius: depth * 2.5,
-          spreadRadius: -2,
-          offset: Offset(0, depth * 0.6),
+          blurRadius: depth * 1.8,
+          offset: Offset(0, depth * 0.3),
         ),
     ];
   }
 
-  /// 3D Floating Pill / Capsule Decoration
+  /// Apple Pill / Capsule Decoration
   static BoxDecoration pill3DDecoration({
     Color backgroundColor = darkCard,
     Color? borderColor,
     bool isSelected = false,
     Color? glowColor,
-    double borderRadius = 24.0,
+    double borderRadius = 20.0,
   }) {
     return BoxDecoration(
-      color: backgroundColor,
+      color: isSelected ? appleBlue : backgroundColor,
       borderRadius: BorderRadius.circular(borderRadius),
       border: Border.all(
         color: isSelected
-            ? (borderColor ?? primaryAccent)
-            : (borderColor ?? darkCardBorder),
-        width: isSelected ? 1.5 : 1.0,
+            ? Colors.transparent
+            : (borderColor ?? Colors.white.withOpacity(0.10)),
+        width: 0.6,
       ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.white.withOpacity(0.06),
-          blurRadius: 1,
-          offset: const Offset(-0.5, -0.5),
-        ),
-        BoxShadow(
-          color: Colors.black.withOpacity(0.35),
-          blurRadius: 6,
-          offset: const Offset(0, 3),
-        ),
-        if (isSelected && glowColor != null)
-          BoxShadow(
-            color: glowColor.withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-      ],
     );
   }
 
-  /// Frosted Glass Capsule Decoration (VisionOS / Dynamic Island style)
+  /// Apple Glass Capsule Decoration
   static BoxDecoration glassCapsuleDecoration({
-    Color backgroundColor = const Color(0xCC0D1527),
+    Color backgroundColor = const Color(0xD91C1C1E),
     Color? borderColor,
-    double borderRadius = 32.0,
-    double depth = 14.0,
+    double borderRadius = 28.0,
+    double depth = 10.0,
     Color? glowColor,
   }) {
     return BoxDecoration(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(borderRadius),
       border: Border.all(
-        color: borderColor ?? Colors.white.withOpacity(0.14),
-        width: 1.0,
+        color: borderColor ?? Colors.white.withOpacity(0.12),
+        width: 0.5,
       ),
-      boxShadow: depthShadow(
-        depth: depth,
-        glowColor: glowColor,
-        glowOpacity: 0.16,
-      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.4),
+          blurRadius: depth,
+          offset: const Offset(0, 3),
+        ),
+      ],
     );
   }
 
   static ThemeData get darkTheme {
     final baseTextTheme = ThemeData.dark().textTheme;
-    final textTheme = GoogleFonts.outfitTextTheme(baseTextTheme).apply(
+    final textTheme = GoogleFonts.interTextTheme(baseTextTheme).apply(
       bodyColor: darkTextPrimary,
       displayColor: darkTextPrimary,
     );
@@ -146,62 +134,56 @@ class AppTheme {
       brightness: Brightness.dark,
       scaffoldBackgroundColor: darkBg,
       colorScheme: const ColorScheme.dark(
-        primary: primaryAccent,
-        secondary: emeraldGreen,
+        primary: appleBlue,
+        secondary: appleBlue,
         surface: darkCard,
         error: roseDanger,
-        onPrimary: Colors.black,
+        onPrimary: Colors.white,
         onSurface: darkTextPrimary,
       ),
       textTheme: textTheme,
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         backgroundColor: darkBg,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.outfit(
-          color: darkTextPrimary,
-          fontSize: 21,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.4,
-        ),
-        iconTheme: const IconThemeData(color: darkTextPrimary),
+        iconTheme: IconThemeData(color: darkTextPrimary),
       ),
       cardTheme: CardThemeData(
         color: darkCard,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: darkCardBorder, width: 1),
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: Colors.white.withOpacity(0.08), width: 0.5),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          elevation: 4,
-          backgroundColor: primaryBlue,
+          elevation: 0,
+          backgroundColor: appleBlue,
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: GoogleFonts.outfit(
-            fontWeight: FontWeight.w700,
-            fontSize: 14.5,
-            letterSpacing: 0.2,
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+            letterSpacing: -0.2,
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: primaryAccent,
-          side: const BorderSide(color: primaryAccent, width: 1.5),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          foregroundColor: appleBlue,
+          side: const BorderSide(color: appleBlue, width: 1.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: GoogleFonts.outfit(
-            fontWeight: FontWeight.w700,
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
             fontSize: 14,
-            letterSpacing: 0.2,
+            letterSpacing: -0.2,
           ),
         ),
       ),

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -408,22 +409,17 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       isScrollControlled: true,
       builder: (ctx) => Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF0C1322),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          color: const Color(0xFF1C1C1E),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           border: Border.all(
-            color: Colors.white.withOpacity(0.12),
-            width: 1.2,
-          ),
-          boxShadow: AppTheme.depthShadow(
-            depth: 20,
-            glowColor: AppTheme.primaryAccent,
-            glowOpacity: 0.12,
+            color: Colors.white.withOpacity(0.08),
+            width: 0.5,
           ),
         ),
         padding: EdgeInsets.only(
-          top: 14,
-          left: 20,
-          right: 20,
+          top: 10,
+          left: 18,
+          right: 18,
           bottom: MediaQuery.of(context).padding.bottom + 20,
         ),
         child: Column(
@@ -432,45 +428,43 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           children: [
             Center(
               child: Container(
-                width: 40,
+                width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withOpacity(0.25),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [AppTheme.primaryAccent, AppTheme.primaryBlue],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.primaryAccent.withOpacity(0.3),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: const Icon(Icons.info_outline_rounded, color: Colors.black, size: 20),
-                ),
-                const SizedBox(width: 12),
                 const Text(
-                  'Media Details & EXIF',
+                  'Info',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minSize: 0,
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(CupertinoIcons.clear, color: Colors.white70, size: 14),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
 
             // 3D Grid of Stat Cards
             Row(
@@ -531,20 +525,13 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.25),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: const Color(0xFF2C2C2E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.06), width: 0.5),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: AppTheme.primaryAccent),
+          Icon(icon, size: 18, color: AppTheme.appleBlue),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -679,7 +666,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               ),
             ),
 
-          // 2. Top Frosted Header Bar
+          // 2. Apple Photos Top Navigation Bar
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             top: (_showControls && !_isDraggingDown) ? 0 : -120,
@@ -689,10 +676,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               opacity: controlsOpacity,
               child: Container(
                 padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 6,
-                  left: 10,
-                  right: 16,
-                  bottom: 14,
+                  top: MediaQuery.of(context).padding.top + 4,
+                  left: 8,
+                  right: 14,
+                  bottom: 10,
                 ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -700,49 +687,53 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.black.withOpacity(0.85),
-                      Colors.black.withOpacity(0.4),
+                      Colors.black.withOpacity(0.35),
                       Colors.transparent,
                     ],
                   ),
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.4),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.12)),
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.white),
-                        onPressed: () => Navigator.of(context).pop(),
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      minSize: 0,
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(CupertinoIcons.chevron_back, color: AppTheme.appleBlue, size: 26),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            currentItem.fileName,
+                            DateFormat('d MMMM yyyy').format(currentItem.createdAt),
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.2,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
+                          const SizedBox(height: 1),
                           Text(
-                            '${currentItem.displayFolderName} • ${_currentIndex + 1} of ${_items.length}',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
+                            DateFormat('h:mm a').format(currentItem.createdAt),
+                            style: const TextStyle(
+                              color: AppTheme.darkTextSecondary,
                               fontSize: 12,
                             ),
                           ),
                         ],
                       ),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minSize: 0,
+                      onPressed: _showItemDetailsBottomSheet,
+                      child: const Icon(CupertinoIcons.info_circle, color: AppTheme.appleBlue, size: 24),
                     ),
                   ],
                 ),
@@ -750,7 +741,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             ),
           ),
 
-          // 3. Bottom Floating 3D Frosted Capsule Action Bar
+          // 3. Apple Photos Bottom Toolbar
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             bottom: (_showControls && !_isDraggingDown) ? 0 : -140,
@@ -758,42 +749,28 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             right: 0,
             child: Opacity(
               opacity: controlsOpacity,
-              child: Container(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).padding.bottom + 16,
-                  left: 20,
-                  right: 20,
-                  top: 8,
-                ),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.85),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Video Scrubber (if video is currently active)
-                    if (isVideo && _isVideoInitialized && _videoController != null) ...[
-                      Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Video Scrubber (if video is currently active)
+                  if (isVideo && _isVideoInitialized && _videoController != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      color: Colors.black.withOpacity(0.4),
+                      child: Row(
                         children: [
                           Text(
                             _formatDuration(_videoController!.value.position),
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
                           ),
                           Expanded(
                             child: SliderTheme(
                               data: SliderTheme.of(context).copyWith(
-                                activeTrackColor: AppTheme.primaryAccent,
+                                activeTrackColor: AppTheme.appleBlue,
                                 inactiveTrackColor: Colors.white24,
-                                thumbColor: AppTheme.primaryAccent,
+                                thumbColor: Colors.white,
                                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                trackHeight: 3.5,
+                                trackHeight: 3.0,
                               ),
                               child: Slider(
                                 value: _videoController!.value.position.inMilliseconds
@@ -809,69 +786,75 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                           ),
                           Text(
                             _formatDuration(_videoController!.value.duration),
-                            style: const TextStyle(color: Colors.white70, fontSize: 11),
+                            style: const TextStyle(color: AppTheme.darkTextSecondary, fontSize: 11),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                    ],
+                    ),
 
-                    // 3D Floating Action Capsule with Glass Blur
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(28),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A).withOpacity(0.85),
-                            borderRadius: BorderRadius.circular(28),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.14),
-                              width: 1.2,
-                            ),
-                            boxShadow: AppTheme.depthShadow(
-                              depth: 12,
-                              glowColor: AppTheme.primaryAccent,
-                              glowOpacity: 0.15,
+                  // Native Full-Width Translucent Blur Bottom Bar
+                  ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                      child: Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.only(
+                          top: 10,
+                          bottom: MediaQuery.of(context).padding.bottom > 0
+                              ? MediaQuery.of(context).padding.bottom
+                              : 10,
+                          left: 28,
+                          right: 28,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xE6141416),
+                          border: Border(
+                            top: BorderSide(
+                              color: Colors.white.withOpacity(0.12),
+                              width: 0.5,
                             ),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildCapsuleAction(
-                                icon: Icons.share_rounded,
-                                label: 'Share',
-                                onTap: _shareCurrentItem,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minSize: 0,
+                              onPressed: _shareCurrentItem,
+                              child: const Icon(CupertinoIcons.share, color: AppTheme.appleBlue, size: 24),
+                            ),
+                            CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minSize: 0,
+                              onPressed: () async {
+                                await FavoritesService.instance.toggleFavorite(currentItem.localId);
+                                setState(() {});
+                              },
+                              child: Icon(
+                                isFavorite ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
+                                color: isFavorite ? AppTheme.roseDanger : AppTheme.appleBlue,
+                                size: 24,
                               ),
-                              _buildCapsuleAction(
-                                icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                                label: 'Favorite',
-                                color: isFavorite ? AppTheme.roseDanger : Colors.white,
-                                iconGlow: isFavorite,
-                                onTap: () async {
-                                  await FavoritesService.instance.toggleFavorite(currentItem.localId);
-                                  setState(() {});
-                                },
-                              ),
-                              _buildCapsuleAction(
-                                icon: Icons.info_outline_rounded,
-                                label: 'Details',
-                                onTap: _showItemDetailsBottomSheet,
-                              ),
-                              _buildCapsuleAction(
-                                icon: Icons.delete_outline_rounded,
-                                label: 'Delete',
-                                color: AppTheme.roseDanger,
-                                onTap: _confirmAndDeleteCurrentItem,
-                              ),
-                            ],
-                          ),
+                            ),
+                            CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minSize: 0,
+                              onPressed: _showItemDetailsBottomSheet,
+                              child: const Icon(CupertinoIcons.info, color: AppTheme.appleBlue, size: 24),
+                            ),
+                            CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minSize: 0,
+                              onPressed: _confirmAndDeleteCurrentItem,
+                              child: const Icon(CupertinoIcons.trash, color: AppTheme.roseDanger, size: 24),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -879,50 +862,6 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       ),
     ),
   );
-  }
-
-  Widget _buildCapsuleAction({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    Color color = Colors.white,
-    bool iconGlow = false,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              decoration: iconGlow
-                  ? BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: color.withOpacity(0.5),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    )
-                  : null,
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                color: color.withOpacity(0.85),
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildImagePage(MediaItem item) {
