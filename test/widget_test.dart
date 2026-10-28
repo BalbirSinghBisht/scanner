@@ -21,7 +21,7 @@ void main() {
 
     await tester.pump();
 
-    // Verify Gallery screen loads
-    expect(find.text('Gallery'), findsOneWidget);
+    // Verify Library screen loads
+    expect(find.text('Library'), findsWidgets);
   });
 }

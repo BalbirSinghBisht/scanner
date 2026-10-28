@@ -28,34 +28,60 @@ class MediaFolderCard extends StatelessWidget {
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: onTap,
-      pressedOpacity: 0.85,
+      pressedOpacity: 0.88,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Album Photo Cover
+          // Album Photo Cover with Apple Glassmorphic Frame
           Expanded(
             child: Container(
               width: double.infinity,
               decoration: BoxDecoration(
                 color: AppTheme.darkCard,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.08),
-                  width: 0.5,
+                  color: Colors.white.withOpacity(0.12),
+                  width: 0.65,
                 ),
+                boxShadow: AppTheme.depthShadow(depth: 8),
               ),
               clipBehavior: Clip.antiAlias,
-              child: coverItem != null
-                  ? CachedThumbnailImage(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (coverItem != null)
+                    CachedThumbnailImage(
                       localId: coverItem!.localId,
                       size: 450,
                       fit: BoxFit.cover,
                       placeholder: _buildPlaceholder(),
                     )
-                  : _buildPlaceholder(),
+                  else
+                    _buildPlaceholder(),
+
+                  // Specular top glass sheen
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 1,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withOpacity(0.35),
+                            Colors.white.withOpacity(0.08),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 7),
 
           // Album Name
           Text(
@@ -69,6 +95,7 @@ class MediaFolderCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
+          const SizedBox(height: 1),
 
           // Photo & Video Count
           Text(
@@ -77,6 +104,7 @@ class MediaFolderCard extends StatelessWidget {
               fontSize: 13,
               fontWeight: FontWeight.w400,
               color: AppTheme.darkTextSecondary,
+              letterSpacing: -0.1,
             ),
           ),
         ],
@@ -86,7 +114,7 @@ class MediaFolderCard extends StatelessWidget {
 
   Widget _buildPlaceholder() {
     return Container(
-      color: AppTheme.darkCard,
+      color: const Color(0xFF191C26),
       child: Center(
         child: Icon(
           isAll ? CupertinoIcons.photo_on_rectangle : CupertinoIcons.folder,

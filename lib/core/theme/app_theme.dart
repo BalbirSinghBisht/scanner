@@ -26,6 +26,22 @@ class AppTheme {
   static const Color darkTextSecondary = Color(0xFF8E8E93); // Apple System Gray
   static const Color darkTextTertiary = Color(0xFF636366);
 
+  // Realtime Colors & Glassmorphism Surfaces
+  static const Color glassSurface = Color(0x99161A26);
+  static const Color glassSurfaceDark = Color(0xC210131E);
+  static const Color glassSurfaceFloating = Color(0xD1141724);
+  static const Color glassSurfaceLight = Color(0x4D2A3044);
+  static const Color glassBorderColor = Color(0x2EFFFFFF); // 18% crisp specular edge
+  static const Color glassBorderLight = Color(0x47FFFFFF); // 28% top highlight
+  static const Color glassBorderUltraThin = Color(0x1FFFFFFF); // 12% subtle border
+
+  // Motion Primitives Spring & Timing Curves
+  static const Duration motionFast = Duration(milliseconds: 160);
+  static const Duration motionNormal = Duration(milliseconds: 260);
+  static const Duration motionSpring = Duration(milliseconds: 320);
+  static const Curve motionCurve = Curves.easeOutCubic;
+  static const Curve motionBounce = Curves.easeOutBack;
+
   /// Clean Apple Header Gradient (Subtle white to light mist)
   static const LinearGradient holographicGradient = LinearGradient(
     colors: [
@@ -36,9 +52,21 @@ class AppTheme {
     stops: [0.0, 0.7, 1.0],
   );
 
+  /// Specular Glass Edge Gradient (Simulates light catching the glass bevel)
+  static const LinearGradient specularGlassGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0x40FFFFFF),
+      Color(0x1AFFFFFF),
+      Color(0x08FFFFFF),
+    ],
+    stops: [0.0, 0.4, 1.0],
+  );
+
   /// Apple Cupertino Translucent Blur Bar Decoration
   static BoxDecoration appleBlurBar({
-    Color backgroundColor = const Color(0xB8141416),
+    Color backgroundColor = const Color(0xB8121520),
     bool showBottomBorder = true,
     bool showTopBorder = false,
   }) {
@@ -46,10 +74,10 @@ class AppTheme {
       color: backgroundColor,
       border: Border(
         bottom: showBottomBorder
-            ? BorderSide(color: Colors.white.withOpacity(0.08), width: 0.5)
+            ? BorderSide(color: Colors.white.withOpacity(0.10), width: 0.6)
             : BorderSide.none,
         top: showTopBorder
-            ? BorderSide(color: Colors.white.withOpacity(0.08), width: 0.5)
+            ? BorderSide(color: Colors.white.withOpacity(0.10), width: 0.6)
             : BorderSide.none,
       ),
     );
@@ -64,14 +92,14 @@ class AppTheme {
   }) {
     return [
       BoxShadow(
-        color: shadowColor.withOpacity(0.35),
-        blurRadius: depth * 1.5,
+        color: shadowColor.withOpacity(0.40),
+        blurRadius: depth * 1.6,
         offset: Offset(0, depth * 0.4),
       ),
       if (glowColor != null)
         BoxShadow(
           color: glowColor.withOpacity(glowOpacity),
-          blurRadius: depth * 1.8,
+          blurRadius: depth * 2.0,
           offset: Offset(0, depth * 0.3),
         ),
     ];
@@ -91,9 +119,46 @@ class AppTheme {
       border: Border.all(
         color: isSelected
             ? Colors.transparent
-            : (borderColor ?? Colors.white.withOpacity(0.10)),
+            : (borderColor ?? Colors.white.withOpacity(0.12)),
         width: 0.6,
       ),
+      boxShadow: isSelected
+          ? [
+              BoxShadow(
+                color: appleBlue.withOpacity(0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ]
+          : null,
+    );
+  }
+
+  /// Apple Floating Rounded Navbar Decoration
+  static BoxDecoration floatingNavbarDecoration({
+    Color backgroundColor = glassSurfaceFloating,
+    double borderRadius = 34.0,
+    Color? borderColor,
+  }) {
+    return BoxDecoration(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(borderRadius),
+      border: Border.all(
+        color: borderColor ?? Colors.white.withOpacity(0.18),
+        width: 0.75,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.55),
+          blurRadius: 28,
+          offset: const Offset(0, 10),
+        ),
+        BoxShadow(
+          color: appleBlue.withOpacity(0.10),
+          blurRadius: 20,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
   }
 
@@ -109,14 +174,44 @@ class AppTheme {
       color: backgroundColor,
       borderRadius: BorderRadius.circular(borderRadius),
       border: Border.all(
-        color: borderColor ?? Colors.white.withOpacity(0.12),
-        width: 0.5,
+        color: borderColor ?? Colors.white.withOpacity(0.14),
+        width: 0.6,
       ),
       boxShadow: [
         BoxShadow(
           color: Colors.black.withOpacity(0.4),
           blurRadius: depth,
           offset: const Offset(0, 3),
+        ),
+        if (glowColor != null)
+          BoxShadow(
+            color: glowColor.withOpacity(0.2),
+            blurRadius: depth * 1.5,
+            offset: const Offset(0, 2),
+          ),
+      ],
+    );
+  }
+
+  /// General Glassmorphic Card Decoration
+  static BoxDecoration glassCardDecoration({
+    double borderRadius = 18.0,
+    Color backgroundColor = glassSurface,
+    Color? borderColor,
+    double borderWidth = 0.6,
+  }) {
+    return BoxDecoration(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(borderRadius),
+      border: Border.all(
+        color: borderColor ?? Colors.white.withOpacity(0.12),
+        width: borderWidth,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.35),
+          blurRadius: 14,
+          offset: const Offset(0, 4),
         ),
       ],
     );

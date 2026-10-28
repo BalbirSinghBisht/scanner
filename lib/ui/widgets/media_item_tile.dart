@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
@@ -32,7 +33,7 @@ class MediaItemTile extends StatelessWidget {
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minSize: 0,
-      pressedOpacity: 0.85,
+      pressedOpacity: 0.88,
       onPressed: onTap ??
           () => Navigator.push(
                 context,
@@ -50,14 +51,23 @@ class MediaItemTile extends StatelessWidget {
         onLongPress: onLongPress,
         child: AnimatedScale(
           scale: isSelected ? 0.94 : 1.0,
-          duration: const Duration(milliseconds: 150),
+          duration: const Duration(milliseconds: 160),
           curve: Curves.easeOutCubic,
           child: Container(
             decoration: BoxDecoration(
               color: AppTheme.darkCard,
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(6),
               border: isSelected
-                  ? Border.all(color: AppTheme.appleBlue, width: 2.0)
+                  ? Border.all(color: AppTheme.appleBlue, width: 2.2)
+                  : null,
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppTheme.appleBlue.withOpacity(0.35),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
                   : null,
             ),
             clipBehavior: Clip.antiAlias,
@@ -78,8 +88,8 @@ class MediaItemTile extends StatelessWidget {
                 // Apple Selection Checkmark (Top-Right)
                 if (isSelectionMode)
                   Positioned(
-                    top: 5,
-                    right: 5,
+                    top: 6,
+                    right: 6,
                     child: Container(
                       width: 22,
                       height: 22,
@@ -87,11 +97,17 @@ class MediaItemTile extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: isSelected
                             ? AppTheme.appleBlue
-                            : Colors.black.withOpacity(0.35),
+                            : Colors.black.withOpacity(0.40),
                         border: Border.all(
                           color: Colors.white,
                           width: 1.5,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 4,
+                          ),
+                        ],
                       ),
                       child: isSelected
                           ? const Icon(
@@ -106,55 +122,75 @@ class MediaItemTile extends StatelessWidget {
                 // Subtle Favorite Heart (if favorited and not selecting)
                 if (isFavorite && !isSelectionMode)
                   Positioned(
-                    bottom: 5,
-                    left: 5,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        CupertinoIcons.heart_fill,
-                        size: 11,
-                        color: Colors.white,
+                    bottom: 6,
+                    left: 6,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: Container(
+                          padding: const EdgeInsets.all(3.5),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.45),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.16),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: const Icon(
+                            CupertinoIcons.heart_fill,
+                            size: 10,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
                   ),
 
-                // Apple Video Duration Pill (Bottom-Right)
+                // Apple Video Duration Frosted Pill (Bottom-Right)
                 if (item.mediaType == AppMediaType.video)
                   Positioned(
-                    bottom: 4,
-                    right: 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.65),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            CupertinoIcons.play_fill,
-                            size: 8,
-                            color: Colors.white,
-                          ),
-                          if (item.durationSeconds != null &&
-                              item.durationSeconds! > 0) ...[
-                            const SizedBox(width: 3),
-                            Text(
-                              item.formattedDuration,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.1,
-                              ),
+                    bottom: 5,
+                    right: 5,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(5),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.55),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.18),
+                              width: 0.5,
                             ),
-                          ],
-                        ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                CupertinoIcons.play_fill,
+                                size: 8,
+                                color: Colors.white,
+                              ),
+                              if (item.durationSeconds != null &&
+                                  item.durationSeconds! > 0) ...[
+                                const SizedBox(width: 3),
+                                Text(
+                                  item.formattedDuration,
+                                  style: const TextStyle(
+                                    fontSize: 9.5,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: -0.1,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),

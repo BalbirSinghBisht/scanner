@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -143,16 +144,21 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                       margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                       decoration: BoxDecoration(
                         color: AppTheme.darkCard,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(22),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.08),
-                          width: 0.5,
+                          color: Colors.white.withOpacity(0.16),
+                          width: 0.75,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.4),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                            color: Colors.black.withOpacity(0.55),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                          BoxShadow(
+                            color: AppTheme.appleBlue.withOpacity(0.12),
+                            blurRadius: 14,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
@@ -166,7 +172,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                             size: 600,
                             fit: BoxFit.cover,
                             placeholder: Container(
-                              color: AppTheme.darkCard,
+                              color: const Color(0xFF161922),
                               child: const Center(
                                 child: Icon(
                                   CupertinoIcons.photo,
@@ -177,7 +183,26 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                             ),
                           ),
 
-                          // Gradient Vignette
+                          // Specular top glass sheen
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 1,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.white.withOpacity(0.40),
+                                    Colors.white.withOpacity(0.10),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // Apple Gradient Vignette
                           Positioned.fill(
                             child: DecoratedBox(
                               decoration: BoxDecoration(
@@ -185,83 +210,110 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel> {
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    Colors.black.withOpacity(0.1),
+                                    Colors.black.withOpacity(0.15),
                                     Colors.transparent,
                                     Colors.black.withOpacity(0.35),
-                                    Colors.black.withOpacity(0.75),
+                                    Colors.black.withOpacity(0.85),
                                   ],
-                                  stops: const [0.0, 0.4, 0.7, 1.0],
+                                  stops: const [0.0, 0.35, 0.65, 1.0],
                                 ),
                               ),
                             ),
                           ),
 
-                          // Video Indicator
+                          // Video Indicator Frosted Glass
                           if (item.mediaType == AppMediaType.video)
                             Positioned(
                               top: 10,
                               right: 10,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.6),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      CupertinoIcons.play_fill,
-                                      size: 9,
-                                      color: Colors.white,
-                                    ),
-                                    if (item.durationSeconds != null) ...[
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        item.formattedDuration,
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.55),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.2),
+                                        width: 0.6,
                                       ),
-                                    ],
-                                  ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          CupertinoIcons.play_fill,
+                                          size: 9,
+                                          color: Colors.white,
+                                        ),
+                                        if (item.durationSeconds != null) ...[
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            item.formattedDuration,
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
 
-                          // Bottom Title & Date (Apple Photos style)
+                          // Bottom Title & Date in Glassmorphic Pill
                           Positioned(
-                            left: 14,
-                            right: 14,
+                            left: 12,
+                            right: 12,
                             bottom: 12,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  df.format(item.createdAt).toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white.withOpacity(0.7),
-                                    letterSpacing: 0.5,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x66141824),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.14),
+                                      width: 0.6,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        df.format(item.createdAt).toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white.withOpacity(0.75),
+                                          letterSpacing: 0.6,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        item.displayFolderName,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                          letterSpacing: -0.3,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  item.displayFolderName,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                    letterSpacing: -0.3,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ],

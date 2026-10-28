@@ -330,42 +330,45 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF131D31),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
-          side: BorderSide(
-            color: Colors.white.withOpacity(0.12),
-            width: 1.2,
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: AlertDialog(
+          backgroundColor: const Color(0xD6141826),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: BorderSide(
+              color: Colors.white.withOpacity(0.16),
+              width: 0.8,
+            ),
           ),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.delete_forever_rounded, color: AppTheme.roseDanger, size: 24),
-            SizedBox(width: 10),
-            Text('Delete File?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          title: const Row(
+            children: [
+              Icon(Icons.delete_forever_rounded, color: AppTheme.roseDanger, size: 24),
+              SizedBox(width: 10),
+              Text('Delete File?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text(
+            'Are you sure you want to delete "${item.fileName}" from device storage?',
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.roseDanger,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Delete Permanently'),
+            ),
           ],
         ),
-        content: Text(
-          'Are you sure you want to delete "${item.fileName}" from device storage?',
-          style: const TextStyle(color: Colors.white70, fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.roseDanger,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              elevation: 4,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete Permanently'),
-          ),
-        ],
       ),
     );
 
@@ -407,35 +410,39 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.08),
-            width: 0.5,
-          ),
-        ),
-        padding: EdgeInsets.only(
-          top: 10,
-          left: 18,
-          right: 18,
-          bottom: MediaQuery.of(context).padding.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.25),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+      builder: (ctx) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xEA141724),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.14),
+                width: 0.6,
               ),
             ),
+            padding: EdgeInsets.only(
+              top: 12,
+              left: 20,
+              right: 20,
+              bottom: MediaQuery.of(context).padding.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 38,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2.5),
+                    ),
+                  ),
+                ),
             const SizedBox(height: 14),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -518,21 +525,30 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           ],
         ),
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 
   Widget _buildDetailCard(IconData icon, String title, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.06), width: 0.5),
+        color: const Color(0x66222638),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.12), width: 0.6),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: AppTheme.appleBlue),
-          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: AppTheme.appleBlue.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: AppTheme.appleBlue),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,15 +556,16 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               children: [
                 Text(
                   title,
-                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                  style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 10.5, letterSpacing: -0.1),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -674,74 +691,88 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             right: 0,
             child: Opacity(
               opacity: controlsOpacity,
-              child: Container(
-                padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 4,
-                  left: 8,
-                  right: 14,
-                  bottom: 10,
-                ),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.85),
-                      Colors.black.withOpacity(0.35),
-                      Colors.transparent,
-                    ],
+              child: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Container(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.of(context).padding.top + 4,
+                      left: 10,
+                      right: 14,
+                      bottom: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0x8C0D101A),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Colors.white.withOpacity(0.08),
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        CupertinoButton(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                          minSize: 0,
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withOpacity(0.10), width: 0.5),
+                            ),
+                            child: const Icon(CupertinoIcons.chevron_back, color: AppTheme.appleBlue, size: 20),
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                DateFormat('d MMMM yyyy').format(currentItem.createdAt),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                              const SizedBox(height: 1),
+                              Text(
+                                DateFormat('h:mm a').format(currentItem.createdAt),
+                                style: const TextStyle(
+                                  color: AppTheme.darkTextSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minSize: 0,
+                          onPressed: _showItemDetailsBottomSheet,
+                          child: Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withOpacity(0.10), width: 0.5),
+                            ),
+                            child: const Icon(CupertinoIcons.info_circle, color: AppTheme.appleBlue, size: 20),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                child: Row(
-                  children: [
-                    CupertinoButton(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      minSize: 0,
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(CupertinoIcons.chevron_back, color: AppTheme.appleBlue, size: 26),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            DateFormat('d MMMM yyyy').format(currentItem.createdAt),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            DateFormat('h:mm a').format(currentItem.createdAt),
-                            style: const TextStyle(
-                              color: AppTheme.darkTextSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      minSize: 0,
-                      onPressed: _showItemDetailsBottomSheet,
-                      child: const Icon(CupertinoIcons.info_circle, color: AppTheme.appleBlue, size: 24),
-                    ),
-                  ],
                 ),
               ),
             ),
           ),
 
-          // 3. Apple Photos Bottom Toolbar
+          // 3. Apple Photos Floating Rounded Bottom Toolbar
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             bottom: (_showControls && !_isDraggingDown) ? 0 : -140,
@@ -755,8 +786,13 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                   // Video Scrubber (if video is currently active)
                   if (isVideo && _isVideoInitialized && _videoController != null)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                      color: Colors.black.withOpacity(0.4),
+                      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0x9910131E),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.12), width: 0.5),
+                      ),
                       child: Row(
                         children: [
                           Text(
@@ -792,64 +828,58 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                       ),
                     ),
 
-                  // Native Full-Width Translucent Blur Bottom Bar
-                  ClipRect(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-                      child: Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.only(
-                          top: 10,
-                          bottom: MediaQuery.of(context).padding.bottom > 0
-                              ? MediaQuery.of(context).padding.bottom
-                              : 10,
-                          left: 28,
-                          right: 28,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xE6141416),
-                          border: Border(
-                            top: BorderSide(
-                              color: Colors.white.withOpacity(0.12),
-                              width: 0.5,
-                            ),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              minSize: 0,
-                              onPressed: _shareCurrentItem,
-                              child: const Icon(CupertinoIcons.share, color: AppTheme.appleBlue, size: 24),
-                            ),
-                            CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              minSize: 0,
-                              onPressed: () async {
-                                await FavoritesService.instance.toggleFavorite(currentItem.localId);
-                                setState(() {});
-                              },
-                              child: Icon(
-                                isFavorite ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
-                                color: isFavorite ? AppTheme.roseDanger : AppTheme.appleBlue,
-                                size: 24,
+                  // Floating Rounded Glassmorphic Action Navbar
+                  Padding(
+                    padding: EdgeInsets.only(
+                      left: 24,
+                      right: 24,
+                      bottom: MediaQuery.of(context).padding.bottom > 0
+                          ? MediaQuery.of(context).padding.bottom + 4
+                          : 16,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(34),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          decoration: AppTheme.floatingNavbarDecoration(),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              CupertinoButton(
+                                padding: const EdgeInsets.all(8),
+                                minSize: 0,
+                                onPressed: _shareCurrentItem,
+                                child: const Icon(CupertinoIcons.share, color: AppTheme.appleBlue, size: 24),
                               ),
-                            ),
-                            CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              minSize: 0,
-                              onPressed: _showItemDetailsBottomSheet,
-                              child: const Icon(CupertinoIcons.info, color: AppTheme.appleBlue, size: 24),
-                            ),
-                            CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              minSize: 0,
-                              onPressed: _confirmAndDeleteCurrentItem,
-                              child: const Icon(CupertinoIcons.trash, color: AppTheme.roseDanger, size: 24),
-                            ),
-                          ],
+                              CupertinoButton(
+                                padding: const EdgeInsets.all(8),
+                                minSize: 0,
+                                onPressed: () async {
+                                  await FavoritesService.instance.toggleFavorite(currentItem.localId);
+                                  setState(() {});
+                                },
+                                child: Icon(
+                                  isFavorite ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
+                                  color: isFavorite ? AppTheme.roseDanger : AppTheme.appleBlue,
+                                  size: 24,
+                                ),
+                              ),
+                              CupertinoButton(
+                                padding: const EdgeInsets.all(8),
+                                minSize: 0,
+                                onPressed: _showItemDetailsBottomSheet,
+                                child: const Icon(CupertinoIcons.info, color: AppTheme.appleBlue, size: 24),
+                              ),
+                              CupertinoButton(
+                                padding: const EdgeInsets.all(8),
+                                minSize: 0,
+                                onPressed: _confirmAndDeleteCurrentItem,
+                                child: const Icon(CupertinoIcons.trash, color: AppTheme.roseDanger, size: 24),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
