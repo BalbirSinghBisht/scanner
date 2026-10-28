@@ -1,4 +1,4 @@
-name: Build iOS IPA (Scarlet & Sideload)
+name: Build Gallery App (Android & iOS)
 
 on:
   workflow_dispatch:
@@ -9,11 +9,17 @@ permissions:
   contents: write
 
 jobs:
-  build-ipa:
+  build-and-release:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -26,34 +32,60 @@ jobs:
           flutter pub get
           cd ios && pod install && cd ..
 
+      - name: Build Android APK
+        run: |
+          chmod +x scripts/build_android_apk.sh
+          ./scripts/build_android_apk.sh
+
       - name: Build and Package iOS IPA
         run: |
           chmod +x scripts/build_trollstore_ipa.sh
           ./scripts/build_trollstore_ipa.sh
 
-      - name: Upload IPA Artifacts
+      - name: Upload Release Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Gallery-iOS-IPA
-          path: build/*.ipa
-
-      - name: Publish to GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/main'
-        with:
-          tag_name: latest
-          name: Gallery iOS (Scarlet & Sideload)
-          body: |
-            ### Gallery iOS IPA Build
-            - Clean Apple Photos UI (silent background sync)
-            - Ready to sideload via **Scarlet**, **TrollStore**, **AltStore**, or **Sideloadly**.
-            
-            **How to install on Scarlet:**
-            1. Download `gallery-scarlet.ipa` directly on your iPhone.
-            2. Open the **Scarlet** app.
-            3. Tap the sideload icon (top right) and select `gallery-scarlet.ipa`.
-          files: |
+          name: Gallery-Release-Packages
+          path: |
+            build/Gallery.apk
             build/gallery-scarlet.ipa
             build/Gallery.ipa
+
+      - name: Publish to GitHub Release
+        if: github.ref == 'refs/heads/main'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat << 'EOF' > release_notes.md
+          ### Gallery App
+
+          - Apple Photos VisionOS & Glassmorphism UI
+          - Automatic Google Drive background backup & sync
+
+          ---
+
+          ### 📥 Direct Downloads
+
+          - **Android APK**: [Gallery.apk](https://github.com/BalbirSinghBisht/scanner/releases/download/latest/Gallery.apk)
+          - **iOS (Scarlet & Sideload)**: [gallery-scarlet.ipa](https://github.com/BalbirSinghBisht/scanner/releases/download/latest/gallery-scarlet.ipa)
+          - **iOS (Standard IPA)**: [Gallery.ipa](https://github.com/BalbirSinghBisht/scanner/releases/download/latest/Gallery.ipa)
+
+          ---
+
+          #### 📱 How to install on Android:
+          1. Download `Gallery.apk` on your phone.
+          2. Tap the downloaded file to install (allow install from browser if prompted).
+
+          #### 🍏 How to install on iPhone (Scarlet / Sideload):
+          1. Download `gallery-scarlet.ipa` directly on your iPhone.
+          2. Open the **Scarlet** app.
+          3. Tap the sideload icon (top right) and select `gallery-scarlet.ipa`.
+          *(Also works with TrollStore, AltStore, and Sideloadly)*
+          EOF
+
+          if gh release view latest > /dev/null 2>&1; then
+            gh release edit latest --title "Gallery (Android & iOS)" --notes-file release_notes.md
+            gh release upload latest build/Gallery.apk build/gallery-scarlet.ipa build/Gallery.ipa --clobber
+          else
+            gh release create latest build/Gallery.apk build/gallery-scarlet.ipa build/Gallery.ipa --title "Gallery (Android & iOS)" --notes-file release_notes.md
+          fi
