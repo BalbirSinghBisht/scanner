@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +12,7 @@ import '../../providers/backup_provider.dart';
 import '../../services/device_settings_helper.dart';
 import '../../services/favorites_service.dart';
 import '../../services/media_scanner_service.dart';
+import '../widgets/haikei_background.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
 import '../widgets/three_d_carousel.dart';
@@ -143,7 +145,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final yesterday = today.subtract(const Duration(days: 1));
 
     for (final item in items) {
-      final itemDate = DateTime(item.createdAt.year, item.createdAt.month, item.createdAt.day);
+      final itemDate =
+          DateTime(item.createdAt.year, item.createdAt.month, item.createdAt.day);
       String label;
       if (itemDate == today) {
         label = 'Today';
@@ -175,14 +178,16 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     // 2. Category Filter
     switch (_activeFilter) {
       case MediaFilter.photos:
-        result = result.where((it) => it.mediaType == AppMediaType.image).toList();
+        result =
+            result.where((it) => it.mediaType == AppMediaType.image).toList();
         break;
       case MediaFilter.videos:
-        result = result.where((it) => it.mediaType == AppMediaType.video).toList();
+        result =
+            result.where((it) => it.mediaType == AppMediaType.video).toList();
         break;
       case MediaFilter.favorites:
-        final favs = FavoritesService.instance.favoriteIds;
-        result = result.where((it) => favs.contains(it.localId)).toList();
+        final favService = FavoritesService.instance;
+        result = result.where((it) => favService.isFavorite(it.localId)).toList();
         break;
       case MediaFilter.all:
         break;
@@ -200,7 +205,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         result.sort((a, b) => b.fileSize.compareTo(a.fileSize));
         break;
       case SortMode.name:
-        result.sort((a, b) => a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase()));
+        result.sort((a, b) =>
+            a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase()));
         break;
     }
 
@@ -247,7 +253,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   void _toggleSelectDateGroup(List<MediaItem> items) {
     if (items.isEmpty) return;
-    final allInGroupSelected = items.every((it) => _selectedIds.contains(it.localId));
+    final allInGroupSelected =
+        items.every((it) => _selectedIds.contains(it.localId));
     setState(() {
       if (!_isSelectionMode) {
         _isSelectionMode = true;
@@ -268,7 +275,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   }
 
   Future<void> _batchShareSelected(List<MediaItem> allItems) async {
-    final selectedItems = allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    final selectedItems =
+        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
     if (selectedItems.isEmpty) return;
 
     final filePaths = <String>[];
@@ -286,16 +294,18 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
     if (filePaths.isNotEmpty) {
       if (filePaths.length == 1) {
-        await DeviceSettingsHelper.shareMediaFile(filePaths.first, selectedItems.first.mimeType);
+        await DeviceSettingsHelper.shareMediaFile(
+            filePaths.first, selectedItems.first.mimeType);
       } else {
         await DeviceSettingsHelper.shareMultipleMediaFiles(filePaths);
       }
     } else {
       if (mounted) {
+        final c = AppTheme.colors(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Selected files could not be accessed'),
-            backgroundColor: AppTheme.roseDanger,
+          SnackBar(
+            content: const Text('Selected files could not be accessed'),
+            backgroundColor: c.accentRose,
           ),
         );
       }
@@ -303,41 +313,50 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   }
 
   Future<void> _batchDeleteSelected(List<MediaItem> allItems) async {
-    final selectedItems = allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    final c = AppTheme.colors(context);
+    final selectedItems =
+        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
     if (selectedItems.isEmpty) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: AlertDialog(
-          backgroundColor: const Color(0xD6141826),
+          backgroundColor: c.surfaceGlass,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: Colors.white.withOpacity(0.16), width: 0.8),
+            side: BorderSide(color: c.glassBorder, width: 0.8),
           ),
           title: Row(
             children: [
-              const Icon(Icons.delete_sweep_rounded, color: AppTheme.roseDanger, size: 24),
+              Icon(Icons.delete_sweep_rounded, color: c.accentRose, size: 24),
               const SizedBox(width: 10),
-              Text('Delete ${selectedItems.length} items?',
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(
+                'Delete ${selectedItems.length} items?',
+                style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
           content: Text(
             'Are you sure you want to delete these ${selectedItems.length} files permanently from your device storage?',
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            style: TextStyle(color: c.textSecondary, fontSize: 14),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child: Text('Cancel', style: TextStyle(color: c.textSecondary)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.roseDanger,
+                backgroundColor: c.accentRose,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
               ),
               onPressed: () => Navigator.of(ctx).pop(true),
@@ -358,7 +377,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('${selectedItems.length} items deleted'),
-            backgroundColor: const Color(0xFF1C2740),
+            backgroundColor: c.surfaceElevated,
             duration: const Duration(seconds: 2),
           ),
         );
@@ -368,10 +387,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   Future<void> _batchToggleFavorites(List<MediaItem> allItems) async {
     final favService = FavoritesService.instance;
-    final selectedItems = allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    final selectedItems =
+        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
     if (selectedItems.isEmpty) return;
 
-    final allFavorited = selectedItems.every((it) => favService.isFavorite(it.localId));
+    final allFavorited =
+        selectedItems.every((it) => favService.isFavorite(it.localId));
     for (final it in selectedItems) {
       await favService.setFavorite(it.localId, !allFavorited);
     }
@@ -379,6 +400,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   }
 
   void _showSortOptionsDialog() {
+    final c = AppTheme.colors(context);
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -388,9 +411,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xEA141724),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-              border: Border.all(color: Colors.white.withOpacity(0.14), width: 0.6),
+              color: c.surfaceGlassFloating,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28)),
+              border: Border.all(color: c.glassBorder, width: 0.6),
             ),
             padding: EdgeInsets.only(
               top: 14,
@@ -407,26 +431,30 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     width: 38,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.3),
+                      color: c.textTertiary.withOpacity(0.4),
                       borderRadius: BorderRadius.circular(2.5),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Sort Gallery',
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: -0.3,
                   ),
                 ),
                 const SizedBox(height: 12),
-                _buildSortOption(SortMode.newest, 'Newest First', CupertinoIcons.clock),
-                _buildSortOption(SortMode.oldest, 'Oldest First', CupertinoIcons.time),
-                _buildSortOption(SortMode.size, 'File Size (Largest)', CupertinoIcons.square_stack_3d_up),
-                _buildSortOption(SortMode.name, 'Name (A to Z)', CupertinoIcons.textformat_abc),
+                _buildSortOption(
+                    SortMode.newest, 'Newest First', CupertinoIcons.clock, c),
+                _buildSortOption(
+                    SortMode.oldest, 'Oldest First', CupertinoIcons.time, c),
+                _buildSortOption(SortMode.size, 'File Size (Largest)',
+                    CupertinoIcons.square_stack_3d_up, c),
+                _buildSortOption(SortMode.name, 'Name (A to Z)',
+                    CupertinoIcons.textformat_abc, c),
               ],
             ),
           ),
@@ -435,7 +463,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  Widget _buildSortOption(SortMode mode, String label, IconData icon) {
+  Widget _buildSortOption(
+      SortMode mode, String label, IconData icon, AppThemeColors c) {
     final isSelected = _sortMode == mode;
     return InkWell(
       onTap: () {
@@ -447,20 +476,25 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.appleBlue.withOpacity(0.18) : Colors.transparent,
+          color: isSelected
+              ? c.primary.withOpacity(c.isDark ? 0.20 : 0.12)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
           border: isSelected
-              ? Border.all(color: AppTheme.appleBlue.withOpacity(0.35), width: 0.6)
-              : null,
+              ? Border.all(
+                  color: c.primary.withOpacity(0.4), width: 0.6)
+              : Border.all(color: Colors.transparent, width: 0.6),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: isSelected ? AppTheme.appleBlue : Colors.white54),
-            const SizedBox(width: 14),
+            Icon(icon,
+                size: 20,
+                color: isSelected ? c.primary : c.textSecondary),
+            const SizedBox(width: 12),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? AppTheme.appleBlue : Colors.white,
+                color: isSelected ? c.primary : c.textPrimary,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 fontSize: 15,
                 letterSpacing: -0.2,
@@ -468,7 +502,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             ),
             const Spacer(),
             if (isSelected)
-              const Icon(CupertinoIcons.checkmark, color: AppTheme.appleBlue, size: 18),
+              Icon(CupertinoIcons.checkmark, color: c.primary, size: 18),
           ],
         ),
       ),
@@ -477,223 +511,175 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.colors(context);
     final backup = context.watch<BackupProvider>();
     final favService = FavoritesService.instance;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return ListenableBuilder(
-      listenable: favService,
-      builder: (context, _) {
-        final groupedFolders = _groupItemsByFolder(backup.mediaItems);
-        final sortedFolderNames = groupedFolders.keys.toList()
-          ..sort((a, b) => groupedFolders[b]!.length.compareTo(groupedFolders[a]!.length));
-
-        // Reset opened folder if it was removed
-        if (_openedFolder != null &&
-            _openedFolder != 'All Photos & Videos' &&
-            !groupedFolders.containsKey(_openedFolder)) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _openedFolder != null && !groupedFolders.containsKey(_openedFolder)) {
-              setState(() => _openedFolder = null);
-            }
-          });
-        }
-
-        // Determine active media items based on current tab or folder
-        final List<MediaItem> currentMediaPool;
-        if (_openedFolder != null) {
-          currentMediaPool = _openedFolder == 'All Photos & Videos'
-              ? backup.mediaItems
-              : (groupedFolders[_openedFolder] ?? []);
-        } else if (_currentTabIndex == 2) {
-          // Favorites tab
-          currentMediaPool = backup.mediaItems
-              .where((it) => favService.isFavorite(it.localId))
-              .toList();
-        } else {
-          currentMediaPool = backup.mediaItems;
-        }
-
-        return PopScope(
-          canPop: _openedFolder == null && !_isSelectionMode && !_isSearchOpen && _currentTabIndex == 0,
-          onPopInvokedWithResult: (didPop, result) {
-            if (!didPop) {
-              if (_isSelectionMode) {
-                _exitSelectionMode();
-              } else if (_isSearchOpen) {
-                setState(() {
-                  _isSearchOpen = false;
-                  _searchQuery = '';
-                  _searchController.clear();
-                });
-              } else if (_openedFolder != null) {
-                setState(() => _openedFolder = null);
-              } else if (_currentTabIndex != 0) {
-                setState(() => _currentTabIndex = 0);
-              }
-            }
-          },
-          child: Scaffold(
-            backgroundColor: AppTheme.darkBg,
-            body: Stack(
-              children: [
-                // Haikei-inspired Ambient Radiant Mesh Glows behind glass layers
-                _buildAmbientGlowBackground(),
-
-                // Main Content View
-                SafeArea(
-                  bottom: false,
-                  child: Column(
-                    children: [
-                      // Top Frosted App Bar / Selection Header
-                      _buildTopBar(backup, currentMediaPool, groupedFolders, favService),
-
-                      // Fixed 2px scanning indicator so layout never shifts or flickers
-                      SizedBox(
-                        height: 2,
-                        child: backup.isScanning && backup.mediaItems.isNotEmpty
-                            ? const LinearProgressIndicator(
-                                minHeight: 2,
-                                backgroundColor: Colors.transparent,
-                                color: AppTheme.primaryAccent,
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-
-                      // Animated Search Bar
-                      if (_isSearchOpen) _buildSearchBar(),
-
-                      // 3D Category Filter Strip (when not in Albums tab or when inside a folder)
-                      if (_openedFolder != null || _currentTabIndex != 1)
-                        _buildCategoryPillStrip(favService),
-
-                      // Main Content Body
-                      Expanded(
-                        child: _buildCurrentTabContent(
-                          backup,
-                          groupedFolders,
-                          sortedFolderNames,
-                          currentMediaPool,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Apple Photos Floating Rounded Bottom Tab Bar / Batch Actions Bar
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: MediaQuery.of(context).padding.bottom > 0
-                      ? MediaQuery.of(context).padding.bottom + 4
-                      : 16,
-                  child: _isSelectionMode
-                      ? _buildBatchActionBar(currentMediaPool)
-                      : _buildFloatingBottomNav(),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    final systemUiOverlay = SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness:
+          isDark ? Brightness.light : Brightness.dark,
     );
-  }
 
-  /// Haikei-inspired Ambient Radiant Mesh Glows behind glass layers
-  Widget _buildAmbientGlowBackground() {
-    return Positioned.fill(
-      child: Stack(
-        children: [
-          // Top right subtle sapphire cyan radiance
-          Positioned(
-            top: -100,
-            right: -60,
-            child: IgnorePointer(
-              child: Container(
-                width: 320,
-                height: 320,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      const Color(0xFF0A84FF).withOpacity(0.12),
-                      const Color(0xFF64D2FF).withOpacity(0.04),
-                      Colors.transparent,
-                    ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: systemUiOverlay,
+      child: ListenableBuilder(
+        listenable: favService,
+        builder: (context, _) {
+          final groupedFolders = _groupItemsByFolder(backup.mediaItems);
+          final sortedFolderNames = groupedFolders.keys.toList()
+            ..sort((a, b) =>
+                groupedFolders[b]!.length.compareTo(groupedFolders[a]!.length));
+
+          // Reset opened folder if it was removed
+          if (_openedFolder != null &&
+              _openedFolder != 'All Photos & Videos' &&
+              !groupedFolders.containsKey(_openedFolder)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted &&
+                  _openedFolder != null &&
+                  !groupedFolders.containsKey(_openedFolder)) {
+                setState(() => _openedFolder = null);
+              }
+            });
+          }
+
+          // Determine active media items based on current tab or folder
+          final List<MediaItem> currentMediaPool;
+          if (_openedFolder != null) {
+            currentMediaPool = _openedFolder == 'All Photos & Videos'
+                ? backup.mediaItems
+                : (groupedFolders[_openedFolder] ?? []);
+          } else if (_currentTabIndex == 2) {
+            // Favorites tab
+            currentMediaPool = backup.mediaItems
+                .where((it) => favService.isFavorite(it.localId))
+                .toList();
+          } else {
+            currentMediaPool = backup.mediaItems;
+          }
+
+          return PopScope(
+            canPop: _openedFolder == null &&
+                !_isSelectionMode &&
+                !_isSearchOpen &&
+                _currentTabIndex == 0,
+            onPopInvokedWithResult: (didPop, result) {
+              if (!didPop) {
+                if (_isSelectionMode) {
+                  _exitSelectionMode();
+                } else if (_isSearchOpen) {
+                  setState(() {
+                    _isSearchOpen = false;
+                    _searchQuery = '';
+                    _searchController.clear();
+                  });
+                } else if (_openedFolder != null) {
+                  setState(() => _openedFolder = null);
+                } else if (_currentTabIndex != 0) {
+                  setState(() => _currentTabIndex = 0);
+                }
+              }
+            },
+            child: Scaffold(
+              backgroundColor: c.bg,
+              body: Stack(
+                children: [
+                  // Haikei-inspired Animated Organic Fluid Background
+                  const Positioned.fill(
+                    child: HaikeiBackground(),
                   ),
-                ),
+
+                  // Main Content View
+                  SafeArea(
+                    bottom: false,
+                    child: Column(
+                      children: [
+                        // Top Frosted Glass App Bar / Selection Header
+                        _buildTopBar(
+                            backup, currentMediaPool, groupedFolders, favService, c),
+
+                        // Fixed 2px scanning progress indicator
+                        SizedBox(
+                          height: 2,
+                          child: backup.isScanning && backup.mediaItems.isNotEmpty
+                              ? LinearProgressIndicator(
+                                  minHeight: 2,
+                                  backgroundColor: Colors.transparent,
+                                  color: c.primary,
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+
+                        // Animated Search Bar
+                        if (_isSearchOpen) _buildSearchBar(c),
+
+                        // Motion Primitives Category Filter Strip
+                        if (_openedFolder != null || _currentTabIndex != 1)
+                          _buildCategoryPillStrip(favService, c),
+
+                        // Main Content Body
+                        Expanded(
+                          child: _buildCurrentTabContent(
+                            backup,
+                            groupedFolders,
+                            sortedFolderNames,
+                            currentMediaPool,
+                            c,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Motion Primitives Floating Rounded Bottom Navigation / Batch Bar
+                  Positioned(
+                    left: 20,
+                    right: 20,
+                    bottom: MediaQuery.of(context).padding.bottom > 0
+                        ? MediaQuery.of(context).padding.bottom + 4
+                        : 16,
+                    child: _isSelectionMode
+                        ? _buildBatchActionBar(currentMediaPool, c)
+                        : _buildFloatingBottomNav(c),
+                  ),
+                ],
               ),
             ),
-          ),
-          // Middle left subtle electric indigo radiance
-          Positioned(
-            top: 320,
-            left: -100,
-            child: IgnorePointer(
-              child: Container(
-                width: 280,
-                height: 280,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      const Color(0xFF5E5CE6).withOpacity(0.08),
-                      const Color(0xFFBF5AF2).withOpacity(0.02),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // Bottom right subtle deep azure glow
-          Positioned(
-            bottom: 60,
-            right: -80,
-            child: IgnorePointer(
-              child: Container(
-                width: 300,
-                height: 300,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      const Color(0xFF0A84FF).withOpacity(0.08),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
-  /// Apple Photos Top Navigation Bar: changes to selection toolbar when in batch mode
+  /// 3D Glassmorphic Top Bar with Realtime Colors & Specular Light Sheen
   Widget _buildTopBar(
     BackupProvider backup,
     List<MediaItem> currentPool,
     Map<String, List<MediaItem>> groupedFolders,
     FavoritesService favService,
+    AppThemeColors c,
   ) {
     if (_isSelectionMode) {
       return ClipRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: AppTheme.appleBlurBar(),
+            decoration: AppTheme.appleBlurBar(context: context),
             child: Row(
               children: [
                 CupertinoButton(
                   padding: EdgeInsets.zero,
                   minSize: 0,
                   onPressed: _exitSelectionMode,
-                  child: const Text(
+                  child: Text(
                     'Cancel',
                     style: TextStyle(
-                      color: AppTheme.appleBlue,
+                      color: c.primary,
                       fontSize: 16,
                       fontWeight: FontWeight.w400,
                     ),
@@ -703,8 +689,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   child: Text(
                     '${_selectedIds.length} Selected',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: c.textPrimary,
                       fontWeight: FontWeight.w600,
                       fontSize: 15,
                       letterSpacing: -0.2,
@@ -716,11 +702,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   minSize: 0,
                   onPressed: () => _selectAll(currentPool),
                   child: Text(
-                    _selectedIds.length == currentPool.length ? 'Deselect All' : 'Select All',
-                    style: const TextStyle(
-                      color: AppTheme.appleBlue,
+                    _selectedIds.length == currentPool.length
+                        ? 'Deselect All'
+                        : 'Select All',
+                    style: TextStyle(
+                      color: c.primary,
                       fontSize: 16,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -742,10 +730,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
     return ClipRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-          decoration: AppTheme.appleBlurBar(),
+          decoration: AppTheme.appleBlurBar(context: context),
           child: Row(
             children: [
               // Back button if folder opened
@@ -754,25 +742,27 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   padding: EdgeInsets.zero,
                   minSize: 0,
                   onPressed: () => setState(() => _openedFolder = null),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(CupertinoIcons.chevron_back, color: AppTheme.appleBlue, size: 26),
-                      Text('Albums', style: TextStyle(color: AppTheme.appleBlue, fontSize: 16)),
+                      Icon(CupertinoIcons.chevron_back,
+                          color: c.primary, size: 26),
+                      Text('Albums',
+                          style: TextStyle(color: c.primary, fontSize: 16)),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
               ],
 
-              // Title in Apple Bold Typography
+              // Title in Bold Realtime Colors Typography
               Expanded(
                 child: Text(
                   titleText,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: c.textPrimary,
                     letterSpacing: -0.5,
                   ),
                   maxLines: 1,
@@ -780,7 +770,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 ),
               ),
 
-              // Search button
+              // Search Button with 3D Glass Pill
               CupertinoButton(
                 padding: const EdgeInsets.all(5),
                 minSize: 0,
@@ -794,15 +784,21 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   });
                 },
                 child: Container(
-                  padding: const EdgeInsets.all(7),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _isSearchOpen ? Colors.white.withOpacity(0.18) : Colors.white.withOpacity(0.06),
+                    color: _isSearchOpen
+                        ? c.primary.withOpacity(0.18)
+                        : (c.isDark
+                            ? Colors.white.withOpacity(0.06)
+                            : Colors.black.withOpacity(0.04)),
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.08), width: 0.5),
+                    border: Border.all(color: c.glassBorder, width: 0.6),
                   ),
                   child: Icon(
-                    _isSearchOpen ? CupertinoIcons.clear : CupertinoIcons.search,
-                    color: _isSearchOpen ? Colors.white : AppTheme.appleBlue,
+                    _isSearchOpen
+                        ? CupertinoIcons.clear
+                        : CupertinoIcons.search,
+                    color: _isSearchOpen ? c.primary : c.textSecondary,
                     size: 19,
                   ),
                 ),
@@ -815,15 +811,19 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   minSize: 0,
                   onPressed: () {
                     setState(() {
-                      _gridColumns = _gridColumns == 2 ? 3 : (_gridColumns == 3 ? 4 : 2);
+                      _gridColumns = _gridColumns == 2
+                          ? 3
+                          : (_gridColumns == 3 ? 4 : 2);
                     });
                   },
                   child: Container(
-                    padding: const EdgeInsets.all(7),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
+                      color: c.isDark
+                          ? Colors.white.withOpacity(0.06)
+                          : Colors.black.withOpacity(0.04),
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withOpacity(0.08), width: 0.5),
+                      border: Border.all(color: c.glassBorder, width: 0.6),
                     ),
                     child: Icon(
                       _gridColumns == 2
@@ -831,33 +831,35 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           : (_gridColumns == 3
                               ? CupertinoIcons.rectangle_grid_3x2
                               : CupertinoIcons.circle_grid_hex),
-                      color: AppTheme.appleBlue,
+                      color: c.primary,
                       size: 19,
                     ),
                   ),
                 ),
 
-              // Sort Options
+              // Sort Options Button
               CupertinoButton(
                 padding: const EdgeInsets.all(5),
                 minSize: 0,
                 onPressed: _showSortOptionsDialog,
                 child: Container(
-                  padding: const EdgeInsets.all(7),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.06),
+                    color: c.isDark
+                        ? Colors.white.withOpacity(0.06)
+                        : Colors.black.withOpacity(0.04),
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.08), width: 0.5),
+                    border: Border.all(color: c.glassBorder, width: 0.6),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     CupertinoIcons.arrow_up_arrow_down,
-                    color: AppTheme.appleBlue,
+                    color: c.primary,
                     size: 18,
                   ),
                 ),
               ),
 
-              // Select button
+              // Select Button Pill
               CupertinoButton(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                 minSize: 0,
@@ -865,16 +867,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   setState(() => _isSelectionMode = true);
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
+                    color: c.primary.withOpacity(c.isDark ? 0.16 : 0.10),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.10), width: 0.5),
+                    border: Border.all(
+                      color: c.primary.withOpacity(0.35),
+                      width: 0.6,
+                    ),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Select',
                     style: TextStyle(
-                      color: AppTheme.appleBlue,
+                      color: c.primary,
                       fontSize: 14.5,
                       fontWeight: FontWeight.w600,
                       letterSpacing: -0.2,
@@ -889,31 +895,40 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  /// Apple Photos Search Bar
-  Widget _buildSearchBar() {
-    return Container(
+  /// 3D Glassmorphic Animated Search Bar
+  Widget _buildSearchBar(AppThemeColors c) {
+    return AnimatedContainer(
+      duration: AppTheme.motionFast,
+      curve: AppTheme.motionCurve,
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0x661E2332),
-        borderRadius: BorderRadius.circular(14),
+        color: c.surfaceGlassInput,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.14),
-          width: 0.6,
+          color: c.glassBorder,
+          width: 0.7,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(c.isDark ? 0.25 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          const Icon(CupertinoIcons.search, color: AppTheme.darkTextSecondary, size: 18),
+          Icon(CupertinoIcons.search, color: c.textSecondary, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _searchController,
               autofocus: true,
-              style: const TextStyle(color: Colors.white, fontSize: 15),
-              decoration: const InputDecoration(
+              style: TextStyle(color: c.textPrimary, fontSize: 15),
+              decoration: InputDecoration(
                 hintText: 'Search photos, videos, albums',
-                hintStyle: TextStyle(color: AppTheme.darkTextSecondary, fontSize: 15),
+                hintStyle: TextStyle(color: c.textSecondary, fontSize: 15),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.zero,
@@ -931,28 +946,33 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 _searchController.clear();
                 setState(() => _searchQuery = '');
               },
-              child: const Icon(CupertinoIcons.clear_circled_solid, color: AppTheme.darkTextSecondary, size: 18),
+              child: Icon(CupertinoIcons.clear_circled_solid,
+                  color: c.textSecondary, size: 18),
             ),
         ],
       ),
     );
   }
 
-  /// Apple Photos Category Filter Strip
-  Widget _buildCategoryPillStrip(FavoritesService favService) {
+  /// Motion Primitives Category Filter Strip with Dynamic Realtime Colors
+  Widget _buildCategoryPillStrip(FavoritesService favService, AppThemeColors c) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       child: Row(
         children: [
-          _buildFilterChip('All', CupertinoIcons.square_grid_2x2, MediaFilter.all),
-          _buildFilterChip('Photos', CupertinoIcons.photo, MediaFilter.photos),
-          _buildFilterChip('Videos', CupertinoIcons.videocam, MediaFilter.videos),
+          _buildFilterChip('All', CupertinoIcons.square_grid_2x2,
+              MediaFilter.all, c),
+          _buildFilterChip('Photos', CupertinoIcons.photo,
+              MediaFilter.photos, c),
+          _buildFilterChip('Videos', CupertinoIcons.videocam,
+              MediaFilter.videos, c),
           _buildFilterChip(
             'Favorites (${favService.count})',
             CupertinoIcons.heart_fill,
             MediaFilter.favorites,
+            c,
           ),
         ],
       ),
@@ -963,6 +983,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     String label,
     IconData icon,
     MediaFilter filter,
+    AppThemeColors c,
   ) {
     final isSelected = _activeFilter == filter;
     return GestureDetector(
@@ -971,25 +992,33 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       },
       child: AnimatedContainer(
         duration: AppTheme.motionFast,
-        curve: AppTheme.motionCurve,
+        curve: AppTheme.springCurve,
         margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : const Color(0x661F2332),
-          borderRadius: BorderRadius.circular(18),
+          color: isSelected ? c.primary : c.surfaceGlass,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? Colors.white : Colors.white.withOpacity(0.12),
+            color: isSelected
+                ? Colors.transparent
+                : c.glassBorder,
             width: 0.6,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.white.withOpacity(0.2),
-                    blurRadius: 8,
+                    color: c.primary.withOpacity(0.35),
+                    blurRadius: 10,
                     offset: const Offset(0, 2),
                   ),
                 ]
-              : null,
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(c.isDark ? 0.20 : 0.04),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -997,15 +1026,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             Icon(
               icon,
               size: 13,
-              color: isSelected ? Colors.black : Colors.white70,
+              color: isSelected ? Colors.white : c.textSecondary,
             ),
-            const SizedBox(width: 5),
+            const SizedBox(width: 5.5),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.black : Colors.white,
+                color: isSelected ? Colors.white : c.textPrimary,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                fontSize: 12.5,
+                fontSize: 13,
                 letterSpacing: -0.1,
               ),
             ),
@@ -1020,36 +1049,40 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     Map<String, List<MediaItem>> groupedFolders,
     List<String> sortedFolderNames,
     List<MediaItem> currentPool,
+    AppThemeColors c,
   ) {
     if (_openedFolder != null) {
-      return _buildFolderMediaView(backup, groupedFolders);
+      return _buildFolderMediaView(backup, groupedFolders, c);
     }
 
     switch (_currentTabIndex) {
       case 1:
         // Albums Tab (3D Stacks + Featured Moments)
-        return _buildFoldersView(backup, groupedFolders, sortedFolderNames);
+        return _buildFoldersView(backup, groupedFolders, sortedFolderNames, c);
       case 2:
         // Favorites Tab
-        return _buildTimelineView(backup, currentPool, emptyMessage: 'No favorite items yet');
+        return _buildTimelineView(backup, currentPool, c,
+            emptyMessage: 'No favorite items yet');
       case 0:
       default:
         // Photos Timeline Tab
-        return _buildTimelineView(backup, currentPool, emptyMessage: 'No photos or videos');
+        return _buildTimelineView(backup, currentPool, c,
+            emptyMessage: 'No photos or videos');
     }
   }
 
   /// Flagship Timeline Photostream with Sticky Date Section Headers
   Widget _buildTimelineView(
     BackupProvider backup,
-    List<MediaItem> rawItems, {
+    List<MediaItem> rawItems,
+    AppThemeColors c, {
     String emptyMessage = 'No media found',
   }) {
     final filtered = _filterAndSortItems(rawItems);
 
     if (filtered.isEmpty) {
       if (backup.mediaItems.isEmpty) {
-        return _buildEmptyState(backup);
+        return _buildEmptyState(backup, c);
       }
       return Center(
         child: Column(
@@ -1059,15 +1092,21 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppTheme.darkCard,
-                border: Border.all(color: Colors.white12),
+                color: c.surfaceGlass,
+                border: Border.all(color: c.glassBorder),
               ),
-              child: const Icon(Icons.photo_library_outlined, size: 44, color: Colors.white24),
+              child: Icon(Icons.photo_library_outlined,
+                  size: 44, color: c.textTertiary),
             ),
             const SizedBox(height: 16),
             Text(
-              _searchQuery.isNotEmpty ? 'No results for "$_searchQuery"' : emptyMessage,
-              style: const TextStyle(fontSize: 15, color: Colors.white70, fontWeight: FontWeight.w600),
+              _searchQuery.isNotEmpty
+                  ? 'No results for "$_searchQuery"'
+                  : emptyMessage,
+              style: TextStyle(
+                  fontSize: 15,
+                  color: c.textSecondary,
+                  fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -1077,19 +1116,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final dateGroups = _groupByDate(filtered);
 
     return RefreshIndicator(
-      color: AppTheme.primaryAccent,
-      backgroundColor: AppTheme.darkCard,
+      color: c.primary,
+      backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: true),
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           for (final entry in dateGroups.entries) ...[
-            // Apple Date Section Header
+            // Date Section Header
             SliverToBoxAdapter(
               child: Builder(
                 builder: (context) {
                   final isGroupSelected = entry.value.isNotEmpty &&
-                      entry.value.every((it) => _selectedIds.contains(it.localId));
+                      entry.value
+                          .every((it) => _selectedIds.contains(it.localId));
 
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(14, 18, 14, 6),
@@ -1099,20 +1139,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       children: [
                         Text(
                           entry.key,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: c.textPrimary,
                             letterSpacing: -0.4,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           '${entry.value.length}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w400,
-                            color: AppTheme.darkTextSecondary,
+                            color: c.textSecondary,
                           ),
                         ),
                         const Spacer(),
@@ -1123,9 +1163,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                             onPressed: () => _toggleSelectDateGroup(entry.value),
                             child: Text(
                               isGroupSelected ? 'Deselect' : 'Select',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
-                                color: AppTheme.appleBlue,
+                                color: c.primary,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -1137,7 +1177,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               ),
             ),
 
-            // Apple Photo Grid (Square 1:1, 2px spacing)
+            // Photo Grid (Square 1:1, 2px spacing)
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
               sliver: SliverGrid(
@@ -1175,11 +1215,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                               reverseTransitionDuration: Duration.zero,
                               pageBuilder: (_, _, _) => MediaPreviewScreen(
                                 items: filtered,
-                                initialIndex: globalIndex != -1 ? globalIndex : 0,
+                                initialIndex:
+                                    globalIndex != -1 ? globalIndex : 0,
                               ),
                               transitionsBuilder: (_, animation, _, child) =>
-                                  FadeTransition(opacity: animation, child: child),
-                              transitionDuration: const Duration(milliseconds: 180),
+                                  FadeTransition(
+                                      opacity: animation, child: child),
+                              transitionDuration:
+                                  const Duration(milliseconds: 180),
                             ),
                           );
                         }
@@ -1192,18 +1235,21 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             ),
           ],
 
-          // Authentic Apple Photos Library Status Footer
+          // Library Status Footer
           SliverToBoxAdapter(
-            child: _buildLibraryStatusFooter(backup, rawItems),
+            child: _buildLibraryStatusFooter(backup, rawItems, c),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLibraryStatusFooter(BackupProvider backup, List<MediaItem> allItems) {
-    final photoCount = allItems.where((i) => i.mediaType == AppMediaType.image).length;
-    final videoCount = allItems.where((i) => i.mediaType == AppMediaType.video).length;
+  Widget _buildLibraryStatusFooter(
+      BackupProvider backup, List<MediaItem> allItems, AppThemeColors c) {
+    final photoCount =
+        allItems.where((i) => i.mediaType == AppMediaType.image).length;
+    final videoCount =
+        allItems.where((i) => i.mediaType == AppMediaType.video).length;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
@@ -1213,40 +1259,41 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         children: [
           Text(
             '$photoCount Photos, $videoCount Videos',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: c.textPrimary,
               letterSpacing: -0.2,
             ),
           ),
-          const SizedBox(height: 105), // Room for floating rounded bottom navbar
+          const SizedBox(height: 105), // Room for floating bottom nav
         ],
       ),
     );
   }
 
-  /// Primary View: Shows 3D Showcase Carousel + Phone albums as 3D stacked cards
+  /// Primary View: Shows 3D Showcase Carousel + Albums as 3D stacked cards
   Widget _buildFoldersView(
     BackupProvider backup,
     Map<String, List<MediaItem>> groupedFolders,
     List<String> sortedFolderNames,
+    AppThemeColors c,
   ) {
     if (backup.mediaItems.isEmpty) {
-      return _buildEmptyState(backup);
+      return _buildEmptyState(backup, c);
     }
 
     final totalCount = backup.mediaItems.length;
     final totalFolders = sortedFolderNames.length;
 
     return RefreshIndicator(
-      color: AppTheme.primaryAccent,
-      backgroundColor: AppTheme.darkCard,
+      color: c.primary,
+      backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: true),
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          // 3D Featured Coverflow Carousel (if active filter is all and not searching)
+          // 3D Featured Showcase Carousel
           if (_showFeaturedShowcase &&
               _searchQuery.isEmpty &&
               _activeFilter == MediaFilter.all &&
@@ -1271,17 +1318,18 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   onTap: () => _toggleFeaturedMoments(true),
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0x661E2332),
+                      color: c.surfaceGlass,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.14),
+                        color: c.glassBorder,
                         width: 0.6,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.appleBlue.withOpacity(0.12),
+                          color: c.primary.withOpacity(0.12),
                           blurRadius: 10,
                           offset: const Offset(0, 2),
                         ),
@@ -1291,19 +1339,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       children: [
                         Container(
                           padding: const EdgeInsets.all(5),
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: LinearGradient(
-                              colors: [AppTheme.primaryAccent, AppTheme.electricViolet],
+                              colors: [c.primary, c.secondary],
                             ),
                           ),
-                          child: const Icon(Icons.auto_awesome, size: 13, color: Colors.black),
+                          child: const Icon(Icons.auto_awesome,
+                              size: 13, color: Colors.white),
                         ),
                         const SizedBox(width: 10),
-                        const Text(
+                        Text(
                           'Show Featured Moments',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: c.textPrimary,
                             fontSize: 13.5,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.1,
@@ -1314,11 +1363,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.06),
+                            color: c.isDark
+                                ? Colors.white.withOpacity(0.06)
+                                : Colors.black.withOpacity(0.04),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.keyboard_arrow_down_rounded,
-                            color: AppTheme.primaryAccent,
+                            color: c.primary,
                             size: 18,
                           ),
                         ),
@@ -1336,20 +1387,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'My Albums',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: c.textPrimary,
                       letterSpacing: -0.4,
                     ),
                   ),
                   Text(
                     '$totalFolders albums',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: AppTheme.darkTextSecondary,
+                      color: c.textSecondary,
                       fontWeight: FontWeight.w400,
                     ),
                   ),
@@ -1358,7 +1409,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             ),
           ),
 
-          // 2-Column Apple Photos Albums Grid
+          // 2-Column Albums Grid
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
             sliver: SliverGrid(
@@ -1413,6 +1464,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   Widget _buildFolderMediaView(
     BackupProvider backup,
     Map<String, List<MediaItem>> groupedFolders,
+    AppThemeColors c,
   ) {
     final List<MediaItem> rawItems;
     if (_openedFolder == 'All Photos & Videos') {
@@ -1432,10 +1484,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppTheme.darkCard,
-                border: Border.all(color: Colors.white12),
+                color: c.surfaceGlass,
+                border: Border.all(color: c.glassBorder),
               ),
-              child: const Icon(Icons.perm_media_outlined, size: 48, color: Colors.white24),
+              child: Icon(Icons.perm_media_outlined,
+                  size: 48, color: c.textTertiary),
             ),
             const SizedBox(height: 16),
             Text(
@@ -1444,9 +1497,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   : (_activeFilter == MediaFilter.favorites
                       ? 'No favorite items in this album'
                       : 'No media in "$_openedFolder"'),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
-                color: Colors.white70,
+                color: c.textSecondary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1456,8 +1509,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     }
 
     return RefreshIndicator(
-      color: AppTheme.primaryAccent,
-      backgroundColor: AppTheme.darkCard,
+      color: c.primary,
+      backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: true),
       child: GridView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -1510,15 +1563,16 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  /// Apple Photos Translucent Rounded Bottom Tab Bar
-  Widget _buildFloatingBottomNav() {
+  /// Motion Primitives 3D Translucent Floating Bottom Navbar
+  /// Features a sliding spring indicator capsule under the active tab!
+  Widget _buildFloatingBottomNav(AppThemeColors c) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(34),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: AppTheme.floatingNavbarDecoration(),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: AppTheme.floatingNavbarDecoration(context: context),
           child: Stack(
             children: [
               // Specular top light rim
@@ -1526,25 +1580,81 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 top: 0,
                 left: 16,
                 right: 16,
-                height: 1,
+                height: 1.5,
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
                         Colors.transparent,
-                        Colors.white.withOpacity(0.35),
+                        Colors.white.withOpacity(c.isDark ? 0.35 : 0.60),
                         Colors.transparent,
                       ],
                     ),
                   ),
                 ),
               ),
+
+              // Sliding Spring Pill Indicator
+              Positioned.fill(
+                child: AnimatedAlign(
+                  duration: AppTheme.motionSpring,
+                  curve: AppTheme.springCurve,
+                  alignment: _openedFolder != null
+                      ? const Alignment(-3.0, 0.0)
+                      : (_currentTabIndex == 0
+                          ? const Alignment(-1.0, 0.0)
+                          : (_currentTabIndex == 1
+                              ? const Alignment(0.0, 0.0)
+                              : const Alignment(1.0, 0.0))),
+                  child: FractionallySizedBox(
+                    widthFactor: 1 / 3,
+                    heightFactor: 1.0,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: c.isDark
+                              ? Colors.white.withOpacity(0.12)
+                              : c.primary.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: c.isDark
+                                ? Colors.white.withOpacity(0.14)
+                                : c.primary.withOpacity(0.20),
+                            width: 0.6,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Tab Items
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildAppleTabItem(0, 'Library', CupertinoIcons.photo_on_rectangle, CupertinoIcons.photo_fill_on_rectangle_fill),
-                  _buildAppleTabItem(1, 'Albums', CupertinoIcons.rectangle_stack, CupertinoIcons.rectangle_stack_fill),
-                  _buildAppleTabItem(2, 'Favorites', CupertinoIcons.heart, CupertinoIcons.heart_fill),
+                  _buildAppleTabItem(
+                    0,
+                    'Library',
+                    CupertinoIcons.photo_on_rectangle,
+                    CupertinoIcons.photo_fill_on_rectangle_fill,
+                    c,
+                  ),
+                  _buildAppleTabItem(
+                    1,
+                    'Albums',
+                    CupertinoIcons.rectangle_stack,
+                    CupertinoIcons.rectangle_stack_fill,
+                    c,
+                  ),
+                  _buildAppleTabItem(
+                    2,
+                    'Favorites',
+                    CupertinoIcons.heart,
+                    CupertinoIcons.heart_fill,
+                    c,
+                  ),
                 ],
               ),
             ],
@@ -1554,99 +1664,99 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  Widget _buildAppleTabItem(int index, String label, IconData unselectedIcon, IconData selectedIcon) {
+  Widget _buildAppleTabItem(
+    int index,
+    String label,
+    IconData unselectedIcon,
+    IconData selectedIcon,
+    AppThemeColors c,
+  ) {
     final isSelected = _currentTabIndex == index && _openedFolder == null;
     final favCount = FavoritesService.instance.count;
 
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      minSize: 0,
-      onPressed: () {
-        setState(() {
-          _currentTabIndex = index;
-          _openedFolder = null;
-        });
-      },
-      child: AnimatedContainer(
-        duration: AppTheme.motionFast,
-        curve: AppTheme.motionCurve,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withOpacity(0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(22),
-          border: isSelected
-              ? Border.all(color: Colors.white.withOpacity(0.12), width: 0.5)
-              : Border.all(color: Colors.transparent, width: 0.5),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                AnimatedScale(
-                  scale: isSelected ? 1.08 : 1.0,
-                  duration: AppTheme.motionFast,
-                  curve: AppTheme.motionCurve,
-                  child: Icon(
-                    isSelected ? selectedIcon : unselectedIcon,
-                    size: 22,
-                    color: isSelected ? AppTheme.appleBlue : AppTheme.darkTextSecondary,
+    return Expanded(
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        minSize: 0,
+        onPressed: () {
+          setState(() {
+            _currentTabIndex = index;
+            _openedFolder = null;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedScale(
+                    scale: isSelected ? 1.08 : 1.0,
+                    duration: AppTheme.motionFast,
+                    curve: AppTheme.springCurve,
+                    child: Icon(
+                      isSelected ? selectedIcon : unselectedIcon,
+                      size: 22,
+                      color: isSelected ? c.primary : c.textSecondary,
+                    ),
                   ),
-                ),
-                if (index == 2 && favCount > 0 && !isSelected)
-                  Positioned(
-                    top: -3,
-                    right: -8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: AppTheme.roseDanger,
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.roseDanger.withOpacity(0.4),
-                            blurRadius: 4,
+                  if (index == 2 && favCount > 0 && !isSelected)
+                    Positioned(
+                      top: -3,
+                      right: -8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4.5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: c.accentRose,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: c.accentRose.withOpacity(0.4),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          '$favCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
                           ),
-                        ],
-                      ),
-                      child: Text(
-                        '$favCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color: isSelected ? Colors.white : AppTheme.darkTextSecondary,
-                letterSpacing: -0.1,
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  color: isSelected ? c.primary : c.textSecondary,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// Apple Photos Translucent Floating Batch Action Bar
-  Widget _buildBatchActionBar(List<MediaItem> allItems) {
+  /// 3D Translucent Floating Batch Action Bar
+  Widget _buildBatchActionBar(List<MediaItem> allItems, AppThemeColors c) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(34),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          decoration: AppTheme.floatingNavbarDecoration(),
+          decoration: AppTheme.floatingNavbarDecoration(context: context),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -1657,11 +1767,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(CupertinoIcons.share, color: AppTheme.appleBlue, size: 22),
+                    Icon(CupertinoIcons.share, color: c.primary, size: 22),
                     const SizedBox(height: 3),
                     Text(
                       'Share (${_selectedIds.length})',
-                      style: const TextStyle(color: AppTheme.appleBlue, fontSize: 11, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                          color: c.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -1670,12 +1783,16 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 minSize: 0,
                 onPressed: () => _batchToggleFavorites(allItems),
-                child: const Column(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(CupertinoIcons.heart, color: AppTheme.appleBlue, size: 22),
-                    SizedBox(height: 3),
-                    Text('Favorite', style: TextStyle(color: AppTheme.appleBlue, fontSize: 11, fontWeight: FontWeight.w500)),
+                    Icon(CupertinoIcons.heart, color: c.primary, size: 22),
+                    const SizedBox(height: 3),
+                    Text('Favorite',
+                        style: TextStyle(
+                            color: c.primary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500)),
                   ],
                 ),
               ),
@@ -1686,11 +1803,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(CupertinoIcons.trash, color: AppTheme.roseDanger, size: 22),
+                    Icon(CupertinoIcons.trash, color: c.accentRose, size: 22),
                     const SizedBox(height: 3),
                     Text(
                       'Delete (${_selectedIds.length})',
-                      style: const TextStyle(color: AppTheme.roseDanger, fontSize: 11, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                          color: c.accentRose,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -1702,11 +1822,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  Widget _buildEmptyState(BackupProvider backup) {
+  Widget _buildEmptyState(BackupProvider backup, AppThemeColors c) {
     final hasPerm = MediaScannerService.instance.isPermissionGranted;
     return RefreshIndicator(
-      color: AppTheme.primaryAccent,
-      backgroundColor: AppTheme.darkCard,
+      color: c.primary,
+      backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: false),
       child: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
@@ -1723,15 +1843,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0x66181C28),
+                        color: c.surfaceGlass,
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.14),
+                          color: c.glassBorder,
                           width: 0.8,
                         ),
                         boxShadow: AppTheme.depthShadow(
                           depth: 14,
-                          glowColor: AppTheme.appleBlue,
-                          glowOpacity: 0.15,
+                          glowColor: c.primary,
+                          glowOpacity: 0.18,
                         ),
                       ),
                       child: Icon(
@@ -1741,9 +1861,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                                 ? CupertinoIcons.lock
                                 : CupertinoIcons.photo_on_rectangle),
                         size: 50,
-                        color: backup.isScanning
-                            ? AppTheme.appleBlue
-                            : Colors.white38,
+                        color: backup.isScanning ? c.primary : c.textTertiary,
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -1753,9 +1871,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           : (!hasPerm
                               ? 'Media Permission Required'
                               : 'No Photos or Videos'),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
-                        color: Colors.white,
+                        color: c.textPrimary,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.3,
                       ),
@@ -1770,7 +1888,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13.5,
-                        color: Colors.white.withOpacity(0.55),
+                        color: c.textSecondary,
                       ),
                     ),
                     if (!backup.isScanning) ...[
@@ -1784,7 +1902,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           icon: const Icon(Icons.security, size: 18),
                           label: const Text('Grant Media Permission'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.appleBlue,
+                            backgroundColor: c.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
@@ -1800,10 +1918,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         TextButton.icon(
                           onPressed: () =>
                               MediaScannerService.instance.openSettings(),
-                          icon: const Icon(Icons.settings,
-                              size: 16, color: Colors.white54),
-                          label: const Text('Open App Settings',
-                              style: TextStyle(color: Colors.white70)),
+                          icon: Icon(Icons.settings,
+                              size: 16, color: c.textSecondary),
+                          label: Text('Open App Settings',
+                              style: TextStyle(color: c.textSecondary)),
                         ),
                       ] else ...[
                         ElevatedButton.icon(
@@ -1812,7 +1930,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           icon: const Icon(Icons.refresh_rounded, size: 18),
                           label: const Text('Scan Device Media'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.appleBlue,
+                            backgroundColor: c.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),

@@ -328,38 +328,40 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     if (_items.isEmpty) return;
     final item = _items[_currentIndex];
 
+    final c = AppTheme.colors(context);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: AlertDialog(
-          backgroundColor: const Color(0xD6141826),
+          backgroundColor: c.surfaceGlass,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
             side: BorderSide(
-              color: Colors.white.withOpacity(0.16),
+              color: c.glassBorder,
               width: 0.8,
             ),
           ),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.delete_forever_rounded, color: AppTheme.roseDanger, size: 24),
-              SizedBox(width: 10),
-              Text('Delete File?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              Icon(Icons.delete_forever_rounded, color: c.accentRose, size: 24),
+              const SizedBox(width: 10),
+              Text('Delete File?', style: TextStyle(color: c.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
             ],
           ),
           content: Text(
             'Are you sure you want to delete "${item.fileName}" from device storage?',
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            style: TextStyle(color: c.textSecondary, fontSize: 14),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child: Text('Cancel', style: TextStyle(color: c.textSecondary)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.roseDanger,
+                backgroundColor: c.accentRose,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
@@ -405,6 +407,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     if (_items.isEmpty) return;
     final item = _items[_currentIndex];
     final df = DateFormat('d MMMM yyyy, h:mm a');
+    final c = AppTheme.colors(context);
 
     showModalBottomSheet(
       context: context,
@@ -416,10 +419,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xEA141724),
+              color: c.surfaceGlassFloating,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
               border: Border.all(
-                color: Colors.white.withOpacity(0.14),
+                color: c.glassBorder,
                 width: 0.6,
               ),
             ),
@@ -438,7 +441,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     width: 38,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.3),
+                      color: c.textTertiary.withOpacity(0.4),
                       borderRadius: BorderRadius.circular(2.5),
                     ),
                   ),
@@ -447,10 +450,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   'Info',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: c.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.3,
@@ -463,10 +466,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                   child: Container(
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: c.isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.06),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(CupertinoIcons.clear, color: Colors.white70, size: 14),
+                    child: Icon(CupertinoIcons.clear, color: c.textSecondary, size: 14),
                   ),
                 ),
               ],
@@ -483,6 +486,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     item.formattedDimensions.isNotEmpty
                         ? item.formattedDimensions
                         : 'Standard',
+                    c,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -491,6 +495,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     Icons.data_usage_rounded,
                     'File Size',
                     item.formattedSize,
+                    c,
                   ),
                 ),
               ],
@@ -503,6 +508,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     Icons.folder_outlined,
                     'Album',
                     item.displayFolderName,
+                    c,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -511,16 +517,17 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     Icons.extension_outlined,
                     'Format',
                     item.mimeType.split('/').last.toUpperCase(),
+                    c,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 14),
 
-            _buildDetailRow(Icons.description_outlined, 'File Name', item.fileName),
-            _buildDetailRow(Icons.calendar_today_outlined, 'Date Taken', df.format(item.createdAt)),
+            _buildDetailRow(Icons.description_outlined, 'File Name', item.fileName, c),
+            _buildDetailRow(Icons.calendar_today_outlined, 'Date Taken', df.format(item.createdAt), c),
             if (item.localFilePath != null)
-              _buildDetailRow(Icons.sd_storage_outlined, 'Storage Path', item.localFilePath!),
+              _buildDetailRow(Icons.sd_storage_outlined, 'Storage Path', item.localFilePath!, c),
             const SizedBox(height: 8),
           ],
         ),
@@ -530,23 +537,23 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 );
 }
 
-  Widget _buildDetailCard(IconData icon, String title, String value) {
+  Widget _buildDetailCard(IconData icon, String title, String value, AppThemeColors c) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        color: const Color(0x66222638),
+        color: c.surfaceGlass,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.12), width: 0.6),
+        border: Border.all(color: c.glassBorder, width: 0.6),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: AppTheme.appleBlue.withOpacity(0.12),
+              color: c.primary.withOpacity(0.12),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 16, color: AppTheme.appleBlue),
+            child: Icon(icon, size: 16, color: c.primary),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -556,13 +563,13 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               children: [
                 Text(
                   title,
-                  style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 10.5, letterSpacing: -0.1),
+                  style: TextStyle(color: c.textTertiary, fontSize: 10.5, letterSpacing: -0.1),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: c.textPrimary,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.2,
@@ -578,24 +585,24 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     );
   }
 
-  Widget _buildDetailRow(IconData icon, String label, String value) {
+  Widget _buildDetailRow(IconData icon, String label, String value, AppThemeColors c) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: Colors.white38),
+          Icon(icon, size: 18, color: c.textTertiary),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                Text(label, style: TextStyle(color: c.textTertiary, fontSize: 11)),
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: c.textPrimary,
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                   ),
@@ -625,6 +632,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       );
     }
 
+    final c = AppTheme.colors(context);
     final currentItem = _items[_currentIndex];
     final isVideo = currentItem.mediaType == AppMediaType.video;
     final isFavorite = FavoritesService.instance.isFavorite(currentItem.localId);
@@ -683,7 +691,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               ),
             ),
 
-          // 2. Apple Photos Top Navigation Bar
+          // 2. 3D Frosted Top Navigation Bar
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             top: (_showControls && !_isDraggingDown) ? 0 : -120,
@@ -693,7 +701,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               opacity: controlsOpacity,
               child: ClipRect(
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
                     padding: EdgeInsets.only(
                       top: MediaQuery.of(context).padding.top + 4,
@@ -702,10 +710,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                       bottom: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0x8C0D101A),
+                      color: c.surfaceGlass,
                       border: Border(
                         bottom: BorderSide(
-                          color: Colors.white.withOpacity(0.08),
+                          color: c.glassBorderSubtle,
                           width: 0.5,
                         ),
                       ),
@@ -719,11 +727,11 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                           child: Container(
                             padding: const EdgeInsets.all(7),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
+                              color: c.isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white.withOpacity(0.10), width: 0.5),
+                              border: Border.all(color: c.glassBorder, width: 0.5),
                             ),
-                            child: const Icon(CupertinoIcons.chevron_back, color: AppTheme.appleBlue, size: 20),
+                            child: Icon(CupertinoIcons.chevron_back, color: c.primary, size: 20),
                           ),
                         ),
                         Expanded(
@@ -742,8 +750,8 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                               const SizedBox(height: 1),
                               Text(
                                 DateFormat('h:mm a').format(currentItem.createdAt),
-                                style: const TextStyle(
-                                  color: AppTheme.darkTextSecondary,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.65),
                                   fontSize: 12,
                                 ),
                               ),
@@ -757,11 +765,11 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                           child: Container(
                             padding: const EdgeInsets.all(7),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
+                              color: c.isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white.withOpacity(0.10), width: 0.5),
+                              border: Border.all(color: c.glassBorder, width: 0.5),
                             ),
-                            child: const Icon(CupertinoIcons.info_circle, color: AppTheme.appleBlue, size: 20),
+                            child: Icon(CupertinoIcons.info_circle, color: c.primary, size: 20),
                           ),
                         ),
                       ],
@@ -772,7 +780,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             ),
           ),
 
-          // 3. Apple Photos Floating Rounded Bottom Toolbar
+          // 3. Floating Rounded Bottom Toolbar
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             bottom: (_showControls && !_isDraggingDown) ? 0 : -140,
@@ -789,9 +797,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                       margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0x9910131E),
+                        color: c.surfaceGlass,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.12), width: 0.5),
+                        border: Border.all(color: c.glassBorder, width: 0.5),
                       ),
                       child: Row(
                         children: [
@@ -802,7 +810,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                           Expanded(
                             child: SliderTheme(
                               data: SliderTheme.of(context).copyWith(
-                                activeTrackColor: AppTheme.appleBlue,
+                                activeTrackColor: c.primary,
                                 inactiveTrackColor: Colors.white24,
                                 thumbColor: Colors.white,
                                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
@@ -822,7 +830,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                           ),
                           Text(
                             _formatDuration(_videoController!.value.duration),
-                            style: const TextStyle(color: AppTheme.darkTextSecondary, fontSize: 11),
+                            style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 11),
                           ),
                         ],
                       ),
@@ -843,7 +851,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                         filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                          decoration: AppTheme.floatingNavbarDecoration(),
+                          decoration: AppTheme.floatingNavbarDecoration(context: context),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
@@ -851,7 +859,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
                                 onPressed: _shareCurrentItem,
-                                child: const Icon(CupertinoIcons.share, color: AppTheme.appleBlue, size: 24),
+                                child: Icon(CupertinoIcons.share, color: c.primary, size: 24),
                               ),
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),
@@ -862,7 +870,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 },
                                 child: Icon(
                                   isFavorite ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
-                                  color: isFavorite ? AppTheme.roseDanger : AppTheme.appleBlue,
+                                  color: isFavorite ? c.accentRose : c.primary,
                                   size: 24,
                                 ),
                               ),
@@ -870,13 +878,13 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
                                 onPressed: _showItemDetailsBottomSheet,
-                                child: const Icon(CupertinoIcons.info, color: AppTheme.appleBlue, size: 24),
+                                child: Icon(CupertinoIcons.info, color: c.primary, size: 24),
                               ),
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
                                 onPressed: _confirmAndDeleteCurrentItem,
-                                child: const Icon(CupertinoIcons.trash, color: AppTheme.roseDanger, size: 24),
+                                child: Icon(CupertinoIcons.trash, color: c.accentRose, size: 24),
                               ),
                             ],
                           ),

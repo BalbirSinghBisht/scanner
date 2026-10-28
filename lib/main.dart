@@ -19,15 +19,8 @@ void main() async {
     debugPrint('Background service init warning: $e');
   }
 
-  // Dark navigation bar and status bar styling
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Colors.black,
-      systemNavigationBarIconBrightness: Brightness.light,
-    ),
-  );
+  // System Chrome configuration for seamless edge-to-edge transparent bars
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   runApp(
     MultiProvider(
@@ -50,9 +43,9 @@ class MediaBackupApp extends StatelessWidget {
     return MaterialApp(
       title: 'Gallery',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.dark,
+      themeMode: ThemeMode.system, // Adapts automatically to system theme light/dark
       home: const MediaLibraryScreen(),
     );
   }

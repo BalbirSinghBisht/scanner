@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_theme.dart';
 
-/// An interactive widget that responds to touches and taps with genuine
-/// 3D perspective tilt, elevation depression, and a dynamic specular shine reflection.
+/// Motion Primitives 3D Touch Card:
+/// Responds to touch with authentic 3D perspective tilt, elevation depression,
+/// and dynamic specular light sheen reflection.
 /// Designed for zero-rebuild overhead so child widgets never flicker or re-render.
 class ThreeDTouchCard extends StatefulWidget {
   final Widget child;
@@ -20,7 +22,7 @@ class ThreeDTouchCard extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.borderRadius,
-    this.maxTiltAngle = 0.08, // in radians (~4.5 degrees)
+    this.maxTiltAngle = 0.07, // in radians (~4 degrees)
     this.pressScale = 0.965,
     this.enableShine = true,
     this.isSelected = false,
@@ -47,10 +49,10 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 140),
+      duration: AppTheme.motionFast,
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: widget.pressScale).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
+      CurvedAnimation(parent: _animController, curve: AppTheme.motionCurve),
     );
   }
 
@@ -90,7 +92,9 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.colors(context);
     final radius = widget.borderRadius ?? BorderRadius.circular(16);
+    final activeGlow = widget.glowColor ?? c.primary;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -104,7 +108,7 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
             behavior: HitTestBehavior.opaque,
             child: AnimatedBuilder(
               animation: _animController,
-              child: widget.child, // Crucial: caches child RenderObject so it never rebuilds or flickers
+              child: widget.child, // Caches child RenderObject
               builder: (context, cachedChild) {
                 final scale = _scaleAnimation.value;
                 final currentTiltX = _isPressed ? _tiltX : 0.0;
@@ -123,7 +127,7 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
                   child: Stack(
                     fit: StackFit.passthrough,
                     children: [
-                      // Cached base child (zero rebuild overhead)
+                      // Base child
                       cachedChild!,
 
                       // Specular Glare Overlay
@@ -139,10 +143,10 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
                                       _shineX * 2 - 1,
                                       _shineY * 2 - 1,
                                     ),
-                                    radius: 0.9,
+                                    radius: 0.95,
                                     colors: [
-                                      Colors.white.withOpacity(0.18),
-                                      Colors.white.withOpacity(0.04),
+                                      Colors.white.withOpacity(c.isDark ? 0.22 : 0.35),
+                                      Colors.white.withOpacity(c.isDark ? 0.05 : 0.10),
                                       Colors.transparent,
                                     ],
                                     stops: const [0.0, 0.45, 1.0],
@@ -153,7 +157,7 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
                           ),
                         ),
 
-                      // Selection Border & Glow if marked selected
+                      // Selection Border & Colored Glow
                       if (widget.isSelected)
                         Positioned.fill(
                           child: IgnorePointer(
@@ -161,9 +165,16 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
                               decoration: BoxDecoration(
                                 borderRadius: radius,
                                 border: Border.all(
-                                  color: widget.glowColor ?? const Color(0xFF00E5FF),
+                                  color: activeGlow,
                                   width: 2.5,
                                 ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: activeGlow.withOpacity(0.40),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
                               ),
                             ),
                           ),

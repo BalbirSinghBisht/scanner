@@ -7,9 +7,10 @@ import '../../services/favorites_service.dart';
 import '../screens/media_preview_screen.dart';
 import 'cached_thumbnail_image.dart';
 
-/// Apple Photos Grid Item Tile:
-/// Clean, edge-to-edge, unencumbered by tags or badges.
-/// Photos are presented purely with native iOS selection and video indicators.
+/// Motion Primitives Media Grid Tile:
+/// Clean, edge-to-edge, unencumbered by clutter.
+/// Features smooth spring scaling, Realtime Colors selection glows,
+/// and frosted glass video and favorite indicators.
 class MediaItemTile extends StatelessWidget {
   final MediaItem item;
   final VoidCallback? onTap;
@@ -28,6 +29,7 @@ class MediaItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.colors(context);
     final isFavorite = FavoritesService.instance.isFavorite(item.localId);
 
     return CupertinoButton(
@@ -50,21 +52,21 @@ class MediaItemTile extends StatelessWidget {
       child: GestureDetector(
         onLongPress: onLongPress,
         child: AnimatedScale(
-          scale: isSelected ? 0.94 : 1.0,
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
+          scale: isSelected ? 0.93 : 1.0,
+          duration: AppTheme.motionFast,
+          curve: AppTheme.springCurve,
           child: Container(
             decoration: BoxDecoration(
-              color: AppTheme.darkCard,
-              borderRadius: BorderRadius.circular(6),
+              color: c.surface,
+              borderRadius: BorderRadius.circular(8),
               border: isSelected
-                  ? Border.all(color: AppTheme.appleBlue, width: 2.2)
+                  ? Border.all(color: c.primary, width: 2.2)
                   : null,
               boxShadow: isSelected
                   ? [
                       BoxShadow(
-                        color: AppTheme.appleBlue.withOpacity(0.35),
-                        blurRadius: 8,
+                        color: c.primary.withOpacity(0.40),
+                        blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
                     ]
@@ -81,22 +83,23 @@ class MediaItemTile extends StatelessWidget {
                     localId: item.localId,
                     size: 400,
                     fit: BoxFit.cover,
-                    placeholder: _buildPlaceholder(),
+                    placeholder: _buildPlaceholder(c),
                   ),
                 ),
 
-                // Apple Selection Checkmark (Top-Right)
+                // Selection Checkmark (Top-Right)
                 if (isSelectionMode)
                   Positioned(
                     top: 6,
                     right: 6,
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: AppTheme.motionFast,
                       width: 22,
                       height: 22,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: isSelected
-                            ? AppTheme.appleBlue
+                            ? c.primary
                             : Colors.black.withOpacity(0.40),
                         border: Border.all(
                           color: Colors.white,
@@ -119,7 +122,7 @@ class MediaItemTile extends StatelessWidget {
                     ),
                   ),
 
-                // Subtle Favorite Heart (if favorited and not selecting)
+                // Subtle Favorite Heart (Bottom-Left)
                 if (isFavorite && !isSelectionMode)
                   Positioned(
                     bottom: 6,
@@ -134,7 +137,7 @@ class MediaItemTile extends StatelessWidget {
                             color: Colors.black.withOpacity(0.45),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.16),
+                              color: Colors.white.withOpacity(0.20),
                               width: 0.5,
                             ),
                           ),
@@ -148,22 +151,22 @@ class MediaItemTile extends StatelessWidget {
                     ),
                   ),
 
-                // Apple Video Duration Frosted Pill (Bottom-Right)
+                // Video Duration Frosted Pill (Bottom-Right)
                 if (item.mediaType == AppMediaType.video)
                   Positioned(
                     bottom: 5,
                     right: 5,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(5),
+                      borderRadius: BorderRadius.circular(6),
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.black.withOpacity(0.55),
-                            borderRadius: BorderRadius.circular(5),
+                            borderRadius: BorderRadius.circular(6),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.18),
+                              color: Colors.white.withOpacity(0.22),
                               width: 0.5,
                             ),
                           ),
@@ -202,15 +205,15 @@ class MediaItemTile extends StatelessWidget {
     );
   }
 
-  Widget _buildPlaceholder() {
+  Widget _buildPlaceholder(AppThemeColors c) {
     return Container(
-      color: AppTheme.darkCard,
+      color: c.surfaceElevated,
       child: Center(
         child: Icon(
           item.mediaType == AppMediaType.video
               ? CupertinoIcons.video_camera
               : CupertinoIcons.photo,
-          color: Colors.white24,
+          color: c.textTertiary,
           size: 22,
         ),
       ),
