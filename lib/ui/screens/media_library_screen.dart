@@ -895,27 +895,17 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  /// 3D Glassmorphic Animated Search Bar
+  /// Liquidmorphic Animated Search Bar
   Widget _buildSearchBar(AppThemeColors c) {
     return AnimatedContainer(
       duration: AppTheme.motionFast,
-      curve: AppTheme.motionCurve,
+      curve: AppTheme.liquidSnap,
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: c.surfaceGlassInput,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: c.glassBorder,
-          width: 0.7,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(c.isDark ? 0.25 : 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+      decoration: AppTheme.liquidInputDecoration(
+        context: context,
+        borderRadius: 18,
+        isFocused: _searchQuery.isNotEmpty,
       ),
       child: Row(
         children: [
@@ -991,25 +981,35 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         setState(() => _activeFilter = filter);
       },
       child: AnimatedContainer(
-        duration: AppTheme.motionFast,
-        curve: AppTheme.springCurve,
+        duration: const Duration(milliseconds: 240),
+        curve: AppTheme.liquidSnap,
         margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? c.primary : c.surfaceGlass,
-          borderRadius: BorderRadius.circular(20),
+          gradient: isSelected
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    c.primaryLight,
+                    c.primary,
+                  ],
+                )
+              : null,
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: isSelected
-                ? Colors.transparent
+                ? c.glassBorderSpecular
                 : c.glassBorder,
-            width: 0.6,
+            width: 0.7,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: c.primary.withOpacity(0.35),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
+                    color: c.primary.withOpacity(0.40),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
                   ),
                 ]
               : [
@@ -1598,7 +1598,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               Positioned.fill(
                 child: AnimatedAlign(
                   duration: AppTheme.motionSpring,
-                  curve: AppTheme.springCurve,
+                  curve: AppTheme.liquidSpring,
                   alignment: _openedFolder != null
                       ? const Alignment(-3.0, 0.0)
                       : (_currentTabIndex == 0
@@ -1614,15 +1614,22 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       child: Container(
                         decoration: BoxDecoration(
                           color: c.isDark
-                              ? Colors.white.withOpacity(0.12)
-                              : c.primary.withOpacity(0.12),
+                              ? Colors.white.withOpacity(0.14)
+                              : c.primary.withOpacity(0.14),
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(
                             color: c.isDark
-                                ? Colors.white.withOpacity(0.14)
-                                : c.primary.withOpacity(0.20),
+                                ? Colors.white.withOpacity(0.18)
+                                : c.primary.withOpacity(0.25),
                             width: 0.6,
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: c.primary.withOpacity(c.isDark ? 0.20 : 0.12),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                       ),
                     ),

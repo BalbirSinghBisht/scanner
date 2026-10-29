@@ -7,11 +7,10 @@ import '../../services/favorites_service.dart';
 import '../screens/media_preview_screen.dart';
 import 'cached_thumbnail_image.dart';
 
-/// Motion Primitives Media Grid Tile:
-/// Clean, edge-to-edge, unencumbered by clutter.
-/// Features smooth spring scaling, Realtime Colors selection glows,
-/// and frosted glass video and favorite indicators.
-class MediaItemTile extends StatelessWidget {
+/// Liquidmorphism Media Grid Tile:
+/// Clean edge-to-edge layout with organic spring dynamics, dynamic selection
+/// ripple, frosted liquid glass badges, and specular rim highlights.
+class MediaItemTile extends StatefulWidget {
   final MediaItem item;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -28,49 +27,69 @@ class MediaItemTile extends StatelessWidget {
   });
 
   @override
+  State<MediaItemTile> createState() => _MediaItemTileState();
+}
+
+class _MediaItemTileState extends State<MediaItemTile>
+    with SingleTickerProviderStateMixin {
+  bool _isPressed = false;
+
+  @override
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
-    final isFavorite = FavoritesService.instance.isFavorite(item.localId);
+    final isFavorite = FavoritesService.instance.isFavorite(widget.item.localId);
 
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      minSize: 0,
-      pressedOpacity: 0.88,
-      onPressed: onTap ??
-          () => Navigator.push(
-                context,
-                PageRouteBuilder(
-                  opaque: false,
-                  barrierColor: Colors.black,
-                  reverseTransitionDuration: Duration.zero,
-                  pageBuilder: (_, _, _) => MediaPreviewScreen.single(item: item),
-                  transitionsBuilder: (_, animation, _, child) =>
-                      FadeTransition(opacity: animation, child: child),
-                  transitionDuration: const Duration(milliseconds: 180),
-                ),
-              ),
+    // Target scale when pressed or selected
+    final double targetScale = widget.isSelected
+        ? 0.92
+        : (_isPressed ? 0.95 : 1.0);
+
+    return Listener(
+      onPointerDown: (_) => setState(() => _isPressed = true),
+      onPointerUp: (_) => setState(() => _isPressed = false),
+      onPointerCancel: (_) => setState(() => _isPressed = false),
       child: GestureDetector(
-        onLongPress: onLongPress,
+        onTap: widget.onTap ??
+            () => Navigator.push(
+                  context,
+                  PageRouteBuilder(
+                    opaque: false,
+                    barrierColor: Colors.black,
+                    reverseTransitionDuration: Duration.zero,
+                    pageBuilder: (_, _, _) => MediaPreviewScreen.single(item: widget.item),
+                    transitionsBuilder: (_, animation, _, child) =>
+                        FadeTransition(opacity: animation, child: child),
+                    transitionDuration: const Duration(milliseconds: 180),
+                  ),
+                ),
+        onLongPress: widget.onLongPress,
+        behavior: HitTestBehavior.opaque,
         child: AnimatedScale(
-          scale: isSelected ? 0.93 : 1.0,
-          duration: AppTheme.motionFast,
-          curve: AppTheme.springCurve,
+          scale: targetScale,
+          duration: const Duration(milliseconds: 220),
+          curve: AppTheme.liquidSnap,
           child: Container(
             decoration: BoxDecoration(
               color: c.surface,
-              borderRadius: BorderRadius.circular(8),
-              border: isSelected
-                  ? Border.all(color: c.primary, width: 2.2)
-                  : null,
-              boxShadow: isSelected
+              borderRadius: BorderRadius.circular(10),
+              border: widget.isSelected
+                  ? Border.all(color: c.primary, width: 2.4)
+                  : Border.all(color: c.glassBorderSubtle, width: 0.5),
+              boxShadow: widget.isSelected
                   ? [
                       BoxShadow(
-                        color: c.primary.withOpacity(0.40),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
+                        color: c.primary.withOpacity(0.45),
+                        blurRadius: 12,
+                        offset: const Offset(0, 3),
                       ),
                     ]
-                  : null,
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(c.isDark ? 0.16 : 0.04),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
             ),
             clipBehavior: Clip.antiAlias,
             child: Stack(
@@ -78,44 +97,66 @@ class MediaItemTile extends StatelessWidget {
               children: [
                 // Clean Image Thumbnail
                 Hero(
-                  tag: 'media_tile_${item.localId}',
+                  tag: 'media_tile_${widget.item.localId}',
                   child: CachedThumbnailImage(
-                    localId: item.localId,
+                    localId: widget.item.localId,
                     size: 400,
                     fit: BoxFit.cover,
                     placeholder: _buildPlaceholder(c),
                   ),
                 ),
 
-                // Selection Checkmark (Top-Right)
-                if (isSelectionMode)
+                // Top Specular Glass Sheen
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 1.2,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withOpacity(0.40),
+                          Colors.white.withOpacity(0.10),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Selection Checkmark & Liquid Ring (Top-Right)
+                if (widget.isSelectionMode)
                   Positioned(
                     top: 6,
                     right: 6,
                     child: AnimatedContainer(
-                      duration: AppTheme.motionFast,
-                      width: 22,
-                      height: 22,
+                      duration: const Duration(milliseconds: 200),
+                      curve: AppTheme.liquidSnap,
+                      width: 24,
+                      height: 24,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: isSelected
+                        color: widget.isSelected
                             ? c.primary
-                            : Colors.black.withOpacity(0.40),
+                            : Colors.black.withOpacity(0.42),
                         border: Border.all(
                           color: Colors.white,
-                          width: 1.5,
+                          width: 1.6,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 4,
+                            color: widget.isSelected
+                                ? c.primary.withOpacity(0.50)
+                                : Colors.black.withOpacity(0.35),
+                            blurRadius: widget.isSelected ? 8 : 4,
                           ),
                         ],
                       ),
-                      child: isSelected
+                      child: widget.isSelected
                           ? const Icon(
                               Icons.check,
-                              size: 14,
+                              size: 15,
                               color: Colors.white,
                             )
                           : null,
@@ -123,27 +164,33 @@ class MediaItemTile extends StatelessWidget {
                   ),
 
                 // Subtle Favorite Heart (Bottom-Left)
-                if (isFavorite && !isSelectionMode)
+                if (isFavorite && !widget.isSelectionMode)
                   Positioned(
                     bottom: 6,
                     left: 6,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                         child: Container(
-                          padding: const EdgeInsets.all(3.5),
+                          padding: const EdgeInsets.all(4.0),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.45),
+                            color: Colors.black.withOpacity(0.48),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.20),
+                              color: Colors.white.withOpacity(0.24),
                               width: 0.5,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: c.accentRose.withOpacity(0.3),
+                                blurRadius: 6,
+                              ),
+                            ],
                           ),
                           child: const Icon(
                             CupertinoIcons.heart_fill,
-                            size: 10,
+                            size: 11,
                             color: Colors.white,
                           ),
                         ),
@@ -151,22 +198,22 @@ class MediaItemTile extends StatelessWidget {
                     ),
                   ),
 
-                // Video Duration Frosted Pill (Bottom-Right)
-                if (item.mediaType == AppMediaType.video)
+                // Video Duration Frosted Liquid Pill (Bottom-Right)
+                if (widget.item.mediaType == AppMediaType.video)
                   Positioned(
-                    bottom: 5,
-                    right: 5,
+                    bottom: 6,
+                    right: 6,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(8),
                       child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.55),
-                            borderRadius: BorderRadius.circular(6),
+                            color: Colors.black.withOpacity(0.58),
+                            borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.22),
+                              color: Colors.white.withOpacity(0.24),
                               width: 0.5,
                             ),
                           ),
@@ -178,11 +225,11 @@ class MediaItemTile extends StatelessWidget {
                                 size: 8,
                                 color: Colors.white,
                               ),
-                              if (item.durationSeconds != null &&
-                                  item.durationSeconds! > 0) ...[
-                                const SizedBox(width: 3),
+                              if (widget.item.durationSeconds != null &&
+                                  widget.item.durationSeconds! > 0) ...[
+                                const SizedBox(width: 3.5),
                                 Text(
-                                  item.formattedDuration,
+                                  widget.item.formattedDuration,
                                   style: const TextStyle(
                                     fontSize: 9.5,
                                     color: Colors.white,
@@ -210,7 +257,7 @@ class MediaItemTile extends StatelessWidget {
       color: c.surfaceElevated,
       child: Center(
         child: Icon(
-          item.mediaType == AppMediaType.video
+          widget.item.mediaType == AppMediaType.video
               ? CupertinoIcons.video_camera
               : CupertinoIcons.photo,
           color: c.textTertiary,

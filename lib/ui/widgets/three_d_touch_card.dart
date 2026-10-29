@@ -1,10 +1,11 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 
-/// Motion Primitives 3D Touch Card:
-/// Responds to touch with authentic 3D perspective tilt, elevation depression,
-/// and dynamic specular light sheen reflection.
-/// Designed for zero-rebuild overhead so child widgets never flicker or re-render.
+/// Liquidmorphism 3D Touch Card:
+/// Responds to touch with authentic organic spring physics, real-time dynamic
+/// pointer tracking for specular light refraction, directional liquid shadow casting,
+/// and subtle resting vitality.
 class ThreeDTouchCard extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
@@ -22,7 +23,7 @@ class ThreeDTouchCard extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.borderRadius,
-    this.maxTiltAngle = 0.07, // in radians (~4 degrees)
+    this.maxTiltAngle = 0.08, // ~4.6 degrees
     this.pressScale = 0.965,
     this.enableShine = true,
     this.isSelected = false,
@@ -34,12 +35,19 @@ class ThreeDTouchCard extends StatefulWidget {
 }
 
 class _ThreeDTouchCardState extends State<ThreeDTouchCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animController;
+    with TickerProviderStateMixin {
+  late AnimationController _pressAnimController;
   late Animation<double> _scaleAnimation;
 
-  double _tiltX = 0.0;
-  double _tiltY = 0.0;
+  // Spring animation for smooth tilt reset
+  late AnimationController _tiltSpringController;
+  late Animation<double> _tiltXAnimation;
+  late Animation<double> _tiltYAnimation;
+
+  double _targetTiltX = 0.0;
+  double _targetTiltY = 0.0;
+  double _currentTiltX = 0.0;
+  double _currentTiltY = 0.0;
   double _shineX = 0.5;
   double _shineY = 0.5;
   bool _isPressed = false;
@@ -47,59 +55,95 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
+
+    _pressAnimController = AnimationController(
       vsync: this,
       duration: AppTheme.motionFast,
     );
+
     _scaleAnimation = Tween<double>(begin: 1.0, end: widget.pressScale).animate(
-      CurvedAnimation(parent: _animController, curve: AppTheme.motionCurve),
+      CurvedAnimation(parent: _pressAnimController, curve: AppTheme.liquidSnap),
     );
+
+    _tiltSpringController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+
+    _tiltXAnimation = const AlwaysStoppedAnimation(0.0);
+    _tiltYAnimation = const AlwaysStoppedAnimation(0.0);
   }
 
   @override
   void dispose() {
-    _animController.dispose();
+    _pressAnimController.dispose();
+    _tiltSpringController.dispose();
     super.dispose();
   }
 
-  void _handlePointerDown(PointerDownEvent details, BoxConstraints constraints) {
-    final w = constraints.maxWidth;
-    final h = constraints.maxHeight;
-    if (w <= 0 || h <= 0) return;
+  void _updateTouchCoordinates(Offset localPosition, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
 
-    final nx = ((details.localPosition.dx / w) * 2 - 1).clamp(-1.0, 1.0);
-    final ny = ((details.localPosition.dy / h) * 2 - 1).clamp(-1.0, 1.0);
+    final nx = ((localPosition.dx / size.width) * 2 - 1).clamp(-1.0, 1.0);
+    final ny = ((localPosition.dy / size.height) * 2 - 1).clamp(-1.0, 1.0);
 
     setState(() {
-      _isPressed = true;
-      _tiltX = -ny * widget.maxTiltAngle;
-      _tiltY = nx * widget.maxTiltAngle;
-      _shineX = (details.localPosition.dx / w).clamp(0.0, 1.0);
-      _shineY = (details.localPosition.dy / h).clamp(0.0, 1.0);
+      _targetTiltX = -ny * widget.maxTiltAngle;
+      _targetTiltY = nx * widget.maxTiltAngle;
+      _currentTiltX = _targetTiltX;
+      _currentTiltY = _targetTiltY;
+      _shineX = (localPosition.dx / size.width).clamp(0.0, 1.0);
+      _shineY = (localPosition.dy / size.height).clamp(0.0, 1.0);
     });
-    _animController.forward();
+  }
+
+  void _handlePointerDown(PointerDownEvent details, BoxConstraints constraints) {
+    _isPressed = true;
+    _tiltSpringController.stop();
+    _updateTouchCoordinates(details.localPosition, Size(constraints.maxWidth, constraints.maxHeight));
+    _pressAnimController.forward();
+  }
+
+  void _handlePointerMove(PointerMoveEvent details, BoxConstraints constraints) {
+    if (!_isPressed) return;
+    _updateTouchCoordinates(details.localPosition, Size(constraints.maxWidth, constraints.maxHeight));
   }
 
   void _handlePointerUpOrCancel() {
     if (!_isPressed) return;
-    setState(() {
-      _isPressed = false;
-      _tiltX = 0.0;
-      _tiltY = 0.0;
+    _isPressed = false;
+
+    // Animate smoothly back to equilibrium with liquid spring physics
+    _tiltXAnimation = Tween<double>(begin: _currentTiltX, end: 0.0).animate(
+      CurvedAnimation(parent: _tiltSpringController, curve: AppTheme.liquidSpring),
+    );
+    _tiltYAnimation = Tween<double>(begin: _currentTiltY, end: 0.0).animate(
+      CurvedAnimation(parent: _tiltSpringController, curve: AppTheme.liquidSpring),
+    );
+
+    _tiltSpringController.forward(from: 0.0).then((_) {
+      if (mounted) {
+        setState(() {
+          _currentTiltX = 0.0;
+          _currentTiltY = 0.0;
+        });
+      }
     });
-    _animController.reverse();
+
+    _pressAnimController.reverse();
   }
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
-    final radius = widget.borderRadius ?? BorderRadius.circular(16);
+    final radius = widget.borderRadius ?? BorderRadius.circular(20);
     final activeGlow = widget.glowColor ?? c.primary;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         return Listener(
           onPointerDown: (e) => _handlePointerDown(e, constraints),
+          onPointerMove: (e) => _handlePointerMove(e, constraints),
           onPointerUp: (_) => _handlePointerUpOrCancel(),
           onPointerCancel: (_) => _handlePointerUpOrCancel(),
           child: GestureDetector(
@@ -107,79 +151,114 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
             onLongPress: widget.onLongPress,
             behavior: HitTestBehavior.opaque,
             child: AnimatedBuilder(
-              animation: _animController,
-              child: widget.child, // Caches child RenderObject
+              animation: Listenable.merge([
+                _pressAnimController,
+                _tiltSpringController,
+              ]),
+              child: widget.child,
               builder: (context, cachedChild) {
-                final scale = _scaleAnimation.value;
-                final currentTiltX = _isPressed ? _tiltX : 0.0;
-                final currentTiltY = _isPressed ? _tiltY : 0.0;
+                // Effective tilt angles
+                final effTiltX = _isPressed
+                    ? _currentTiltX
+                    : _tiltXAnimation.value;
+                final effTiltY = _isPressed
+                    ? _currentTiltY
+                    : _tiltYAnimation.value;
 
-                // 3D perspective matrix
+                final pressScale = _scaleAnimation.value;
+
+                // 3D Perspective Matrix Transformation
                 final transform = Matrix4.identity()
-                  ..setEntry(3, 2, 0.0014)
-                  ..rotateX(currentTiltX)
-                  ..rotateY(currentTiltY)
-                  ..scale(scale);
+                  ..setEntry(3, 2, 0.0012)
+                  ..rotateX(effTiltX)
+                  ..rotateY(effTiltY)
+                  ..scale(pressScale);
+
+                // Morphing directional shadow based on tilt angles
+                final shadowOffsetX = -effTiltY * 60;
+                final shadowOffsetY = (effTiltX * 60) + (_isPressed ? 4.0 : 8.0);
+                final shadowBlur = _isPressed ? 14.0 : 22.0;
 
                 return Transform(
                   transform: transform,
                   alignment: FractionalOffset.center,
-                  child: Stack(
-                    fit: StackFit.passthrough,
-                    children: [
-                      // Base child
-                      cachedChild!,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: radius,
+                      boxShadow: [
+                        // Dynamic directional shadow opposing tilt angle
+                        BoxShadow(
+                          color: Colors.black.withOpacity(c.isDark ? 0.38 : 0.12),
+                          blurRadius: shadowBlur,
+                          offset: Offset(shadowOffsetX, shadowOffsetY),
+                          spreadRadius: _isPressed ? -2 : 0,
+                        ),
+                        // Ambient colored glow
+                        if (widget.isSelected || _isPressed)
+                          BoxShadow(
+                            color: activeGlow.withOpacity(_isPressed ? 0.28 : 0.18),
+                            blurRadius: 18,
+                            offset: const Offset(0, 4),
+                          ),
+                      ],
+                    ),
+                    child: Stack(
+                      fit: StackFit.passthrough,
+                      children: [
+                        // Main Child
+                        cachedChild!,
 
-                      // Specular Glare Overlay
-                      if (widget.enableShine && _isPressed)
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: ClipRRect(
-                              borderRadius: radius,
+                        // Liquid Refractive Specular Glare (Dynamic tracking touch)
+                        if (widget.enableShine && _isPressed)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: ClipRRect(
+                                borderRadius: radius,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    gradient: RadialGradient(
+                                      center: Alignment(
+                                        _shineX * 2 - 1,
+                                        _shineY * 2 - 1,
+                                      ),
+                                      radius: 0.85,
+                                      colors: [
+                                        Colors.white.withOpacity(c.isDark ? 0.28 : 0.38),
+                                        Colors.white.withOpacity(c.isDark ? 0.08 : 0.14),
+                                        Colors.transparent,
+                                      ],
+                                      stops: const [0.0, 0.40, 1.0],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        // Selection Liquid Ripple & Border
+                        if (widget.isSelected)
+                          Positioned.fill(
+                            child: IgnorePointer(
                               child: Container(
                                 decoration: BoxDecoration(
-                                  gradient: RadialGradient(
-                                    center: Alignment(
-                                      _shineX * 2 - 1,
-                                      _shineY * 2 - 1,
+                                  borderRadius: radius,
+                                  border: Border.all(
+                                    color: activeGlow,
+                                    width: 2.4,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: activeGlow.withOpacity(0.40),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 2),
                                     ),
-                                    radius: 0.95,
-                                    colors: [
-                                      Colors.white.withOpacity(c.isDark ? 0.22 : 0.35),
-                                      Colors.white.withOpacity(c.isDark ? 0.05 : 0.10),
-                                      Colors.transparent,
-                                    ],
-                                    stops: const [0.0, 0.45, 1.0],
-                                  ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                        ),
-
-                      // Selection Border & Colored Glow
-                      if (widget.isSelected)
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: radius,
-                                border: Border.all(
-                                  color: activeGlow,
-                                  width: 2.5,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: activeGlow.withOpacity(0.40),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 );
               },

@@ -666,26 +666,29 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               offset: Offset(0, _dragOffsetY),
               child: Transform.scale(
                 scale: contentScale,
-                child: GestureDetector(
-                  onTap: _toggleControls,
-                  onDoubleTapDown: _handleDoubleTapZoom,
-                  onDoubleTap: () {},
-                  behavior: HitTestBehavior.opaque,
-                  child: PageView.builder(
-                    controller: _pageController,
-                    itemCount: _items.length,
-                    onPageChanged: _onPageChanged,
-                    physics: _isDraggingDown
-                        ? const NeverScrollableScrollPhysics()
-                        : const BouncingScrollPhysics(),
-                    itemBuilder: (context, index) {
-                      final item = _items[index];
-                      if (item.mediaType == AppMediaType.video) {
-                        return _buildVideoPage(index, item);
-                      } else {
-                        return _buildImagePage(item);
-                      }
-                    },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(dragProgress * 32.0),
+                  child: GestureDetector(
+                    onTap: _toggleControls,
+                    onDoubleTapDown: _handleDoubleTapZoom,
+                    onDoubleTap: () {},
+                    behavior: HitTestBehavior.opaque,
+                    child: PageView.builder(
+                      controller: _pageController,
+                      itemCount: _items.length,
+                      onPageChanged: _onPageChanged,
+                      physics: _isDraggingDown
+                          ? const NeverScrollableScrollPhysics()
+                          : const BouncingScrollPhysics(),
+                      itemBuilder: (context, index) {
+                        final item = _items[index];
+                        if (item.mediaType == AppMediaType.video) {
+                          return _buildVideoPage(index, item);
+                        } else {
+                          return _buildImagePage(item);
+                        }
+                      },
+                    ),
                   ),
                 ),
               ),

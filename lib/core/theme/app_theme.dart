@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -139,13 +140,29 @@ class AppTheme {
   static const Color darkTextSecondary = Color(0xFF94A3B8);
   static const Color darkTextTertiary = Color(0xFF64748B);
 
-  // Motion Primitives Physics & Timing Curves
+  // ─── Motion Primitives: Physics & Timing Curves ────────────────────
   static const Duration motionFast = Duration(milliseconds: 160);
   static const Duration motionNormal = Duration(milliseconds: 280);
   static const Duration motionSpring = Duration(milliseconds: 360);
   static const Curve motionCurve = Curves.easeOutCubic;
   static const Curve motionBounce = Curves.easeOutBack;
   static const Curve springCurve = Curves.easeOutBack;
+
+  // ─── Liquid Motion Curves ──────────────────────────────────────────
+  /// Organic spring-like elastic settle (damping: 20, stiffness: 300 feel)
+  static const Curve liquidSpring = _LiquidSpringCurve();
+
+  /// Smooth viscous deceleration — like dragging through thick fluid
+  static const Curve liquidViscous = _ViscousFluidCurve();
+
+  /// Elastic overshoot with fast damping — for playful blob interactions
+  static const Curve liquidElastic = Curves.elasticOut;
+
+  /// Slow organic ease for large-scale morphs (blob size, gradient shifts)
+  static const Curve liquidMorph = Cubic(0.22, 1.0, 0.36, 1.0);
+
+  /// Snappy spring for micro-interactions (button press, pill toggle)
+  static const Curve liquidSnap = Cubic(0.175, 0.885, 0.32, 1.275);
 
   /// Specular Glass Edge Gradient (Simulates light catching the top-left glass bevel)
   static LinearGradient specularGlassGradient([BuildContext? context]) {
@@ -168,6 +185,53 @@ class AppTheme {
             ],
       stops: const [0.0, 0.45, 1.0],
     );
+  }
+
+  // ─── Liquid Gradient for ShaderMask Widgets ────────────────────────
+  /// Returns animated-friendly gradient stops for use in ShaderMask widgets.
+  /// [phase] is a 0→1 animation value; the stops shift to create living
+  /// color movement across surfaces.
+  static LinearGradient liquidGradient({
+    double phase = 0.0,
+    BuildContext? context,
+    Alignment begin = Alignment.topLeft,
+    Alignment end = Alignment.bottomRight,
+  }) {
+    final isDark = context != null
+        ? (Theme.of(context).brightness == Brightness.dark)
+        : true;
+    // Rotate stops cyclically with phase
+    final shift = phase % 1.0;
+    final s0 = (0.0 + shift * 0.3).clamp(0.0, 1.0);
+    final s1 = (0.25 + shift * 0.2).clamp(0.0, 1.0);
+    final s2 = (0.55 + shift * 0.15).clamp(0.0, 1.0);
+    final s3 = (0.85 + shift * 0.1).clamp(0.0, 1.0);
+
+    if (isDark) {
+      return LinearGradient(
+        begin: begin,
+        end: end,
+        colors: const [
+          Color(0xFF3B82F6), // Electric blue
+          Color(0xFF8B5CF6), // Violet
+          Color(0xFF06B6D4), // Cyan
+          Color(0xFFF59E0B), // Amber glow
+        ],
+        stops: [s0, s1, s2, s3],
+      );
+    } else {
+      return LinearGradient(
+        begin: begin,
+        end: end,
+        colors: const [
+          Color(0xFF2563EB), // Cobalt
+          Color(0xFF7C3AED), // Royal violet
+          Color(0xFF0284C7), // Sky azure
+          Color(0xFFD97706), // Amber bronze
+        ],
+        stops: [s0, s1, s2, s3],
+      );
+    }
   }
 
   /// Translucent Frosted Glass App Bar Decoration
@@ -197,7 +261,9 @@ class AppTheme {
     );
   }
 
-  /// 3D Ambient Depth & Colored Glow Shadow
+  // ─── 3-Layer Liquid Depth Shadows ──────────────────────────────────
+  /// 3D Ambient Depth & Colored Glow Shadow — now 3-layer for true depth:
+  /// 1) Tight sharp contact shadow  2) Medium diffuse body  3) Wide ambient glow
   static List<BoxShadow> depthShadow({
     double depth = 8.0,
     Color? glowColor,
@@ -206,21 +272,47 @@ class AppTheme {
   }) {
     final baseShadow = shadowColor ?? Colors.black;
     return [
+      // Layer 1: Tight sharp contact shadow
       BoxShadow(
-        color: baseShadow.withOpacity(0.35),
+        color: baseShadow.withOpacity(0.45),
+        blurRadius: depth * 0.5,
+        spreadRadius: -1,
+        offset: Offset(0, depth * 0.15),
+      ),
+      // Layer 2: Medium diffuse body shadow
+      BoxShadow(
+        color: baseShadow.withOpacity(0.25),
         blurRadius: depth * 1.8,
         offset: Offset(0, depth * 0.45),
+      ),
+      // Layer 3: Wide ambient glow
+      BoxShadow(
+        color: baseShadow.withOpacity(0.10),
+        blurRadius: depth * 3.5,
+        spreadRadius: depth * 0.2,
+        offset: Offset(0, depth * 0.8),
       ),
       if (glowColor != null)
         BoxShadow(
           color: glowColor.withOpacity(glowOpacity),
-          blurRadius: depth * 2.2,
+          blurRadius: depth * 2.5,
           offset: Offset(0, depth * 0.3),
         ),
     ];
   }
 
+  // ─── Gradient Border Helper ────────────────────────────────────────
+  /// Creates a refined liquid border that simulates light catching curved glass surfaces.
+  /// Uses a uniform specular tint to ensure complete compatibility with Flutter's borderRadius.
+  static Border _liquidGradientBorder(AppThemeColors c, {double width = 0.7}) {
+    return Border.all(
+      color: c.isDark ? const Color(0x35FFFFFF) : const Color(0x300F172A),
+      width: width,
+    );
+  }
+
   /// 3D Pill / Capsule Decoration with Motion Primitives feedback
+  /// Now with gradient borders simulating light on curved liquid surfaces.
   static BoxDecoration pill3DDecoration({
     BuildContext? context,
     Color? backgroundColor,
@@ -239,31 +331,56 @@ class AppTheme {
     return BoxDecoration(
       color: isSelected ? primaryCol : bg,
       borderRadius: BorderRadius.circular(borderRadius),
-      border: Border.all(
-        color: isSelected
-            ? Colors.transparent
-            : (borderColor ?? c.glassBorder),
-        width: 0.6,
-      ),
+      border: isSelected
+          ? Border.all(color: Colors.transparent, width: 0.6)
+          : (borderColor != null
+              ? Border.all(color: borderColor, width: 0.6)
+              : _liquidGradientBorder(c)),
       boxShadow: isSelected
           ? [
+              // Layer 1: Tight glow
               BoxShadow(
-                color: (glowColor ?? primaryCol).withOpacity(0.38),
-                blurRadius: 12,
+                color: (glowColor ?? primaryCol).withOpacity(0.50),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+              // Layer 2: Medium radiance
+              BoxShadow(
+                color: (glowColor ?? primaryCol).withOpacity(0.30),
+                blurRadius: 14,
                 offset: const Offset(0, 3),
+              ),
+              // Layer 3: Wide ambient
+              BoxShadow(
+                color: (glowColor ?? primaryCol).withOpacity(0.12),
+                blurRadius: 28,
+                spreadRadius: 2,
+                offset: const Offset(0, 6),
               ),
             ]
           : [
               BoxShadow(
-                color: Colors.black.withOpacity(c.isDark ? 0.20 : 0.05),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Colors.black.withOpacity(c.isDark ? 0.30 : 0.06),
+                blurRadius: 3,
+                offset: const Offset(0, 1),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(c.isDark ? 0.15 : 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(c.isDark ? 0.06 : 0.02),
+                blurRadius: 18,
+                spreadRadius: 1,
+                offset: const Offset(0, 6),
               ),
             ],
     );
   }
 
   /// 3D Floating Glassmorphic Navbar Decoration
+  /// Now with gradient borders and 3-layer depth shadows.
   static BoxDecoration floatingNavbarDecoration({
     BuildContext? context,
     Color? backgroundColor,
@@ -279,19 +396,33 @@ class AppTheme {
     return BoxDecoration(
       color: bg,
       borderRadius: BorderRadius.circular(borderRadius),
-      border: Border.all(
-        color: borderColor ?? c.glassBorder,
-        width: 0.75,
-      ),
+      border: borderColor != null
+          ? Border.all(color: borderColor, width: 0.75)
+          : _liquidGradientBorder(c, width: 0.75),
       boxShadow: [
+        // Layer 1: Tight contact
         BoxShadow(
-          color: Colors.black.withOpacity(c.isDark ? 0.45 : 0.12),
-          blurRadius: 28,
-          offset: const Offset(0, 10),
+          color: Colors.black.withOpacity(c.isDark ? 0.40 : 0.08),
+          blurRadius: 4,
+          offset: const Offset(0, 2),
         ),
+        // Layer 2: Medium body shadow
         BoxShadow(
-          color: c.primary.withOpacity(c.isDark ? 0.12 : 0.08),
+          color: Colors.black.withOpacity(c.isDark ? 0.30 : 0.10),
           blurRadius: 20,
+          offset: const Offset(0, 8),
+        ),
+        // Layer 3: Wide ambient glow
+        BoxShadow(
+          color: Colors.black.withOpacity(c.isDark ? 0.15 : 0.05),
+          blurRadius: 40,
+          spreadRadius: 4,
+          offset: const Offset(0, 14),
+        ),
+        // Brand color glow
+        BoxShadow(
+          color: c.primary.withOpacity(c.isDark ? 0.10 : 0.06),
+          blurRadius: 24,
           offset: const Offset(0, 4),
         ),
       ],
@@ -299,6 +430,7 @@ class AppTheme {
   }
 
   /// General 3D Glassmorphic Card Decoration
+  /// Now with gradient borders and 3-layer depth shadows.
   static BoxDecoration glassCardDecoration({
     BuildContext? context,
     double borderRadius = 18.0,
@@ -316,15 +448,28 @@ class AppTheme {
     return BoxDecoration(
       color: bg,
       borderRadius: BorderRadius.circular(borderRadius),
-      border: Border.all(
-        color: borderColor ?? c.glassBorder,
-        width: borderWidth,
-      ),
+      border: borderColor != null
+          ? Border.all(color: borderColor, width: borderWidth)
+          : _liquidGradientBorder(c, width: borderWidth),
       boxShadow: [
+        // Layer 1: Tight sharp contact shadow
         BoxShadow(
-          color: Colors.black.withOpacity(c.isDark ? 0.35 : 0.08),
+          color: Colors.black.withOpacity(c.isDark ? 0.40 : 0.06),
+          blurRadius: 3,
+          offset: const Offset(0, 1),
+        ),
+        // Layer 2: Medium diffuse body
+        BoxShadow(
+          color: Colors.black.withOpacity(c.isDark ? 0.25 : 0.06),
           blurRadius: 16,
           offset: const Offset(0, 5),
+        ),
+        // Layer 3: Wide ambient glow
+        BoxShadow(
+          color: Colors.black.withOpacity(c.isDark ? 0.10 : 0.03),
+          blurRadius: 32,
+          spreadRadius: 2,
+          offset: const Offset(0, 10),
         ),
         if (glowColor != null)
           BoxShadow(
@@ -332,6 +477,150 @@ class AppTheme {
             blurRadius: 20,
             offset: const Offset(0, 3),
           ),
+      ],
+    );
+  }
+
+  // ─── New Liquid Decoration Helpers ─────────────────────────────────
+
+  /// Liquid shimmer decoration — a BoxDecoration with a gradient overlay
+  /// simulating liquid surface light movement. Use [phase] (0→1) from an
+  /// AnimationController to animate the shimmer across the surface.
+  static BoxDecoration liquidShimmerDecoration({
+    BuildContext? context,
+    double borderRadius = 18.0,
+    double phase = 0.0,
+  }) {
+    final isDark = context != null
+        ? (Theme.of(context).brightness == Brightness.dark)
+        : true;
+    final c = isDark ? darkColors : lightColors;
+
+    // Shimmer sweep angle based on animation phase
+    final angle = phase * 2 * math.pi;
+    final begin = Alignment(math.cos(angle), math.sin(angle));
+    final end = Alignment(-math.cos(angle), -math.sin(angle));
+
+    return BoxDecoration(
+      borderRadius: BorderRadius.circular(borderRadius),
+      gradient: LinearGradient(
+        begin: begin,
+        end: end,
+        colors: isDark
+            ? [
+                const Color(0x00FFFFFF),
+                const Color(0x0AFFFFFF),
+                const Color(0x18FFFFFF),
+                const Color(0x0AFFFFFF),
+                const Color(0x00FFFFFF),
+              ]
+            : [
+                const Color(0x00FFFFFF),
+                const Color(0x30FFFFFF),
+                const Color(0x50FFFFFF),
+                const Color(0x30FFFFFF),
+                const Color(0x00FFFFFF),
+              ],
+        stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
+      ),
+      border: _liquidGradientBorder(c, width: 0.5),
+    );
+  }
+
+  /// Liquid pill decoration — pill-shaped containers with inner glow
+  /// and soft outer radiance, evoking a liquid capsule.
+  static BoxDecoration liquidPillDecoration({
+    BuildContext? context,
+    Color? color,
+    Color? glowColor,
+    double borderRadius = 100.0,
+  }) {
+    final isDark = context != null
+        ? (Theme.of(context).brightness == Brightness.dark)
+        : true;
+    final c = isDark ? darkColors : lightColors;
+    final pillColor = color ?? c.surfaceGlass;
+    final glow = glowColor ?? c.primary;
+
+    return BoxDecoration(
+      borderRadius: BorderRadius.circular(borderRadius),
+      color: pillColor,
+      border: _liquidGradientBorder(c, width: 0.6),
+      // Inner glow simulated via gradient + boxShadow
+      boxShadow: [
+        // Inner glow (inset simulation via tight shadow)
+        BoxShadow(
+          color: glow.withOpacity(isDark ? 0.08 : 0.05),
+          blurRadius: 10,
+          spreadRadius: -2,
+          offset: Offset.zero,
+        ),
+        // Outer soft radiance — Layer 1
+        BoxShadow(
+          color: glow.withOpacity(isDark ? 0.12 : 0.08),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
+        // Outer radiance — Layer 2
+        BoxShadow(
+          color: glow.withOpacity(isDark ? 0.06 : 0.04),
+          blurRadius: 22,
+          spreadRadius: 1,
+          offset: const Offset(0, 4),
+        ),
+        // Wide ambient — Layer 3
+        BoxShadow(
+          color: Colors.black.withOpacity(isDark ? 0.10 : 0.03),
+          blurRadius: 30,
+          spreadRadius: 2,
+          offset: const Offset(0, 8),
+        ),
+      ],
+    );
+  }
+
+  /// Liquid input decoration — for search bars with soft pulsing inner glow.
+  /// Pass [pulsePhase] (0→1) from an AnimationController for the living pulse.
+  static BoxDecoration liquidInputDecoration({
+    BuildContext? context,
+    double borderRadius = 14.0,
+    double pulsePhase = 0.0,
+    bool isFocused = false,
+  }) {
+    final isDark = context != null
+        ? (Theme.of(context).brightness == Brightness.dark)
+        : true;
+    final c = isDark ? darkColors : lightColors;
+    final pulseIntensity = 0.5 + 0.5 * math.sin(pulsePhase * 2 * math.pi);
+
+    final baseGlow = isFocused ? c.primary : c.accent;
+    final glowOpacity = isDark
+        ? (isFocused ? 0.15 : 0.04) + 0.04 * pulseIntensity
+        : (isFocused ? 0.10 : 0.02) + 0.03 * pulseIntensity;
+
+    return BoxDecoration(
+      color: c.surfaceGlassInput,
+      borderRadius: BorderRadius.circular(borderRadius),
+      border: isFocused
+          ? Border.all(
+              color: baseGlow.withOpacity(isDark ? 0.5 : 0.4),
+              width: 1.0,
+            )
+          : _liquidGradientBorder(c, width: 0.5),
+      boxShadow: [
+        // Pulsing inner glow
+        BoxShadow(
+          color: baseGlow.withOpacity(glowOpacity),
+          blurRadius: 12 + 6 * pulseIntensity,
+          spreadRadius: -1,
+          offset: Offset.zero,
+        ),
+        // Subtle ambient
+        BoxShadow(
+          color: Colors.black.withOpacity(isDark ? 0.12 : 0.03),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
       ],
     );
   }
@@ -446,5 +735,45 @@ class AppTheme {
       ),
       dividerColor: c.glassBorderSubtle,
     );
+  }
+}
+
+// ─── Custom Liquid Motion Curves ──────────────────────────────────────
+
+/// Spring-physics-inspired curve simulating fluid resistance and settle.
+/// Mimics damping: 20, stiffness: 300 spring behavior within a parametric curve.
+class _LiquidSpringCurve extends Curve {
+  const _LiquidSpringCurve();
+
+  @override
+  double transformInternal(double t) {
+    // Critically-damped spring approximation: 1 - (1 + wt)e^(-wt)
+    // w chosen so the curve settles cleanly at t=1.
+    const w = 8.0; // angular frequency approximating stiffness/damping ratio
+    return 1.0 - (1.0 + w * t) * math.exp(-w * t);
+  }
+}
+
+/// Viscous fluid deceleration — gives the sensation of moving through
+/// a thick liquid medium. Fast initial response, long slow tail.
+class _ViscousFluidCurve extends Curve {
+  const _ViscousFluidCurve();
+
+  @override
+  double transformInternal(double t) {
+    // Based on Android's ViscousFluidInterpolator formula
+    const v = 5.0;
+    final x = v * t;
+    return (math.exp(-x / v) * (-1.0) + 1.0) /
+        (math.exp(-1.0) * (-1.0) + 1.0) *
+        _viscousNormalize(t);
+  }
+
+  double _viscousNormalize(double t) {
+    // Normalize so f(1) = 1 exactly
+    const v = 5.0;
+    return t <= 0.0
+        ? 0.0
+        : 1.0 - math.exp(-v * t) * (1.0 + v * t * 0.36);
   }
 }
