@@ -444,9 +444,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                     ? uiLerp(22.0, 6.0, (pageDiff * 2).clamp(0.0, 1.0))
                     : 6.0;
 
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 260),
-                  curve: AppTheme.liquidSnap,
+                return Container(
                   margin: const EdgeInsets.symmetric(horizontal: 3),
                   height: 5.5,
                   width: dotWidth,
@@ -455,15 +453,6 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                     color: isCurrent
                         ? c.primary
                         : (c.isDark ? Colors.white24 : Colors.black12),
-                    boxShadow: isCurrent
-                        ? [
-                            BoxShadow(
-                              color: c.primary.withOpacity(0.45),
-                              blurRadius: 6,
-                              offset: const Offset(0, 1),
-                            ),
-                          ]
-                        : null,
                   ),
                 );
               }),

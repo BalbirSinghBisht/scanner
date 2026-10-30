@@ -163,18 +163,9 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage>
                     end: Alignment(shimmerX + 0.6, 0.3),
                     colors: [
                       Colors.transparent,
-                      (c.isDark
-                              ? Colors.white
-                              : const Color(0xFF94A3B8))
-                          .withOpacity(0.12),
-                      (c.isDark
-                              ? Colors.white
-                              : const Color(0xFF94A3B8))
-                          .withOpacity(0.22),
-                      (c.isDark
-                              ? Colors.white
-                              : const Color(0xFF94A3B8))
-                          .withOpacity(0.12),
+                      c.glassOverlay,
+                      c.strongGlassOverlay,
+                      c.glassOverlay,
                       Colors.transparent,
                     ],
                     stops: const [0.0, 0.3, 0.5, 0.7, 1.0],

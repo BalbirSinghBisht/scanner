@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -188,7 +187,7 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
                       boxShadow: [
                         // Dynamic directional shadow opposing tilt angle
                         BoxShadow(
-                          color: Colors.black.withOpacity(c.isDark ? 0.38 : 0.12),
+                          color: c.glassShadow,
                           blurRadius: shadowBlur,
                           offset: Offset(shadowOffsetX, shadowOffsetY),
                           spreadRadius: _isPressed ? -2 : 0,
@@ -223,8 +222,8 @@ class _ThreeDTouchCardState extends State<ThreeDTouchCard>
                                       ),
                                       radius: 0.85,
                                       colors: [
-                                        Colors.white.withOpacity(c.isDark ? 0.28 : 0.38),
-                                        Colors.white.withOpacity(c.isDark ? 0.08 : 0.14),
+                                        c.strongGlassOverlay,
+                                        c.glassOverlay,
                                         Colors.transparent,
                                       ],
                                       stops: const [0.0, 0.40, 1.0],

@@ -117,48 +117,48 @@ class _LiquidmorphicCanvasPainter extends CustomPainter {
     final cosS = math.cos(slowPhase);
 
     // ─────────────────────────────────────────────────────────────
-    // 1. ORGANIC LIQUID METABALL BLOBS WITH CHROMATIC DISPERSION
+    // 1. ORGANIC LIQUID METABALL BLOBS WITH SUBTLE AMBIENT BLUE/VIOLET LIGHTING
     // ─────────────────────────────────────────────────────────────
 
-    // --- Blob 1: Top-Right Royal Sapphire / Electric Azure ---
+    // --- Blob 1: Top-Right Electric Blue Ambient Glow ---
     final b1Radius = size.width * (0.46 + 0.05 * sinM);
     final b1Center = Offset(
       size.width * 0.82 + 35 * cosF,
       size.height * 0.14 + 30 * sinM,
     );
-    // Chromatic dispersion halo (subtle cyan offset simulating fluid refraction)
+    // Ambient Blue refraction halo
     final b1DispersionCenter = b1Center + Offset(12 * cosF, 10 * sinM);
     paint.shader = RadialGradient(
       colors: [
-        colors.accent.withOpacity(isDark ? 0.09 : 0.07),
+        colors.accent.withOpacity(0.18), // Ambient Blue #263F73
         Colors.transparent,
       ],
       stops: const [0.0, 0.75],
     ).createShader(Rect.fromCircle(center: b1DispersionCenter, radius: b1Radius * 1.15));
     canvas.drawCircle(b1DispersionCenter, b1Radius * 1.15, paint);
 
-    // Primary Azure Core
+    // Primary Electric Blue Core
     paint.shader = RadialGradient(
       colors: [
-        colors.primary.withOpacity(isDark ? 0.22 : 0.16),
-        colors.primaryLight.withOpacity(isDark ? 0.10 : 0.06),
+        colors.primary.withOpacity(0.16), // Electric Blue #477BFF
+        colors.primaryLight.withOpacity(0.06), // Ice Blue #91B7FF
         Colors.transparent,
       ],
       stops: const [0.0, 0.45, 1.0],
     ).createShader(Rect.fromCircle(center: b1Center, radius: b1Radius));
     canvas.drawCircle(b1Center, b1Radius, paint);
 
-    // --- Blob 2: Mid-Left Electric Violet / Neon Nebula ---
+    // --- Blob 2: Mid-Left Violet Highlight Ambient Glow ---
     final b2Radius = size.width * (0.48 + 0.06 * cosS);
     final b2Center = Offset(
       size.width * 0.12 + 38 * sinM,
       size.height * 0.45 + 42 * cosF,
     );
-    // Rose dispersion halo
+    // Subtle Violet dispersion halo
     final b2DispersionCenter = b2Center + Offset(-10 * sinS, 8 * cosF);
     paint.shader = RadialGradient(
       colors: [
-        colors.accentRose.withOpacity(isDark ? 0.08 : 0.05),
+        colors.secondary.withOpacity(0.10), // Violet Highlight #8067FF
         Colors.transparent,
       ],
       stops: const [0.0, 0.70],
@@ -168,15 +168,15 @@ class _LiquidmorphicCanvasPainter extends CustomPainter {
     // Primary Violet Core
     paint.shader = RadialGradient(
       colors: [
-        colors.secondary.withOpacity(isDark ? 0.19 : 0.14),
-        colors.secondary.withOpacity(isDark ? 0.07 : 0.04),
+        colors.secondary.withOpacity(0.14), // Violet Highlight #8067FF
+        colors.accent.withOpacity(0.06), // Ambient Blue #263F73
         Colors.transparent,
       ],
       stops: const [0.0, 0.48, 1.0],
     ).createShader(Rect.fromCircle(center: b2Center, radius: b2Radius));
     canvas.drawCircle(b2Center, b2Radius, paint);
 
-    // --- Blob 3: Bottom-Right Deep Neon Cyan & Oceanic Turquoise ---
+    // --- Blob 3: Bottom-Right Deep Ambient Blue ---
     final b3Radius = size.width * (0.50 + 0.05 * sinS);
     final b3Center = Offset(
       size.width * 0.86 + 28 * cosM,
@@ -184,15 +184,15 @@ class _LiquidmorphicCanvasPainter extends CustomPainter {
     );
     paint.shader = RadialGradient(
       colors: [
-        colors.accent.withOpacity(isDark ? 0.16 : 0.13),
-        colors.primary.withOpacity(isDark ? 0.06 : 0.04),
+        colors.accent.withOpacity(0.20), // Ambient Blue #263F73
+        colors.primary.withOpacity(0.06), // Electric Blue #477BFF
         Colors.transparent,
       ],
       stops: const [0.0, 0.52, 1.0],
     ).createShader(Rect.fromCircle(center: b3Center, radius: b3Radius));
     canvas.drawCircle(b3Center, b3Radius, paint);
 
-    // --- Blob 4: Center-Left Amber / Warm Golden Light Sheen ---
+    // --- Blob 4: Center-Left Ice Blue Soft Ambient Glow ---
     final b4Radius = size.width * (0.36 + 0.04 * cosF);
     final b4Center = Offset(
       size.width * 0.42 + 30 * sinS,
@@ -200,8 +200,8 @@ class _LiquidmorphicCanvasPainter extends CustomPainter {
     );
     paint.shader = RadialGradient(
       colors: [
-        colors.accentAmber.withOpacity(isDark ? 0.07 : 0.06),
-        colors.accentGreen.withOpacity(isDark ? 0.04 : 0.03),
+        colors.primaryLight.withOpacity(0.08), // Ice Blue #91B7FF
+        colors.accent.withOpacity(0.05), // Ambient Blue #263F73
         Colors.transparent,
       ],
       stops: const [0.0, 0.55, 1.0],
@@ -209,9 +209,8 @@ class _LiquidmorphicCanvasPainter extends CustomPainter {
     canvas.drawCircle(b4Center, b4Radius, paint);
 
     // ─────────────────────────────────────────────────────────────
-    // 2. LIQUID METABALL FUSION BRIDGE (Simulates droplet snapping)
+    // 2. LIQUID METABALL FUSION BRIDGE (Droplet snapping simulation)
     // ─────────────────────────────────────────────────────────────
-    // Calculate distance between Blob 2 and Blob 4
     final bridgeVector = b4Center - b2Center;
     final bridgeDist = bridgeVector.distance;
     if (bridgeDist < (b2Radius + b4Radius) * 0.95) {
@@ -219,7 +218,7 @@ class _LiquidmorphicCanvasPainter extends CustomPainter {
       final bridgeRadius = (b2Radius + b4Radius) * 0.32;
       paint.shader = RadialGradient(
         colors: [
-          colors.secondary.withOpacity(isDark ? 0.12 : 0.08),
+          colors.secondary.withOpacity(0.08),
           Colors.transparent,
         ],
         stops: const [0.0, 1.0],
@@ -236,7 +235,7 @@ class _LiquidmorphicCanvasPainter extends CustomPainter {
       yFraction: 0.18,
       amplitude: 24,
       phase: fastPhase,
-      color: (isDark ? Colors.white : colors.primary).withOpacity(isDark ? 0.035 : 0.045),
+      color: colors.primaryLight.withOpacity(0.035),
       strokeWidth: 1.0,
     );
 
@@ -246,7 +245,7 @@ class _LiquidmorphicCanvasPainter extends CustomPainter {
       yFraction: 0.42,
       amplitude: 18,
       phase: midPhase * 0.8,
-      color: (isDark ? colors.secondary : colors.primaryLight).withOpacity(isDark ? 0.025 : 0.035),
+      color: colors.secondary.withOpacity(0.025),
       strokeWidth: 0.8,
     );
 
@@ -256,7 +255,7 @@ class _LiquidmorphicCanvasPainter extends CustomPainter {
       yFraction: 0.68,
       amplitude: 26,
       phase: slowPhase * 1.2,
-      color: (isDark ? colors.accent : colors.accentAmber).withOpacity(isDark ? 0.030 : 0.040),
+      color: colors.accent.withOpacity(0.030),
       strokeWidth: 1.0,
     );
 

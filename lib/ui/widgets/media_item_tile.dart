@@ -67,7 +67,7 @@ class _MediaItemTileState extends State<MediaItemTile>
         child: AnimatedScale(
           scale: targetScale,
           duration: const Duration(milliseconds: 220),
-          curve: AppTheme.liquidSnap,
+          curve: Curves.easeOutCubic,
           child: Container(
             decoration: BoxDecoration(
               color: c.surface,
@@ -132,7 +132,7 @@ class _MediaItemTileState extends State<MediaItemTile>
                     right: 6,
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      curve: AppTheme.liquidSnap,
+                      curve: Curves.easeOutCubic,
                       width: 24,
                       height: 24,
                       decoration: BoxDecoration(

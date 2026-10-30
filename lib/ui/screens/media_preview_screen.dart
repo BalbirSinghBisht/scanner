@@ -393,7 +393,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(deleted ? 'Item deleted from device' : 'Removed from gallery'),
-            backgroundColor: const Color(0xFF1C2740),
+            backgroundColor: const Color(0xFF1A2230),
             duration: const Duration(seconds: 2),
           ),
         );

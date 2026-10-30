@@ -899,7 +899,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   Widget _buildSearchBar(AppThemeColors c) {
     return AnimatedContainer(
       duration: AppTheme.motionFast,
-      curve: AppTheme.liquidSnap,
+      curve: Curves.easeOutCubic,
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: AppTheme.liquidInputDecoration(
@@ -982,7 +982,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 240),
-        curve: AppTheme.liquidSnap,
+        curve: Curves.easeOutCubic,
         margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
