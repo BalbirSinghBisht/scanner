@@ -43,6 +43,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            val keystoreFile = file("release.keystore")
+            if (keystoreFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             val keystoreFile = file("release.keystore")
             if (keystoreFile.exists()) {
