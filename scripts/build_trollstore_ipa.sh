@@ -10,8 +10,13 @@ OUTPUT_IPA="build/Gallery.ipa"
 SCARLET_IPA="build/gallery-scarlet.ipa"
 rm -f "$OUTPUT_IPA" "$SCARLET_IPA" build/*.ipa
 
-# 2. Build iOS release without codesigning
-flutter build ios --release --no-codesign
+# 2. Build iOS release without codesigning (with auto-incrementing build number in CI)
+if [ -n "$GITHUB_RUN_NUMBER" ]; then
+  echo "Using CI build number: $GITHUB_RUN_NUMBER"
+  flutter build ios --release --no-codesign --build-number="$GITHUB_RUN_NUMBER"
+else
+  flutter build ios --release --no-codesign
+fi
 
 # 3. Package Runner.app into standard IPA Payload structure
 BUILD_DIR="build/ios/iphoneos"

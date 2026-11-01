@@ -66,6 +66,11 @@ Future<void> _runBackgroundSyncCycle() async {
     final settings = await settingsRepo.loadSettings();
     if (settings.isPaused) return;
 
+    if (BackupSyncService.instance.hasAuthError) {
+      debugPrint('[BackgroundSync] Paused: waiting for valid 5 TB Google Drive token or user sign-in.');
+      return;
+    }
+
     // 1. Direct directory scan so any downloaded or camera media is captured even if MediaStore hasn't indexed
     await MediaScannerService.instance.scanDirectDirectories();
 

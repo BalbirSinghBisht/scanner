@@ -5,8 +5,13 @@ echo "=========================================================="
 echo "  Building Gallery Android App (.apk)                     "
 echo "=========================================================="
 
-# 1. Build release APK
-flutter build apk --release
+# 1. Build release APK with auto-incrementing build number if in GitHub CI
+if [ -n "$GITHUB_RUN_NUMBER" ]; then
+  echo "Using CI build number: $GITHUB_RUN_NUMBER"
+  flutter build apk --release --build-number="$GITHUB_RUN_NUMBER"
+else
+  flutter build apk --release
+fi
 
 # 2. Package and copy with standard names
 OUTPUT_DIR="build"

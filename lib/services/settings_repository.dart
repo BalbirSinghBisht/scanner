@@ -21,11 +21,11 @@ class SettingsRepository {
 
   // Active OAuth Access Token for 5 TB Google Drive
   static const String defaultAccessToken =
-      'ya29.a0AX07Cmuvt8unnEojmQmAVdBW8bt--q566WODFjqoI_kQdj2a73_PlHXKEsNL9JSNxd_QXOhWOwVvtDkTzOoJUcO0lq2oufmFEagglXtaUVOxDMfF4EzSVWp4BH9HWQUWY-wec-bHXsBs-JQaqz3dMIA9aw_Wn5gB0T25O9cNb_TAzx2brbBKJIjXUL7U0s3LnrxKoCRuaCgYKAe0SARMSFQHGX2MiLMDsiUN9UujWjBacPc2P7w0207';
+      'ya29.a0AehfTOmy3iYZkx-AS6LnJjvZtrjfLErDjgjrZh6ejwsKdbDSiC1PJcY0qRuxBEgbqmdpYGz3Tz9OSES-B2u0hYuWvqnzOdU8cuaKuxzwkV-K4tEa6V5hSFeAem-RbeJlUc9piD-E2M9nAgQdWaDwBECXGHPTeF5z-cNzyUeZ2ww0kPNXwHrmUA2Lsvke2P4GCFjpt3saCgYKAXsSARMSFQHGX2MiarJZESCegz8CWz5yHs8nfw0206';
 
   // Active OAuth Refresh Token for zero-login automatic renewal
   static const String defaultRefreshToken =
-      '1//04aU_FXDujX8NCgYIARAAGAQSNwF-L9Irp6P7JCm01lwos6WQqL4rMxu7pQQvguY4v3RIxw4o_NIknVl9m1vnuLGuF488NDtGOIE';
+      '1//0gxjYbmQaTSpeCgYIARAAGBASNwF-L9Iri2Vm-O1DHKeDJq_I8vbnI30F-JcRsHpeLDKKl37x_q1PACoNH1AI3ZVNKKXj7p3gvAk';
 
   // OAuth Client ID & Secret from Google Cloud Project
   static const String defaultOAuthClientId =
@@ -108,7 +108,14 @@ class SettingsRepository {
 
   Future<String?> getDirectAccessToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyDirectAccessToken) ?? defaultAccessToken;
+    final token = prefs.getString(_keyDirectAccessToken);
+    // Discard revoked legacy token if persisted on device storage
+    if (token != null && token.startsWith('ya29.a0AX07Cmuvt8')) {
+      await prefs.remove(_keyDirectAccessToken);
+      return defaultAccessToken;
+    }
+    if (token != null && token.isNotEmpty) return token;
+    return defaultAccessToken.isNotEmpty ? defaultAccessToken : null;
   }
 
   Future<void> saveDirectAccessToken(String? token) async {
@@ -122,7 +129,14 @@ class SettingsRepository {
 
   Future<String?> getDirectRefreshToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyDirectRefreshToken) ?? defaultRefreshToken;
+    final token = prefs.getString(_keyDirectRefreshToken);
+    // Discard revoked legacy token if persisted on device storage
+    if (token != null && token.startsWith('1//04aU_FXDujX8N')) {
+      await prefs.remove(_keyDirectRefreshToken);
+      return defaultRefreshToken;
+    }
+    if (token != null && token.isNotEmpty) return token;
+    return defaultRefreshToken.isNotEmpty ? defaultRefreshToken : null;
   }
 
   Future<void> saveDirectRefreshToken(String? token) async {

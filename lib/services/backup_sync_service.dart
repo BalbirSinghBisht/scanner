@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_constants.dart';
+import '../core/errors/app_exceptions.dart';
 import '../models/backup_settings.dart';
 import '../models/media_item.dart';
 import 'auth_service.dart';
@@ -391,11 +392,14 @@ class BackupSyncService {
       debugPrint('Failed to upload ${item.fileName}: $e');
       final isAuth = e.toString().contains('401') ||
           e.toString().contains('authentication') ||
-          e.toString().contains('UNAUTHENTICATED');
+          e.toString().contains('UNAUTHENTICATED') ||
+          e.toString().contains('invalid_grant') ||
+          e.toString().contains('expired or revoked') ||
+          e is AuthException;
       if (isAuth) {
         _hasAuthError = true;
         _authErrorMessage =
-            'Google Drive authentication expired (401). Please update your access token or reconnect.';
+            'Google Drive 5 TB token expired (401). Please update your access token or sign in.';
       }
 
       // Check if failure was caused by internet / network dropping

@@ -45,7 +45,7 @@ class GoogleDriveService {
 
   final AuthService _auth = AuthService.instance;
 
-  // Root folder in Google Drive
+  // Root folder in Google Drive (5 TB Shared Drive)
   static const String rootFolderName = 'PhoneBackup';
   static const String canonicalRootFolderId = '1D4WcMHsuG1mLWqjh3dK-9zh_mQV08b6M';
   static const String sharedDriveRootId = '0AJ9AkL5OYh0uUk9PVA';
@@ -60,6 +60,11 @@ class GoogleDriveService {
     final client = await _auth.getAuthenticatedClient();
     _driveApi = drive.DriveApi(client);
     return _driveApi!;
+  }
+
+  /// Ensures the root PhoneBackup folder exists in the 5 TB Shared Drive, returning its ID.
+  Future<String> createRootFolderInMyDrive() async {
+    return await getOrCreateFolderPath([rootFolderName]);
   }
 
   /// Thread-safe resolution of folder paths with persistent caching in SharedPreferences
@@ -104,29 +109,27 @@ class GoogleDriveService {
             $fields: 'id, name, parents, trashed',
           );
           if (existing is drive.File && existing.trashed != true) {
+            final parents = existing.parents ?? [];
             if (isRoot) {
               resolvedFolderId = candidateId;
+            } else if (parents.contains(currentParentId)) {
+              resolvedFolderId = candidateId;
             } else {
-              final parents = existing.parents ?? [];
-              if (parents.contains(currentParentId)) {
+              // Orphaned folder sitting outside currentParentId.
+              // Relocate it directly into currentParentId.
+              try {
+                final prevParents = parents.join(',');
+                await api.files.update(
+                  drive.File(),
+                  candidateId,
+                  addParents: currentParentId,
+                  removeParents: prevParents.isNotEmpty ? prevParents : null,
+                  supportsAllDrives: true,
+                );
                 resolvedFolderId = candidateId;
-              } else {
-                // Orphaned folder sitting outside currentParentId (e.g. in root when PhoneBackup was deleted).
-                // Relocate it directly into currentParentId.
-                try {
-                  final prevParents = parents.join(',');
-                  await api.files.update(
-                    drive.File(),
-                    candidateId,
-                    addParents: currentParentId,
-                    removeParents: prevParents.isNotEmpty ? prevParents : null,
-                    supportsAllDrives: true,
-                  );
-                  resolvedFolderId = candidateId;
-                  debugPrint('Relocated orphaned folder $segment into parent $currentParentId');
-                } catch (_) {
-                  resolvedFolderId = null;
-                }
+                debugPrint('Relocated orphaned folder $segment into parent $currentParentId');
+              } catch (_) {
+                resolvedFolderId = null;
               }
             }
           }
@@ -190,6 +193,7 @@ class GoogleDriveService {
             $fields: 'id, name',
           );
           resolvedFolderId = created.id!;
+          debugPrint('Created folder "$segment" (id: $resolvedFolderId) under parent: $currentParentId');
         }
       }
 
@@ -453,8 +457,15 @@ class GoogleDriveService {
     }
   }
 
-  /// Clears in-memory folder cache (e.g. on user account change)
-  void clearFolderCache() {
+  /// Clears in-memory and persisted folder cache (e.g. on user account change)
+  Future<void> clearFolderCache() async {
     _folderCache.clear();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final allKeys = prefs.getKeys().where((k) => k.startsWith('gdrive_folder_id_')).toList();
+      for (final k in allKeys) {
+        await prefs.remove(k);
+      }
+    } catch (_) {}
   }
 }

@@ -48,7 +48,7 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       await _auth.signIn(clientId: _customClientId);
-      _drive.clearFolderCache();
+      await _drive.clearFolderCache();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -71,7 +71,7 @@ class AuthProvider extends ChangeNotifier {
       accessToken: accessToken,
       refreshToken: refreshToken,
     );
-    _drive.clearFolderCache();
+    await _drive.clearFolderCache();
 
     _isLoading = false;
     notifyListeners();
@@ -97,7 +97,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     await _auth.signOut();
-    _drive.clearFolderCache();
+    await _drive.clearFolderCache();
 
     _isLoading = false;
     notifyListeners();
@@ -108,7 +108,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     await _auth.disconnect();
-    _drive.clearFolderCache();
+    await _drive.clearFolderCache();
 
     _isLoading = false;
     notifyListeners();

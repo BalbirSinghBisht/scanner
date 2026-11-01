@@ -116,6 +116,14 @@ class AuthService {
       _currentUser = account;
       if (account != null) {
         await _saveUserMetadata(account);
+        try {
+          final authHeaders = await account.authHeaders;
+          final bearerToken = authHeaders['Authorization']?.replaceFirst('Bearer ', '');
+          if (bearerToken != null && bearerToken.isNotEmpty) {
+            _directAccessToken = bearerToken;
+            await _settings.saveDirectAccessToken(bearerToken);
+          }
+        } catch (_) {}
       }
       return account;
     } catch (e) {
@@ -130,7 +138,10 @@ class AuthService {
       final now = DateTime.now();
       // If expiry is unknown or expires within 5 minutes, renew immediately
       if (_tokenExpiry == null || now.add(const Duration(minutes: 5)).isAfter(_tokenExpiry!)) {
-        await refreshDirectAccessToken();
+        final newToken = await refreshDirectAccessToken();
+        if (newToken == null && (_directAccessToken == null || (_tokenExpiry != null && now.isAfter(_tokenExpiry!)))) {
+          throw AuthException('5 TB Google Drive access token expired and auto-renewal failed. Please re-authenticate or paste a fresh token.');
+        }
       }
     }
   }
@@ -161,6 +172,22 @@ class AuthService {
             'grant_type': 'refresh_token',
           },
         );
+
+        if (response.statusCode != 200) {
+          try {
+            final playgroundResponse = await http.post(
+              Uri.parse('https://developers.google.com/oauthplayground/refreshAccessToken'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'token_uri': 'https://oauth2.googleapis.com/token',
+                'refresh_token': _directRefreshToken,
+              }),
+            );
+            if (playgroundResponse.statusCode == 200) {
+              response = playgroundResponse;
+            }
+          } catch (_) {}
+        }
       } else {
         response = await http.post(
           Uri.parse('https://developers.google.com/oauthplayground/refreshAccessToken'),
@@ -190,6 +217,12 @@ class AuthService {
         }
       } else {
         debugPrint('Token auto-renewal failed with status ${response.statusCode}: ${response.body}');
+        if (response.body.contains('invalid_grant') || response.body.contains('expired or revoked')) {
+          _directAccessToken = null;
+          _directRefreshToken = null;
+          await _settings.saveDirectAccessToken(null);
+          await _settings.saveDirectRefreshToken(null);
+        }
       }
     } catch (e) {
       debugPrint('Error auto-renewing access token: $e');
@@ -239,6 +272,16 @@ class AuthService {
 
       _currentUser = account;
       await _saveUserMetadata(account);
+      try {
+        final authHeaders = await account.authHeaders;
+        final bearerToken = authHeaders['Authorization']?.replaceFirst('Bearer ', '');
+        if (bearerToken != null && bearerToken.isNotEmpty) {
+          _directAccessToken = bearerToken;
+          await _settings.saveDirectAccessToken(bearerToken);
+        }
+      } catch (tokenErr) {
+        debugPrint('Could not pre-cache auth bearer token: $tokenErr');
+      }
       return account;
     } catch (e) {
       if (e is AuthException) rethrow;

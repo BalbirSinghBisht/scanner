@@ -8,9 +8,12 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/backup_provider.dart';
+import '../../services/backup_sync_service.dart';
 import '../../services/device_settings_helper.dart';
 import '../../services/favorites_service.dart';
+import '../../services/google_drive_service.dart';
 import '../../services/media_scanner_service.dart';
 import '../widgets/haikei_background.dart';
 import '../widgets/media_folder_card.dart';
@@ -509,6 +512,396 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
+  void _showGoogleDriveSheet(BuildContext context) {
+    final c = AppTheme.colors(context);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (bottomSheetContext, setSheetState) {
+          final auth = bottomSheetContext.watch<AuthProvider>();
+
+          return ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: c.surfaceGlassFloating,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(28)),
+                  border: Border.all(color: c.glassBorder, width: 0.6),
+                ),
+                padding: EdgeInsets.only(
+                  top: 14,
+                  left: 20,
+                  right: 20,
+                  bottom: MediaQuery.of(bottomSheetContext).padding.bottom + 20,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: c.textTertiary.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(2.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: c.primary.withOpacity(0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(CupertinoIcons.cloud,
+                              color: c.primary, size: 24),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Google Drive Sync',
+                                style: TextStyle(
+                                  color: c.textPrimary,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                auth.isAuthenticated
+                                    ? (auth.userEmail ?? 'Connected')
+                                    : 'Not connected',
+                                style: TextStyle(
+                                  color: auth.isAuthenticated
+                                      ? c.primary
+                                      : c.textSecondary,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: c.surfaceElevated.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: c.glassBorder, width: 0.6),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(CupertinoIcons.folder,
+                                  color: c.textSecondary, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Target Storage (5 TB)',
+                                style: TextStyle(
+                                  color: c.textSecondary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '5 TB Shared Drive / PhoneBackup',
+                            style: TextStyle(
+                              color: c.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Shared Drive ID: 0AJ9AkL5OYh0uUk9PVA',
+                            style: TextStyle(
+                              color: c.textSecondary,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Action button: Create / Verify Folder in 5 TB Drive
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () async {
+                        try {
+                          final folderId = await GoogleDriveService.instance
+                              .createRootFolderInMyDrive();
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                    'Verified 5 TB Shared Drive folder! (ID: $folderId)'),
+                                backgroundColor: const Color(0xFF2E7D32),
+                              ),
+                            );
+                            Navigator.pop(ctx);
+                          }
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error accessing 5 TB drive: $e'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: c.primary,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: c.primary.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(CupertinoIcons.folder_badge_plus,
+                                color: Colors.white, size: 18),
+                            SizedBox(width: 8),
+                            Text(
+                              'Verify 5 TB "PhoneBackup" Folder',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Update direct token button
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () => _showTokenUpdateDialog(context, auth),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: c.surfaceElevated,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                              color: c.primary.withOpacity(0.4), width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(CupertinoIcons.lock_shield,
+                                color: c.primary, size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Paste Fresh 5 TB OAuth Access Token',
+                              style: TextStyle(
+                                color: c.primary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Sign-in / Disconnect button
+                    if (!auth.isAuthenticated)
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () async {
+                          final success = await auth.signIn();
+                          if (success && ctx.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Signed in to 5 TB account successfully!'),
+                                backgroundColor: Color(0xFF2E7D32),
+                              ),
+                            );
+                          }
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          decoration: BoxDecoration(
+                            color: c.surfaceElevated,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                                color: c.glassBorder, width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(CupertinoIcons.person_crop_circle_badge_plus,
+                                  color: c.textPrimary, size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Sign In with balbirbisht560@gmail.com',
+                                style: TextStyle(
+                                  color: c.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () async {
+                          await auth.signOut();
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                          }
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                                color: Colors.redAccent.withOpacity(0.3),
+                                width: 0.8),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(CupertinoIcons.square_arrow_left,
+                                  color: Colors.redAccent, size: 18),
+                              SizedBox(width: 8),
+                              Text(
+                                'Disconnect Google Account',
+                                style: TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showTokenUpdateDialog(BuildContext context, AuthProvider auth) {
+    final c = AppTheme.colors(context);
+    final tokenController =
+        TextEditingController(text: auth.directAccessToken ?? '');
+
+    showDialog(
+      context: context,
+      builder: (dlgContext) => AlertDialog(
+        backgroundColor: c.surfaceElevated,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '5 TB Google Drive Token',
+          style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Paste a fresh Google OAuth Access Token (starts with ya29...) for balbirbisht560@gmail.com:',
+              style: TextStyle(color: c.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: tokenController,
+              maxLines: 4,
+              style: TextStyle(
+                color: c.textPrimary,
+                fontSize: 12,
+                fontFamily: 'monospace',
+              ),
+              decoration: InputDecoration(
+                hintText: 'ya29.a0AX07...',
+                hintStyle: TextStyle(color: c.textTertiary),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgContext),
+            child: Text('Cancel', style: TextStyle(color: c.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: c.primary),
+            onPressed: () async {
+              final text = tokenController.text.trim();
+              if (text.isNotEmpty) {
+                await auth.setDirectTokens(
+                  accessToken: text,
+                  refreshToken: auth.directRefreshToken,
+                );
+                BackupSyncService.instance.clearAuthError();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('5 TB Access Token updated! Sync resuming...'),
+                      backgroundColor: Color(0xFF2E7D32),
+                    ),
+                  );
+                }
+              }
+              Navigator.pop(dlgContext);
+            },
+            child: const Text('Save & Resume Sync',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
@@ -855,6 +1248,28 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     CupertinoIcons.arrow_up_arrow_down,
                     color: c.primary,
                     size: 18,
+                  ),
+                ),
+              ),
+
+              // Google Drive Cloud Sync Button
+              CupertinoButton(
+                padding: const EdgeInsets.all(5),
+                minSize: 0,
+                onPressed: () => _showGoogleDriveSheet(context),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: c.isDark
+                        ? Colors.white.withOpacity(0.06)
+                        : Colors.black.withOpacity(0.04),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: c.glassBorder, width: 0.6),
+                  ),
+                  child: Icon(
+                    CupertinoIcons.cloud,
+                    color: c.primary,
+                    size: 19,
                   ),
                 ),
               ),
