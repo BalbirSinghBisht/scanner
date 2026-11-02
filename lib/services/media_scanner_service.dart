@@ -113,6 +113,14 @@ class MediaScannerService {
     try {
       await requestPermission();
       await DeviceSettingsHelper.requestNotificationPermission();
+
+      // Proactively request battery optimization exemption if not yet granted.
+      // This stops Android Doze mode and task killers from auto-killing background sync after 15 minutes.
+      final isIgnoringBattery = await DeviceSettingsHelper.isIgnoringBatteryOptimizations();
+      if (!isIgnoringBattery) {
+        await Future.delayed(const Duration(milliseconds: 600));
+        await DeviceSettingsHelper.requestIgnoreBatteryOptimizations();
+      }
     } catch (e) {
       debugPrint('Error requesting media permissions: $e');
     }

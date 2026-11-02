@@ -42,8 +42,22 @@ class MainActivity : FlutterActivity() {
                             manufacturer.contains("honor") || brand.contains("honor") ||
                             manufacturer.contains("motorola") || brand.contains("motorola") ||
                             manufacturer.contains("moto") || brand.contains("moto") ||
+                            manufacturer.contains("samsung") || brand.contains("samsung") ||
                             manufacturer.contains("lenovo") || brand.contains("lenovo")
                     result.success(isStrict)
+                }
+                "getDeviceManufacturer" -> {
+                    result.success(Build.MANUFACTURER)
+                }
+                "getDeviceBrand" -> {
+                    result.success(Build.BRAND)
+                }
+                "getDeviceModel" -> {
+                    result.success(Build.MODEL)
+                }
+                "openBatteryOptimizationSettings" -> {
+                    val opened = openBatteryOptimizationSettings()
+                    result.success(opened)
                 }
                 "openXiaomiAutostart" -> {
                     val opened = openAutostartSettings()
@@ -149,13 +163,36 @@ class MainActivity : FlutterActivity() {
 
     private fun openAutostartSettings(): Boolean {
         val intents = listOf(
-            // Xiaomi / Redmi / POCO MIUI & HyperOS
+            // Xiaomi / Redmi / POCO MIUI & HyperOS (Autostart & Battery Saver No Restrictions)
             Intent().apply {
                 component = ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             },
             Intent().apply {
+                component = ComponentName("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity")
+                putExtra("package_name", packageName)
+                putExtra("package_label", "Gallery")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            Intent().apply {
                 component = ComponentName("com.miui.securitycenter", "com.miui.securityscan.MainActivity")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            // Samsung (OneUI Smart Manager / Device Care & Battery Settings)
+            Intent().apply {
+                component = ComponentName("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            Intent().apply {
+                component = ComponentName("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            Intent().apply {
+                component = ComponentName("com.samsung.android.sm", "com.samsung.android.sm.ui.battery.BatteryActivity")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            Intent().apply {
+                component = ComponentName("com.samsung.android.sm_cn", "com.samsung.android.sm.ui.ram.AutoRunActivity")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             },
             // Realme / Oppo / OnePlus (Realme UI & ColorOS & OxygenOS)
@@ -250,5 +287,20 @@ class MainActivity : FlutterActivity() {
             }
         }
         return false
+    }
+
+    private fun openBatteryOptimizationSettings(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
+                return true
+            } catch (_: Exception) {
+                return openAppInfo()
+            }
+        }
+        return openAppInfo()
     }
 }

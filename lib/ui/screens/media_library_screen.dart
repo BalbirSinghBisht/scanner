@@ -19,6 +19,7 @@ import '../widgets/haikei_background.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
 import '../widgets/three_d_carousel.dart';
+import '../widgets/unrestricted_background_sheet.dart';
 import 'media_preview_screen.dart';
 
 enum SortMode {
@@ -69,14 +70,30 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   bool _isSelectionMode = false;
   final Set<String> _selectedIds = {};
 
+  // Background Run & Battery Optimization status
+  bool _isIgnoringBattery = true;
+  bool _hasDismissedBatteryBanner = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadFeaturedPreference();
+    _checkBatteryOptimizationStatus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initAutoScanAndBackup();
     });
+  }
+
+  Future<void> _checkBatteryOptimizationStatus() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final isIgnoring =
+          await DeviceSettingsHelper.isIgnoringBatteryOptimizations();
+      if (mounted) {
+        setState(() => _isIgnoringBattery = isIgnoring);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -107,6 +124,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _checkBatteryOptimizationStatus();
       final backup = context.read<BackupProvider>();
       MediaScannerService.instance.requestPermission().then((_) {
         if (MediaScannerService.instance.isPermissionGranted) {
@@ -120,6 +138,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   Future<void> _initAutoScanAndBackup() async {
     await MediaScannerService.instance.requestAllAppPermissions();
+    if (!mounted) return;
+
+    await _checkBatteryOptimizationStatus();
     if (!mounted) return;
 
     final backup = context.read<BackupProvider>();
@@ -644,7 +665,126 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
+
+                    // Background Sync & Battery Optimization Status Card
+                    if (Platform.isAndroid)
+                      FutureBuilder<bool>(
+                        future: DeviceSettingsHelper.isIgnoringBatteryOptimizations(),
+                        builder: (context, snapshot) {
+                          final isUnrestricted = snapshot.data ?? false;
+                          return InkWell(
+                            onTap: () {
+                              UnrestrictedBackgroundSheet.show(
+                                context,
+                                onSettingsChanged: () {
+                                  setSheetState(() {});
+                                  _checkBatteryOptimizationStatus();
+                                },
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: isUnrestricted
+                                    ? const Color(0xFF2E7D32).withOpacity(0.08)
+                                    : Colors.orange.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: isUnrestricted
+                                      ? const Color(0xFF2E7D32).withOpacity(0.35)
+                                      : Colors.orange.withOpacity(0.35),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: isUnrestricted
+                                          ? const Color(0xFF2E7D32).withOpacity(0.16)
+                                          : Colors.orange.withOpacity(0.16),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      isUnrestricted
+                                          ? CupertinoIcons.bolt_fill
+                                          : CupertinoIcons.bolt_slash_fill,
+                                      color: isUnrestricted
+                                          ? const Color(0xFF2E7D32)
+                                          : Colors.orangeAccent,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              'Background Run',
+                                              style: TextStyle(
+                                                color: c.textPrimary,
+                                                fontSize: 13.5,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: isUnrestricted
+                                                    ? const Color(0xFF2E7D32).withOpacity(0.2)
+                                                    : Colors.orange.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                isUnrestricted ? '24/7 Active' : '15m Limit',
+                                                style: TextStyle(
+                                                  color: isUnrestricted
+                                                      ? (c.isDark
+                                                          ? const Color(0xFF81C784)
+                                                          : const Color(0xFF1B5E20))
+                                                      : (c.isDark
+                                                          ? Colors.orange[200]
+                                                          : Colors.orange[900]),
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          isUnrestricted
+                                              ? 'Unrestricted: 24/7 sync without limits'
+                                              : 'Tap to allow unrestricted background run',
+                                          style: TextStyle(
+                                            color: c.textSecondary,
+                                            fontSize: 11.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(
+                                    CupertinoIcons.chevron_forward,
+                                    color: c.textTertiary,
+                                    size: 16,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    if (Platform.isAndroid) const SizedBox(height: 14),
                     // Action button: Create / Verify Folder in 5 TB Drive
                     CupertinoButton(
                       padding: EdgeInsets.zero,
@@ -1537,6 +1677,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
+          // Android Background Run 15-min Restriction Warning Banner
+          if (Platform.isAndroid && !_isIgnoringBattery && !_hasDismissedBatteryBanner)
+            SliverToBoxAdapter(
+              child: _buildBackgroundWarningBanner(c),
+            ),
           for (final entry in dateGroups.entries) ...[
             // Date Section Header
             SliverToBoxAdapter(
@@ -1687,6 +1832,90 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
+  Widget _buildBackgroundWarningBanner(AppThemeColors c) {
+    if (!Platform.isAndroid ||
+        _isIgnoringBattery ||
+        _hasDismissedBatteryBanner) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.orange.withOpacity(0.4),
+            width: 0.8,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.18),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                CupertinoIcons.bolt_slash_fill,
+                color: Colors.orangeAccent,
+                size: 16,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  UnrestrictedBackgroundSheet.show(
+                    context,
+                    onSettingsChanged: _checkBatteryOptimizationStatus,
+                  );
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Background backup restricted to 15 min',
+                      style: TextStyle(
+                        color:
+                            c.isDark ? Colors.orange[200] : Colors.orange[900],
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Tap to allow Unrestricted Run throughout',
+                      style: TextStyle(
+                        color:
+                            c.isDark ? Colors.orange[300] : Colors.orange[800],
+                        fontSize: 11.5,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            IconButton(
+              icon: Icon(
+                CupertinoIcons.xmark,
+                size: 14,
+                color: c.textTertiary,
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () =>
+                  setState(() => _hasDismissedBatteryBanner = true),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Primary View: Shows 3D Showcase Carousel + Albums as 3D stacked cards
   Widget _buildFoldersView(
     BackupProvider backup,
@@ -1708,6 +1937,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
+          // Android Background Run 15-min Restriction Warning Banner
+          if (Platform.isAndroid &&
+              !_isIgnoringBattery &&
+              !_hasDismissedBatteryBanner)
+            SliverToBoxAdapter(
+              child: _buildBackgroundWarningBanner(c),
+            ),
+
           // 3D Featured Showcase Carousel
           if (_showFeaturedShowcase &&
               _searchQuery.isEmpty &&

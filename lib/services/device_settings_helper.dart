@@ -101,6 +101,78 @@ class DeviceSettingsHelper {
     }
   }
 
+  /// Opens the system Battery Optimization management settings page
+  static Future<bool> openBatteryOptimizationSettings() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final res = await _channel.invokeMethod<bool>('openBatteryOptimizationSettings');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Gets the device manufacturer name (e.g. samsung, xiaomi, google, oneplus, etc.)
+  static Future<String> getDeviceManufacturer() async {
+    if (!Platform.isAndroid) return 'Apple';
+    try {
+      final res = await _channel.invokeMethod<String>('getDeviceManufacturer');
+      return res ?? 'Android';
+    } catch (_) {
+      return 'Android';
+    }
+  }
+
+  /// Gets the device brand name
+  static Future<String> getDeviceBrand() async {
+    if (!Platform.isAndroid) return 'Apple';
+    try {
+      final res = await _channel.invokeMethod<String>('getDeviceBrand');
+      return res ?? 'Android';
+    } catch (_) {
+      return 'Android';
+    }
+  }
+
+  /// Returns clear, manufacturer-specific steps to disable the 15-minute background killer
+  static List<String> getOEMGuidanceTips(String manufacturer) {
+    final m = manufacturer.toLowerCase();
+    if (m.contains('samsung')) {
+      return [
+        'Set Battery to "Unrestricted" in App Info > Battery.',
+        'In Settings > Device Care > Battery > Background usage limits, ensure Gallery is NOT in "Sleeping apps" or "Deep sleeping apps".',
+        'Add Gallery to "Never sleeping apps" for guaranteed 24/7 background sync.',
+      ];
+    } else if (m.contains('xiaomi') || m.contains('redmi') || m.contains('poco')) {
+      return [
+        'Set Battery Saver to "No restrictions" (by default MIUI kills apps after 15 min).',
+        'Turn ON "Autostart" in App Permissions.',
+        'Allow "Start in background" in Security settings.',
+      ];
+    } else if (m.contains('oppo') || m.contains('realme') || m.contains('oneplus')) {
+      return [
+        'In App Battery Management, enable "Allow background activity".',
+        'Enable "Auto-launch" and "Secondary launch".',
+        'In Battery > More settings > Optimize battery use, select "Don\'t optimize".',
+      ];
+    } else if (m.contains('vivo') || m.contains('iqoo')) {
+      return [
+        'In Settings > Battery > Background power consumption, enable "High background power consumption".',
+        'In Permission Manager, turn ON "Autostart".',
+      ];
+    } else if (m.contains('huawei') || m.contains('honor')) {
+      return [
+        'In Settings > Battery > App Launch, set Gallery to "Manage manually".',
+        'Enable "Auto-launch", "Secondary launch", and "Run in background".',
+      ];
+    } else {
+      return [
+        'In App Info > Battery, select "Unrestricted" (preventing the 15-minute Doze kill).',
+        'Allow background data usage and unrestricted network access.',
+      ];
+    }
+  }
+
   /// Requests notification permission on Android 13+ and iOS (essential for continuous background auto-sync)
   static Future<bool> requestNotificationPermission() async {
     try {
