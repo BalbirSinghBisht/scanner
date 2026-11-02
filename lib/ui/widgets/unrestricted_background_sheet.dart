@@ -272,7 +272,7 @@ class _UnrestrictedBackgroundSheetState
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(CupertinoIcons.bolt_badge_automatic,
+                          Icon(CupertinoIcons.bolt_fill,
                               color: Colors.white, size: 19),
                           SizedBox(width: 8),
                           Text(

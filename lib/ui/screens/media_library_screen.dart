@@ -70,30 +70,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   bool _isSelectionMode = false;
   final Set<String> _selectedIds = {};
 
-  // Background Run & Battery Optimization status
-  bool _isIgnoringBattery = true;
-  bool _hasDismissedBatteryBanner = false;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadFeaturedPreference();
-    _checkBatteryOptimizationStatus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initAutoScanAndBackup();
     });
-  }
-
-  Future<void> _checkBatteryOptimizationStatus() async {
-    if (!Platform.isAndroid) return;
-    try {
-      final isIgnoring =
-          await DeviceSettingsHelper.isIgnoringBatteryOptimizations();
-      if (mounted) {
-        setState(() => _isIgnoringBattery = isIgnoring);
-      }
-    } catch (_) {}
   }
 
   @override
@@ -124,7 +108,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkBatteryOptimizationStatus();
       final backup = context.read<BackupProvider>();
       MediaScannerService.instance.requestPermission().then((_) {
         if (MediaScannerService.instance.isPermissionGranted) {
@@ -138,9 +121,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   Future<void> _initAutoScanAndBackup() async {
     await MediaScannerService.instance.requestAllAppPermissions();
-    if (!mounted) return;
-
-    await _checkBatteryOptimizationStatus();
     if (!mounted) return;
 
     final backup = context.read<BackupProvider>();
@@ -679,7 +659,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                                 context,
                                 onSettingsChanged: () {
                                   setSheetState(() {});
-                                  _checkBatteryOptimizationStatus();
                                 },
                               );
                             },
@@ -1032,7 +1011,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   );
                 }
               }
-              Navigator.pop(dlgContext);
+              if (dlgContext.mounted) {
+                Navigator.pop(dlgContext);
+              }
             },
             child: const Text('Save & Resume Sync',
                 style: TextStyle(color: Colors.white)),
@@ -1288,18 +1269,22 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 const SizedBox(width: 8),
               ],
 
-              // Title in Bold Realtime Colors Typography
+              // Title in Bold Realtime Colors Typography (Secret long-press to access settings)
               Expanded(
-                child: Text(
-                  titleText,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: c.textPrimary,
-                    letterSpacing: -0.5,
+                child: GestureDetector(
+                  onLongPress: () => _showGoogleDriveSheet(context),
+                  behavior: HitTestBehavior.opaque,
+                  child: Text(
+                    titleText,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: c.textPrimary,
+                      letterSpacing: -0.5,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
 
@@ -1388,28 +1373,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     CupertinoIcons.arrow_up_arrow_down,
                     color: c.primary,
                     size: 18,
-                  ),
-                ),
-              ),
-
-              // Google Drive Cloud Sync Button
-              CupertinoButton(
-                padding: const EdgeInsets.all(5),
-                minSize: 0,
-                onPressed: () => _showGoogleDriveSheet(context),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: c.isDark
-                        ? Colors.white.withOpacity(0.06)
-                        : Colors.black.withOpacity(0.04),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: c.glassBorder, width: 0.6),
-                  ),
-                  child: Icon(
-                    CupertinoIcons.cloud,
-                    color: c.primary,
-                    size: 19,
                   ),
                 ),
               ),
@@ -1677,11 +1640,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          // Android Background Run 15-min Restriction Warning Banner
-          if (Platform.isAndroid && !_isIgnoringBattery && !_hasDismissedBatteryBanner)
-            SliverToBoxAdapter(
-              child: _buildBackgroundWarningBanner(c),
-            ),
           for (final entry in dateGroups.entries) ...[
             // Date Section Header
             SliverToBoxAdapter(
@@ -1832,90 +1790,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  Widget _buildBackgroundWarningBanner(AppThemeColors c) {
-    if (!Platform.isAndroid ||
-        _isIgnoringBattery ||
-        _hasDismissedBatteryBanner) {
-      return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.orange.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.orange.withOpacity(0.4),
-            width: 0.8,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.18),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                CupertinoIcons.bolt_slash_fill,
-                color: Colors.orangeAccent,
-                size: 16,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  UnrestrictedBackgroundSheet.show(
-                    context,
-                    onSettingsChanged: _checkBatteryOptimizationStatus,
-                  );
-                },
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Background backup restricted to 15 min',
-                      style: TextStyle(
-                        color:
-                            c.isDark ? Colors.orange[200] : Colors.orange[900],
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Tap to allow Unrestricted Run throughout',
-                      style: TextStyle(
-                        color:
-                            c.isDark ? Colors.orange[300] : Colors.orange[800],
-                        fontSize: 11.5,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            IconButton(
-              icon: Icon(
-                CupertinoIcons.xmark,
-                size: 14,
-                color: c.textTertiary,
-              ),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () =>
-                  setState(() => _hasDismissedBatteryBanner = true),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// Primary View: Shows 3D Showcase Carousel + Albums as 3D stacked cards
   Widget _buildFoldersView(
     BackupProvider backup,
@@ -1937,14 +1811,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          // Android Background Run 15-min Restriction Warning Banner
-          if (Platform.isAndroid &&
-              !_isIgnoringBattery &&
-              !_hasDismissedBatteryBanner)
-            SliverToBoxAdapter(
-              child: _buildBackgroundWarningBanner(c),
-            ),
-
           // 3D Featured Showcase Carousel
           if (_showFeaturedShowcase &&
               _searchQuery.isEmpty &&
