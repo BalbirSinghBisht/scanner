@@ -134,7 +134,22 @@ class AuthService {
 
   /// Proactively refreshes the direct access token if expired or expiring within 5 minutes
   Future<void> ensureValidToken() async {
-    if (_directRefreshToken != null && _directRefreshToken!.isNotEmpty) {
+    if (_currentUser != null) {
+      try {
+        final headers = await _currentUser!.authHeaders;
+        final bearerToken = headers['Authorization']?.replaceFirst('Bearer ', '');
+        if (bearerToken != null && bearerToken.isNotEmpty) {
+          _directAccessToken = bearerToken;
+          await _settings.saveDirectAccessToken(bearerToken);
+        }
+      } catch (e) {
+        debugPrint('Could not refresh GoogleSignIn headers: $e');
+        await _signInInstance.signInSilently().timeout(
+          const Duration(seconds: 4),
+          onTimeout: () => null,
+        );
+      }
+    } else if (_directRefreshToken != null && _directRefreshToken!.isNotEmpty) {
       final now = DateTime.now();
       // If expiry is unknown or expires within 5 minutes, renew immediately
       if (_tokenExpiry == null || now.add(const Duration(minutes: 5)).isAfter(_tokenExpiry!)) {
@@ -143,6 +158,45 @@ class AuthService {
           throw AuthException('5 TB Google Drive access token expired and auto-renewal failed. Please re-authenticate or paste a fresh token.');
         }
       }
+    }
+  }
+
+  /// Proactively refreshes whichever authentication method is active (GoogleSignIn or direct developer token)
+  Future<bool> refreshActiveSession() async {
+    try {
+      if (_currentUser != null) {
+        final account = await _signInInstance.signInSilently().timeout(
+          const Duration(seconds: 6),
+          onTimeout: () => null,
+        );
+        if (account != null) {
+          _currentUser = account;
+          await _saveUserMetadata(account);
+          try {
+            final headers = await account.authHeaders;
+            final token = headers['Authorization']?.replaceFirst('Bearer ', '');
+            if (token != null && token.isNotEmpty) {
+              _directAccessToken = token;
+              await _settings.saveDirectAccessToken(token);
+            }
+          } catch (_) {}
+          return true;
+        }
+      }
+
+      if (_directRefreshToken != null && _directRefreshToken!.isNotEmpty) {
+        final newToken = await refreshDirectAccessToken();
+        if (newToken != null && newToken.isNotEmpty) {
+          return true;
+        }
+      }
+
+      // If neither or both failed, attempt full session restore
+      final restored = await restoreSession();
+      return restored != null || (_directAccessToken != null && _directAccessToken!.isNotEmpty);
+    } catch (e) {
+      debugPrint('[AuthService] refreshActiveSession error: $e');
+      return false;
     }
   }
 

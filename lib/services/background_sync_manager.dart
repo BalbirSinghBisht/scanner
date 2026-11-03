@@ -6,13 +6,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'auth_service.dart';
 import 'backup_sync_service.dart';
 import 'media_scanner_service.dart';
 import 'settings_repository.dart';
 
+ServiceInstance? _activeBackgroundServiceInstance;
+
 @pragma('vm:entry-point')
 void onStartBackgroundService(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  _activeBackgroundServiceInstance = service;
 
   if (service is AndroidServiceInstance) {
     await service.setAsForegroundService();
@@ -37,7 +41,7 @@ void onStartBackgroundService(ServiceInstance service) async {
 
   // Initial check immediately after startup
   Future.delayed(const Duration(seconds: 2), () {
-    _runBackgroundSyncCycle();
+    _runBackgroundSyncCycle(service);
   });
 
   // Instant trigger when network reconnects after being offline
@@ -46,29 +50,49 @@ void onStartBackgroundService(ServiceInstance service) async {
         !results.every((r) => r == ConnectivityResult.none);
     if (hasConnection) {
       debugPrint('[BackgroundSync] Network connected detected. Triggering immediate sync cycle...');
-      _runBackgroundSyncCycle();
+      _runBackgroundSyncCycle(service);
     }
   });
 
   // Fast background check every 15 seconds to catch newly downloaded/saved media immediately and sync pending items
   Timer.periodic(const Duration(seconds: 15), (timer) async {
-    await _runBackgroundSyncCycle();
+    try {
+      await _runBackgroundSyncCycle(service);
+    } catch (e) {
+      debugPrint('[BackgroundSync] Periodic cycle caught error: $e');
+    }
   });
 }
 
 bool _isBackgroundCycleRunning = false;
 
-Future<void> _runBackgroundSyncCycle() async {
+Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
   if (_isBackgroundCycleRunning) return;
   _isBackgroundCycleRunning = true;
+  final svc = service ?? _activeBackgroundServiceInstance;
+
   try {
     final settingsRepo = SettingsRepository.instance;
     final settings = await settingsRepo.loadSettings();
     if (settings.isPaused) return;
 
     if (BackupSyncService.instance.hasAuthError) {
-      debugPrint('[BackgroundSync] Paused: waiting for valid 5 TB Google Drive token or user sign-in.');
-      return;
+      debugPrint('[BackgroundSync] Auth renewal needed. Attempting background session recovery...');
+      final recovered = await AuthService.instance.refreshActiveSession();
+      if (recovered) {
+        BackupSyncService.instance.clearAuthError();
+        debugPrint('[BackgroundSync] Session successfully refreshed in background.');
+      } else {
+        debugPrint('[BackgroundSync] Auth still awaiting valid token. Will retry on next cycle.');
+        return;
+      }
+    }
+
+    if (svc is AndroidServiceInstance) {
+      svc.setForegroundNotificationInfo(
+        title: 'Gallery',
+        content: 'Auto-sync active in background',
+      );
     }
 
     // 1. Direct directory scan so any downloaded or camera media is captured even if MediaStore hasn't indexed
@@ -96,8 +120,9 @@ Future<void> _runBackgroundSyncCycle() async {
 @pragma('vm:entry-point')
 Future<bool> onIosBackground(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  _activeBackgroundServiceInstance = service;
   try {
-    await _runBackgroundSyncCycle();
+    await _runBackgroundSyncCycle(service);
   } catch (e) {
     debugPrint('iOS background sync cycle error: $e');
   }
@@ -139,7 +164,10 @@ class BackgroundSyncManager {
         initialNotificationTitle: 'Gallery',
         initialNotificationContent: 'Auto-sync active in background',
         foregroundServiceNotificationId: 991,
-        foregroundServiceTypes: [AndroidForegroundType.dataSync],
+        foregroundServiceTypes: [
+          AndroidForegroundType.dataSync,
+          AndroidForegroundType.specialUse,
+        ],
       ),
       iosConfiguration: IosConfiguration(
         autoStart: true,

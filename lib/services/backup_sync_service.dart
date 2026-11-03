@@ -41,6 +41,7 @@ class BackupSyncService {
   final DeviceStateService _device = DeviceStateService.instance;
 
   static const String _lockKey = 'global_backup_sync_lock_ts';
+  Timer? _lockHeartbeatTimer;
 
   final StreamController<UploadProgressEvent?> _progressController =
       StreamController<UploadProgressEvent?>.broadcast();
@@ -81,6 +82,25 @@ class BackupSyncService {
   }
 
   static bool _inProcessSyncLock = false;
+
+  void _startLockHeartbeat(SharedPreferences prefs) {
+    _lockHeartbeatTimer?.cancel();
+    _lockHeartbeatTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
+      if (_isSyncing) {
+        try {
+          await prefs.setInt(_lockKey, DateTime.now().millisecondsSinceEpoch);
+        } catch (_) {}
+      }
+    });
+  }
+
+  void _stopLockHeartbeat(SharedPreferences prefs) {
+    _lockHeartbeatTimer?.cancel();
+    _lockHeartbeatTimer = null;
+    try {
+      prefs.remove(_lockKey);
+    } catch (_) {}
+  }
 
   /// Waits until network constraints are met, retrying every 15 seconds without pausing background sync.
   Future<bool> _waitForNetwork(BackupSettings settings, SharedPreferences prefs) async {
@@ -149,13 +169,14 @@ class BackupSyncService {
     final prefs = await SharedPreferences.getInstance();
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final lastLockMs = prefs.getInt(_lockKey) ?? 0;
-    // Strict lock check: if any isolate holds an active lock within the last 15 seconds, yield immediately
-    if (nowMs - lastLockMs < 15000) {
+    // Strict lock check: if any isolate holds an active lock within the last 45 seconds, yield immediately
+    if (nowMs - lastLockMs < 45000) {
       debugPrint('Sync skipped: Another isolate is actively syncing.');
       return;
     }
     await prefs.setInt(_lockKey, nowMs);
     _inProcessSyncLock = true;
+    _startLockHeartbeat(prefs);
 
     _hasAuthError = false;
     _authErrorMessage = null;
@@ -249,12 +270,12 @@ class BackupSyncService {
     } catch (e) {
       debugPrint('Error during backup sync: $e');
     } finally {
+      _stopLockHeartbeat(prefs);
       _isSyncing = false;
       _isWaitingForNetwork = false;
       _inProcessSyncLock = false;
       _currentUploadingItem = null;
       _progressController.add(null);
-      await prefs.remove(_lockKey);
     }
   }
 
@@ -399,7 +420,14 @@ class BackupSyncService {
       if (isAuth) {
         _hasAuthError = true;
         _authErrorMessage =
-            'Google Drive 5 TB token expired (401). Please update your access token or sign in.';
+            'Google Drive 5 TB token expired (401). Attempting background renewal.';
+        try {
+          final recovered = await _auth.refreshActiveSession();
+          if (recovered) {
+            _hasAuthError = false;
+            _authErrorMessage = null;
+          }
+        } catch (_) {}
       }
 
       // Check if failure was caused by internet / network dropping
@@ -437,7 +465,7 @@ class BackupSyncService {
       }
 
       final newRetryCount = item.retryCount + 1;
-      final finalState = isAuth || newRetryCount >= AppConstants.maxRetryAttempts
+      final finalState = (!isAuth && newRetryCount >= AppConstants.maxRetryAttempts)
           ? UploadState.FAILED
           : UploadState.RETRY_PENDING;
 

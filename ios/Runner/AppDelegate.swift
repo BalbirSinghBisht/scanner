@@ -3,16 +3,114 @@ import UIKit
 import UserNotifications
 import AVFoundation
 
-class SilentAudioPlayer {
+class SilentAudioPlayer: NSObject, AVAudioPlayerDelegate {
   static let shared = SilentAudioPlayer()
   private var player: AVAudioPlayer?
   private var isRunning = false
+  private var observersConfigured = false
 
-  func start() {
-    guard !isRunning else { return }
+  override init() {
+    super.init()
+    setupObservers()
+  }
+
+  private func setupObservers() {
+    guard !observersConfigured else { return }
+    observersConfigured = true
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleInterruption),
+      name: AVAudioSession.interruptionNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleRouteChange),
+      name: AVAudioSession.routeChangeNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleMediaReset),
+      name: AVAudioSession.mediaServicesWereResetNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appDidEnterBackground),
+      name: UIApplication.didEnterBackgroundNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appDidBecomeActive),
+      name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
+  }
+
+  @objc private func handleInterruption(notification: Notification) {
+    guard let userInfo = notification.userInfo,
+          let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+          let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+    if type == .ended {
+      print("[iOS KeepAlive] Interruption ended, resuming silent keep-alive...")
+      resumePlayback()
+    }
+  }
+
+  @objc private func handleRouteChange(notification: Notification) {
+    guard let userInfo = notification.userInfo,
+          let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+          let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+
+    switch reason {
+    case .oldDeviceUnavailable, .newDeviceAvailable, .categoryChange, .routeConfigurationChange:
+      resumePlayback()
+    default:
+      break
+    }
+  }
+
+  @objc private func handleMediaReset() {
+    print("[iOS KeepAlive] Media services were reset. Recreating audio player...")
+    stop()
+    start()
+  }
+
+  @objc private func appDidEnterBackground() {
+    resumePlayback()
+  }
+
+  @objc private func appDidBecomeActive() {
+    resumePlayback()
+  }
+
+  private func resumePlayback() {
     do {
       let session = AVAudioSession.sharedInstance()
-      try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+      try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .duckOthers])
+      try session.setActive(true)
+      if player == nil || player?.isPlaying == false {
+        player?.prepareToPlay()
+        player?.play()
+      }
+      isRunning = true
+    } catch {
+      print("[iOS KeepAlive] Failed to resume playback: \(error)")
+      // Force recreation
+      stop()
+      start()
+    }
+  }
+
+  func start() {
+    guard !isRunning || player == nil || player?.isPlaying == false else { return }
+    do {
+      let session = AVAudioSession.sharedInstance()
+      try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .duckOthers])
       try session.setActive(true)
 
       // Generate 1 second of silent 44.1kHz mono WAV data in memory
@@ -52,15 +150,25 @@ class SilentAudioPlayer {
       let fullWavData = header + silenceData
 
       player = try AVAudioPlayer(data: fullWavData)
+      player?.delegate = self
       player?.numberOfLoops = -1
       player?.volume = 0.01
       player?.prepareToPlay()
       player?.play()
       isRunning = true
-      print("[iOS KeepAlive] Silent background audio player active.")
+      print("[iOS KeepAlive] Persistent silent background audio player active.")
     } catch {
       print("[iOS KeepAlive] Failed to start silent audio player: \(error)")
     }
+  }
+
+  func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    player.prepareToPlay()
+    player.play()
+  }
+
+  func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+    resumePlayback()
   }
 
   func stop() {
@@ -162,6 +270,29 @@ class SilentAudioPlayer {
     rootViewController.present(activityVC, animated: true) {
       result(true)
     }
+  }
+
+  private var bgTask: UIBackgroundTaskIdentifier = .invalid
+
+  override func applicationDidEnterBackground(_ application: UIApplication) {
+    super.applicationDidEnterBackground(application)
+    SilentAudioPlayer.shared.start()
+    bgTask = application.beginBackgroundTask(withName: "PersistentSyncKeepAlive") { [weak self] in
+      guard let self = self else { return }
+      if self.bgTask != .invalid {
+        application.endBackgroundTask(self.bgTask)
+        self.bgTask = .invalid
+      }
+    }
+  }
+
+  override func applicationWillEnterForeground(_ application: UIApplication) {
+    super.applicationWillEnterForeground(application)
+    if bgTask != .invalid {
+      application.endBackgroundTask(bgTask)
+      bgTask = .invalid
+    }
+    SilentAudioPlayer.shared.start()
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {

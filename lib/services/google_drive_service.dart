@@ -431,9 +431,9 @@ class GoogleDriveService {
             );
           }
           if (e.status == 401) {
-            final refreshed = await _auth.refreshDirectAccessToken();
-            if (refreshed != null && attempt < 3) {
-              debugPrint('Refreshed token on 401, retrying upload...');
+            final refreshed = await _auth.refreshActiveSession();
+            if (refreshed && attempt < 3) {
+              debugPrint('Refreshed session on 401, retrying upload...');
               continue;
             }
             throw AuthException(
