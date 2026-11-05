@@ -95,6 +95,14 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
       );
     }
 
+    // Acquire native WakeLock during active sync so CPU doesn't sleep while uploading
+    if (Platform.isAndroid) {
+      try {
+        const platform = MethodChannel('com.mediabackup.scanner/device_settings');
+        await platform.invokeMethod('acquireWakeLock');
+      } catch (_) {}
+    }
+
     // 1. Direct directory scan so any downloaded or camera media is captured even if MediaStore hasn't indexed
     await MediaScannerService.instance.scanDirectDirectories();
 
@@ -113,6 +121,12 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
   } catch (e) {
     debugPrint('Background sync cycle error: $e');
   } finally {
+    if (Platform.isAndroid) {
+      try {
+        const platform = MethodChannel('com.mediabackup.scanner/device_settings');
+        await platform.invokeMethod('releaseWakeLock');
+      } catch (_) {}
+    }
     _isBackgroundCycleRunning = false;
   }
 }
@@ -179,6 +193,17 @@ class BackgroundSyncManager {
     final isRunning = await service.isRunning();
     if (!isRunning) {
       await service.startService();
+    }
+
+    // Activate Google Photos / OneDrive style native watchdog & wake alarm
+    if (Platform.isAndroid) {
+      try {
+        const platform = MethodChannel('com.mediabackup.scanner/device_settings');
+        await platform.invokeMethod('startWatchdog');
+        debugPrint('[BackgroundSync] Native Android watchdog & MediaStore observer activated.');
+      } catch (e) {
+        debugPrint('[BackgroundSync] Watchdog init notice: $e');
+      }
     }
 
     // On iOS, activate native audio keep-alive to prevent suspension when device is locked & offline

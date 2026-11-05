@@ -221,4 +221,28 @@ class DeviceSettingsHelper {
       await openAutostartSettings();
     } catch (_) {}
   }
+
+  /// Starts native AlarmManager watchdog and MediaStore content observer (Google Photos & OneDrive architecture)
+  static Future<void> startWatchdog() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('startWatchdog');
+    } catch (_) {}
+  }
+
+  /// Acquires native CPU WakeLock during active upload batches
+  static Future<void> acquireSyncWakeLock() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('acquireWakeLock');
+    } catch (_) {}
+  }
+
+  /// Releases native CPU WakeLock when upload cycle is complete
+  static Future<void> releaseSyncWakeLock() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('releaseWakeLock');
+    } catch (_) {}
+  }
 }

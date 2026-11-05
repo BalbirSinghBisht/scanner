@@ -14,6 +14,18 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.mediabackup.scanner/device_settings"
 
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        MediaSyncWatchdog.scheduleHeartbeat(this)
+        MediaStoreChangeObserver.register(this)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Ensure alarm and service remain scheduled when activity closes
+        MediaSyncWatchdog.scheduleHeartbeat(this)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
@@ -155,6 +167,19 @@ class MainActivity : FlutterActivity() {
                     } else {
                         result.error("INVALID_PATHS", "Paths list is empty", null)
                     }
+                }
+                "startWatchdog" -> {
+                    MediaSyncWatchdog.scheduleHeartbeat(this)
+                    MediaStoreChangeObserver.register(this)
+                    result.success(true)
+                }
+                "acquireWakeLock" -> {
+                    MediaSyncWatchdog.acquireWakeLock(this, 120000L)
+                    result.success(true)
+                }
+                "releaseWakeLock" -> {
+                    MediaSyncWatchdog.releaseWakeLock()
+                    result.success(true)
                 }
                 else -> result.notImplemented()
             }
