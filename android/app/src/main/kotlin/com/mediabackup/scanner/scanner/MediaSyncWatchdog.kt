@@ -127,9 +127,17 @@ object MediaSyncWatchdog {
      */
     fun ensureServiceRunning(context: Context) {
         try {
-            val serviceIntent = Intent().apply {
-                component = ComponentName(context.packageName, "id.flutter.flutter_background_service.BackgroundService")
-            }
+            val serviceClass = Class.forName("id.flutter.flutter_background_service.BackgroundService")
+            // Acquire flutter_background_service static wake lock like BootReceiver does
+            try {
+                val lockMethod = serviceClass.getMethod("getLock", Context::class.java)
+                val lock = lockMethod.invoke(null, context) as? PowerManager.WakeLock
+                if (lock?.isHeld == false) {
+                    lock.acquire(60000L)
+                }
+            } catch (_: Exception) {}
+
+            val serviceIntent = Intent(context, serviceClass)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)
             } else {
@@ -143,6 +151,7 @@ object MediaSyncWatchdog {
 
     /**
      * Ensures the background service is alive and immediately triggers a backup sync cycle in Dart.
+     * Retries dispatch in the background if the service's Flutter isolate is still initializing.
      */
     fun triggerSyncNow(context: Context) {
         try {
@@ -156,9 +165,29 @@ object MediaSyncWatchdog {
             field.isAccessible = true
             val pipe = field.get(null)
             if (pipe != null) {
+                val hasListenerMethod = pipe.javaClass.getMethod("hasListener")
                 val invokeMethod = pipe.javaClass.getMethod("invoke", org.json.JSONObject::class.java)
-                invokeMethod.invoke(pipe, data)
-                Log.d(TAG, "Successfully dispatched triggerSync to BackgroundService.")
+                val hasListener = hasListenerMethod.invoke(pipe) as? Boolean ?: false
+
+                if (hasListener) {
+                    invokeMethod.invoke(pipe, data)
+                    Log.d(TAG, "Successfully dispatched triggerSync to BackgroundService.")
+                } else {
+                    Log.d(TAG, "Service initializing; retrying triggerSync dispatch in background...")
+                    Thread {
+                        for (i in 1..10) {
+                            try {
+                                Thread.sleep(1000)
+                                val ready = hasListenerMethod.invoke(pipe) as? Boolean ?: false
+                                if (ready) {
+                                    invokeMethod.invoke(pipe, data)
+                                    Log.d(TAG, "Successfully dispatched triggerSync on retry $i.")
+                                    break
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }.start()
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "triggerSync dispatch note: ${e.message}")

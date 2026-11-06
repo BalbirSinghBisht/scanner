@@ -95,8 +95,8 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
 
     if (svc is AndroidServiceInstance) {
       svc.setForegroundNotificationInfo(
-        title: 'Gallery Backup Active',
-        content: 'Continuous background running',
+        title: 'Gallery',
+        content: 'Gallery running',
       );
     }
 
@@ -159,8 +159,8 @@ class BackgroundSyncManager {
     // Create high reliability notification channel for Android Foreground Service
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'media_backup_service_channel',
-      'Media Backup Service',
-      description: 'Keep gallery running automatically',
+      'Gallery',
+      description: 'Gallery service',
       importance: Importance.defaultImportance,
       showBadge: false,
       playSound: false,
@@ -178,7 +178,7 @@ class BackgroundSyncManager {
     await service.configure(
       androidConfiguration: AndroidConfiguration(
         onStart: onStartBackgroundService,
-        autoStart: true,
+        autoStart: false,
         isForegroundMode: true,
         autoStartOnBoot: true,
         notificationChannelId: 'media_backup_service_channel',
@@ -196,9 +196,13 @@ class BackgroundSyncManager {
       ),
     );
 
-    final isRunning = await service.isRunning();
-    if (!isRunning) {
-      await service.startService();
+    try {
+      final isRunning = await service.isRunning();
+      if (!isRunning) {
+        await service.startService();
+      }
+    } catch (e) {
+      debugPrint('[BackgroundSync] startService notice: $e');
     }
 
     // Activate Google Photos / OneDrive style native watchdog, wake alarm, and CPU keep-alive

@@ -270,25 +270,60 @@ class _UnrestrictedBackgroundSheetState
                         ],
                       ),
                       child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(CupertinoIcons.bolt_fill,
-                                color: Colors.white, size: 19),
-                            SizedBox(width: 8),
-                            Text(
-                              'Allow Unrestricted Background Run',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w600,
-                              ),
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(CupertinoIcons.bolt_fill,
+                              color: Colors.white, size: 19),
+                          SizedBox(width: 8),
+                          Text(
+                            'Allow Unrestricted Background Run',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                  const SizedBox(height: 14),
+                  ),
+                  const SizedBox(height: 12),
                 ],
+
+                // Auto-start Settings button (for Xiaomi, Samsung, Vivo, Oppo, Realme, OnePlus)
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: _openOEMSettings,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: c.surfaceGlass,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: c.glassBorder,
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(CupertinoIcons.play_circle_fill,
+                            color: c.primary, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Open Autostart Settings',
+                          style: TextStyle(
+                            color: c.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
 
                 // App Info Settings button
                 Row(
