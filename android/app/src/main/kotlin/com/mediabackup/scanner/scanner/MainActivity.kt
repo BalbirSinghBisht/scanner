@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.provider.MediaStore
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -79,6 +80,121 @@ class MainActivity : FlutterActivity() {
                 "openAutostartSettings" -> {
                     val opened = openAutostartSettings()
                     result.success(opened)
+                }
+                "areNotificationsEnabled" -> {
+                    val nm = androidx.core.app.NotificationManagerCompat.from(this)
+                    result.success(nm.areNotificationsEnabled())
+                }
+                "isAllFilesAccessGranted" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        result.success(android.os.Environment.isExternalStorageManager())
+                    } else {
+                        result.success(true)
+                    }
+                }
+                "requestAllFilesAccess" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        try {
+                            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                data = Uri.parse("package:$packageName")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (_: Exception) {
+                            try {
+                                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(intent)
+                                result.success(true)
+                            } catch (_: Exception) {
+                                result.success(openAppInfo())
+                            }
+                        }
+                    } else {
+                        result.success(true)
+                    }
+                }
+                "openXiaomiBatterySaverSettings" -> {
+                    val intent = Intent().apply {
+                        component = ComponentName("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity")
+                        putExtra("package_name", packageName)
+                        putExtra("package_label", "Gallery")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    try {
+                        if (intent.resolveActivity(packageManager) != null) {
+                            startActivity(intent)
+                            result.success(true)
+                        } else {
+                            result.success(openAppInfo())
+                        }
+                    } catch (_: Exception) {
+                        result.success(openAppInfo())
+                    }
+                }
+                "deleteMediaFile" -> {
+                    val path = call.argument<String>("path")
+                    val id = call.argument<String>("id")
+                    var deleted = false
+
+                    // 1. Delete file directly from filesystem if possible
+                    if (path != null) {
+                        try {
+                            val file = java.io.File(path)
+                            if (file.exists()) {
+                                deleted = file.delete()
+                            }
+                        } catch (_: Exception) {}
+                    }
+
+                    // 2. Delete entry from MediaStore ContentResolver
+                    try {
+                        val cr = contentResolver
+                        val numericId = id?.toLongOrNull()
+                        if (numericId != null && numericId > 0) {
+                            try {
+                                val imgUri = android.content.ContentUris.withAppendedId(
+                                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, numericId
+                                )
+                                if (cr.delete(imgUri, null, null) > 0) {
+                                    deleted = true
+                                }
+                            } catch (_: Exception) {}
+
+                            try {
+                                val vidUri = android.content.ContentUris.withAppendedId(
+                                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI, numericId
+                                )
+                                if (cr.delete(vidUri, null, null) > 0) {
+                                    deleted = true
+                                }
+                            } catch (_: Exception) {}
+                        }
+
+                        if (path != null) {
+                            try {
+                                val filesUri = MediaStore.Files.getContentUri("external")
+                                val count = cr.delete(filesUri, "${MediaStore.MediaColumns.DATA} = ?", arrayOf(path))
+                                if (count > 0) deleted = true
+                            } catch (_: Exception) {}
+                        }
+                    } catch (_: Exception) {}
+
+                    // 3. Inform Android MediaScanner that file was removed
+                    if (path != null) {
+                        try {
+                            android.media.MediaScannerConnection.scanFile(
+                                context,
+                                arrayOf(path),
+                                null,
+                                null
+                            )
+                        } catch (_: Exception) {}
+                    }
+
+                    result.success(deleted)
                 }
                 "openAppInfoSettings" -> {
                     val opened = openAppInfo()
@@ -172,6 +288,8 @@ class MainActivity : FlutterActivity() {
                 "startWatchdog" -> {
                     MediaSyncWatchdog.scheduleSilentAlarm(this)
                     MediaStoreChangeObserver.register(this)
+                    MediaSyncJobService.scheduleMediaChangeJob(this)
+                    MediaSyncJobService.schedulePeriodicWakeJob(this)
                     result.success(true)
                 }
                 "scheduleSilentAlarm" -> {

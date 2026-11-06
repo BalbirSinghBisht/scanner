@@ -511,27 +511,58 @@ class MediaScannerService {
 
   /// Deletes a photo or video from device storage and removes its record from SQLite
   Future<bool> deleteMediaFromDevice(String assetId) async {
+    bool fileDeleted = false;
+
+    // 1. Fetch item from database to get file path if available
+    final item = await _db.getItemByLocalId(assetId);
+    final filePath = item?.localFilePath;
+
+    // 2. Attempt native platform channel deletion (ContentResolver + File.delete)
     try {
-      final List<String> deletedIds =
-          await PhotoManager.editor.deleteWithIds([assetId]);
-      final success = deletedIds.contains(assetId);
-      await _db.deleteMediaItem(assetId);
-      _removeThumbnailFromCache(assetId);
-      return success;
-    } catch (e) {
-      debugPrint('Error deleting media from device: $e');
+      fileDeleted =
+          await DeviceSettingsHelper.deleteMediaFileNative(filePath, assetId);
+    } catch (_) {}
+
+    // 3. Attempt direct filesystem deletion if file exists
+    if (!fileDeleted && filePath != null) {
       try {
-        final item = await _db.getItemByLocalId(assetId);
-        if (item?.localFilePath != null) {
-          final f = File(item!.localFilePath!);
-          if (await f.exists()) await f.delete();
+        final f = File(filePath);
+        if (await f.exists()) {
+          await f.delete();
+          fileDeleted = true;
+        } else {
+          fileDeleted = true; // File already deleted from disk
         }
-        await _db.deleteMediaItem(assetId);
-        _removeThumbnailFromCache(assetId);
-        return true;
       } catch (_) {}
-      return false;
     }
+
+    // 4. Fallback to PhotoManager editor if it is a valid numeric MediaStore ID
+    if (!fileDeleted && !assetId.startsWith('disk_')) {
+      try {
+        final List<String> deletedIds =
+            await PhotoManager.editor.deleteWithIds([assetId]);
+        if (deletedIds.contains(assetId)) {
+          fileDeleted = true;
+        }
+      } catch (e) {
+        debugPrint('PhotoManager deleteWithIds exception (handled): $e');
+      }
+    }
+
+    // 5. Always purge from SQLite database and memory caches
+    await _db.deleteMediaItem(assetId);
+    _removeThumbnailFromCache(assetId);
+
+    // 6. If deletion was blocked by Android 11+ scoped storage, request All Files Access
+    if (!fileDeleted && Platform.isAndroid) {
+      final hasAllFiles =
+          await DeviceSettingsHelper.isAllFilesAccessGranted();
+      if (!hasAllFiles) {
+        await DeviceSettingsHelper.requestAllFilesAccess();
+      }
+    }
+
+    return fileDeleted;
   }
 
   /// Scans direct Android storage directories for newly added photos/videos
@@ -541,20 +572,85 @@ class MediaScannerService {
     if (!Platform.isAndroid) return discovered;
 
     final targetDirs = [
+      // Standard Camera, Screenshots & System Media
+      '/storage/emulated/0/DCIM/Camera',
+      '/storage/emulated/0/DCIM/Screenshots',
+      '/storage/emulated/0/DCIM/ScreenRecorder',
+      '/storage/emulated/0/DCIM',
+      '/storage/emulated/0/Pictures/Screenshots',
+      '/storage/emulated/0/Pictures/Download',
+      '/storage/emulated/0/Pictures',
+      '/storage/emulated/0/Movies/Screenshots',
+      '/storage/emulated/0/Movies/ScreenRecorder',
+      '/storage/emulated/0/Movies',
       '/storage/emulated/0/Download',
       '/storage/emulated/0/Downloads',
-      '/storage/emulated/0/DCIM/Camera',
-      '/storage/emulated/0/DCIM',
-      '/storage/emulated/0/Pictures',
-      '/storage/emulated/0/Pictures/Download',
-      '/storage/emulated/0/Pictures/Screenshots',
-      '/storage/emulated/0/Movies',
+      '/storage/emulated/0/Bluetooth',
+
+      // WhatsApp & WhatsApp Business (Android 11+ & Legacy)
+      '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images',
+      '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video',
+      '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images',
+      '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video',
+      '/storage/emulated/0/WhatsApp/Media/WhatsApp Images',
+      '/storage/emulated/0/WhatsApp/Media/WhatsApp Video',
+      '/storage/emulated/0/Pictures/WhatsApp',
+
+      // Telegram
+      '/storage/emulated/0/Telegram/Telegram Images',
+      '/storage/emulated/0/Telegram/Telegram Video',
+      '/storage/emulated/0/Pictures/Telegram',
+      '/storage/emulated/0/Movies/Telegram',
+      '/storage/emulated/0/Android/media/org.telegram.messenger/Telegram/Telegram Images',
+      '/storage/emulated/0/Android/media/org.telegram.messenger/Telegram/Telegram Video',
+
+      // Social Media (Instagram, Snapchat, Facebook, Messenger, Twitter/X, Reddit, Pinterest, TikTok)
+      '/storage/emulated/0/Pictures/Instagram',
+      '/storage/emulated/0/DCIM/Instagram',
+      '/storage/emulated/0/Pictures/Snapchat',
+      '/storage/emulated/0/DCIM/Snapchat',
+      '/storage/emulated/0/Pictures/Facebook',
+      '/storage/emulated/0/Pictures/Messenger',
+      '/storage/emulated/0/Pictures/Twitter',
+      '/storage/emulated/0/Pictures/X',
+      '/storage/emulated/0/Pictures/Reddit',
+      '/storage/emulated/0/Pictures/Pinterest',
+      '/storage/emulated/0/Pictures/TikTok',
+      '/storage/emulated/0/Movies/TikTok',
+
+      // Photo & Video Editing Apps (Lightroom, Snapseed, Canva, InShot, CapCut, VSCO)
+      '/storage/emulated/0/Pictures/Lightroom',
+      '/storage/emulated/0/Pictures/AdobeLightroom',
+      '/storage/emulated/0/Pictures/Snapseed',
+      '/storage/emulated/0/Pictures/Canva',
+      '/storage/emulated/0/Pictures/VSCO',
+      '/storage/emulated/0/Movies/InShot',
+      '/storage/emulated/0/Movies/CapCut',
     ];
+
+    // Dynamically discover all existing subdirectories under Pictures, DCIM, and Movies (e.g. Signal, Discord, Threads, BeReal, etc.)
+    final allDirsToScan = Set<String>.from(targetDirs);
+    for (final baseDir in [
+      '/storage/emulated/0/Pictures',
+      '/storage/emulated/0/DCIM',
+      '/storage/emulated/0/Movies',
+    ]) {
+      try {
+        final d = Directory(baseDir);
+        if (await d.exists()) {
+          await for (final sub in d.list(recursive: false, followLinks: false)) {
+            if (sub is Directory) {
+              allDirsToScan.add(sub.path);
+            }
+          }
+        }
+      } catch (_) {}
+    }
 
     const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif'};
     const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp', '.webm'};
 
-    for (final dirPath in targetDirs) {
+    for (final dirPath in allDirsToScan) {
       final dir = Directory(dirPath);
       if (!await dir.exists()) continue;
 

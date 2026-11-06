@@ -37,10 +37,10 @@ class MediaStoreChangeObserver(private val context: Context, handler: Handler) :
         if (now - lastTriggerTime < 5000L) return
         lastTriggerTime = now
 
-        Log.d(TAG, "Detected new media change via MediaStore: $uri. Waking up background sync...")
-        MediaSyncWatchdog.acquireWakeLock(context, 45000L)
-        MediaSyncWatchdog.ensureServiceRunning(context)
-        MediaSyncWatchdog.scheduleHeartbeat(context)
+        Log.d(TAG, "Detected new media change via MediaStore: $uri. Waking up background sync immediately...")
+        MediaSyncWatchdog.acquireWakeLock(context, 120000L)
+        MediaSyncWatchdog.triggerSyncNow(context)
+        MediaSyncWatchdog.scheduleSilentAlarm(context)
     }
 }
 

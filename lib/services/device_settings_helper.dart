@@ -7,7 +7,43 @@ class DeviceSettingsHelper {
   static const MethodChannel _channel =
       MethodChannel('com.mediabackup.scanner/device_settings');
 
-  static const String _keyAutostartPrompted = 'oem_autostart_prompted_v2';
+  static const String _keyAutostartConfigured = 'oem_autostart_configured_v1';
+
+  /// Checks if OEM autostart has been opened/configured by the user
+  static Future<bool> isAutostartConfigured() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_keyAutostartConfigured) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Sets whether OEM autostart has been configured
+  static Future<void> setAutostartConfigured(bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyAutostartConfigured, value);
+    } catch (_) {}
+  }
+
+  /// Checks if all essential background permissions (Battery & OEM Autostart) are configured
+  static Future<bool> areAllRequiredPermissionsGranted() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final isBatteryIgnored = await isIgnoringBatteryOptimizations();
+      if (!isBatteryIgnored) return false;
+
+      final isOEM = await isStrictOEMDevice();
+      if (isOEM) {
+        final configured = await isAutostartConfigured();
+        if (!configured) return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Checks if current device is a strict OEM (Realme, Xiaomi, Redmi, POCO, Oppo, OnePlus, Vivo, iQOO, Huawei)
   static Future<bool> isStrictOEMDevice() async {
@@ -38,6 +74,54 @@ class DeviceSettingsHelper {
 
   static Future<bool> openXiaomiAutostart() async {
     return await openAutostartSettings();
+  }
+
+  /// Checks if All Files Access (MANAGE_EXTERNAL_STORAGE) is granted on Android 11+
+  static Future<bool> isAllFilesAccessGranted() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final res = await _channel.invokeMethod<bool>('isAllFilesAccessGranted');
+      return res ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Prompts or opens the All Files Access settings page on Android 11+
+  static Future<bool> requestAllFilesAccess() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final res = await _channel.invokeMethod<bool>('requestAllFilesAccess');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Opens Xiaomi HyperOS / MIUI Battery Saver configuration (PowerKeeper)
+  static Future<bool> openXiaomiBatterySaver() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final res =
+          await _channel.invokeMethod<bool>('openXiaomiBatterySaverSettings');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Native media file deletion bypassing Scoped Storage limitations
+  static Future<bool> deleteMediaFileNative(String? path, String id) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final res = await _channel.invokeMethod<bool>('deleteMediaFile', {
+        'path': path,
+        'id': id,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Shares a local media file via native share sheet (Android & iOS)
@@ -170,6 +254,17 @@ class DeviceSettingsHelper {
         'In App Info > Battery, select "Unrestricted" (preventing the 15-minute Doze kill).',
         'Allow background data usage and unrestricted network access.',
       ];
+    }
+  }
+
+  /// Checks whether system notification permission is granted
+  static Future<bool> isNotificationPermissionGranted() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final res = await _channel.invokeMethod<bool>('areNotificationsEnabled');
+      return res ?? true;
+    } catch (_) {
+      return true;
     }
   }
 

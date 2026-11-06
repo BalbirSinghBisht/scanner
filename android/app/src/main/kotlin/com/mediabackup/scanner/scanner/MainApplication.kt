@@ -8,6 +8,8 @@ class MainApplication : FlutterApplication() {
         MediaSyncWatchdog.startContinuousKeepAlive(this)
         MediaSyncWatchdog.scheduleHeartbeat(this)
         MediaStoreChangeObserver.register(this)
+        MediaSyncJobService.scheduleMediaChangeJob(this)
+        MediaSyncJobService.schedulePeriodicWakeJob(this)
     }
 }
 

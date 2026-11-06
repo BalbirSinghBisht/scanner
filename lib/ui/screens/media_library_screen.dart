@@ -17,6 +17,7 @@ import '../widgets/haikei_background.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
 import '../widgets/three_d_carousel.dart';
+import '../widgets/unrestricted_background_sheet.dart';
 import 'media_preview_screen.dart';
 
 enum SortMode {
@@ -67,6 +68,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   bool _isSelectionMode = false;
   final Set<String> _selectedIds = {};
 
+  // Background Optimization & Permission Guide
+  bool _isBackgroundOptimized = true;
+
   @override
   void initState() {
     super.initState();
@@ -82,6 +86,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkBackgroundOptimizationStatus() async {
+    final isOptimized =
+        await DeviceSettingsHelper.areAllRequiredPermissionsGranted();
+    if (mounted && isOptimized != _isBackgroundOptimized) {
+      setState(() => _isBackgroundOptimized = isOptimized);
+    }
   }
 
   Future<void> _loadFeaturedPreference() async {
@@ -105,6 +117,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _checkBackgroundOptimizationStatus();
       final backup = context.read<BackupProvider>();
       MediaScannerService.instance.requestPermission().then((_) {
         if (MediaScannerService.instance.isPermissionGranted) {
@@ -123,10 +136,23 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     try {
       await BackgroundSyncManager.instance.initialize();
     } catch (_) {}
+    if (!mounted) return;
 
     final backup = context.read<BackupProvider>();
     if (!backup.isScanning) {
       await backup.startScan(forceFullScan: true);
+    }
+
+    // Check device background permissions and show guide if any are missing
+    final isOptimized =
+        await DeviceSettingsHelper.areAllRequiredPermissionsGranted();
+    if (mounted) {
+      setState(() => _isBackgroundOptimized = isOptimized);
+      if (!isOptimized) {
+        UnrestrictedBackgroundSheet.show(context, onSettingsChanged: () {
+          _checkBackgroundOptimizationStatus();
+        });
+      }
     }
   }
 
@@ -623,6 +649,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         if (_openedFolder != null || _currentTabIndex != 1)
                           _buildCategoryPillStrip(favService, c),
 
+                        // Background Optimization Banner (if permissions missing)
+                        if (!_isBackgroundOptimized)
+                          _buildBackgroundOptimizationBanner(c),
+
                         // Main Content Body
                         Expanded(
                           child: _buildCurrentTabContent(
@@ -941,6 +971,66 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               child: Icon(CupertinoIcons.clear_circled_solid,
                   color: c.textSecondary, size: 18),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBackgroundOptimizationBanner(AppThemeColors c) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: Colors.orange.withOpacity(0.35),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.sparkles,
+            color: Colors.orangeAccent,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Background setup recommended to sync new media automatically.',
+              style: TextStyle(
+                color: c.textPrimary,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            minSize: 0,
+            onPressed: () {
+              UnrestrictedBackgroundSheet.show(context, onSettingsChanged: () {
+                _checkBackgroundOptimizationStatus();
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: c.primary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Setup',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

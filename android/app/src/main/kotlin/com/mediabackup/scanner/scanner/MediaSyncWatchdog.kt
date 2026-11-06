@@ -139,7 +139,14 @@ object MediaSyncWatchdog {
 
             val serviceIntent = Intent(context, serviceClass)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
+                try {
+                    context.startForegroundService(serviceIntent)
+                } catch (e: Exception) {
+                    Log.w(TAG, "startForegroundService deferred: ${e.message}, falling back to startService")
+                    try {
+                        context.startService(serviceIntent)
+                    } catch (_: Exception) {}
+                }
             } else {
                 context.startService(serviceIntent)
             }

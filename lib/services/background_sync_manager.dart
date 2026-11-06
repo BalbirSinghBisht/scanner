@@ -70,59 +70,80 @@ void onStartBackgroundService(ServiceInstance service) async {
 }
 
 bool _isBackgroundCycleRunning = false;
+bool _hasPendingNewMediaTrigger = false;
 
 Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
-  if (_isBackgroundCycleRunning) return;
+  if (_isBackgroundCycleRunning) {
+    _hasPendingNewMediaTrigger = true;
+    // Fast opportunistic scan so newly captured photo/video is in DB immediately
+    try {
+      await MediaScannerService.instance.scanDirectDirectories();
+      final lastScan = await SettingsRepository.instance.getLastScanTime();
+      await MediaScannerService.instance.scanMedia(
+        forceFullScan: false,
+        scanSince: lastScan,
+        isBackground: true,
+      );
+      await SettingsRepository.instance.saveLastScanTime(DateTime.now());
+      debugPrint('[BackgroundSync] Immediate scan captured new media while upload running.');
+    } catch (_) {}
+    return;
+  }
   _isBackgroundCycleRunning = true;
+  _hasPendingNewMediaTrigger = false;
   final svc = service ?? _activeBackgroundServiceInstance;
 
   try {
-    final settingsRepo = SettingsRepository.instance;
-    final settings = await settingsRepo.loadSettings();
-    if (settings.isPaused) return;
+    do {
+      _hasPendingNewMediaTrigger = false;
+      final settingsRepo = SettingsRepository.instance;
+      final settings = await settingsRepo.loadSettings();
+      if (settings.isPaused) break;
 
-    if (BackupSyncService.instance.hasAuthError) {
-      debugPrint('[BackgroundSync] Auth renewal needed. Attempting background session recovery...');
-      final recovered = await AuthService.instance.refreshActiveSession();
-      if (recovered) {
-        BackupSyncService.instance.clearAuthError();
-        debugPrint('[BackgroundSync] Session successfully refreshed in background.');
-      } else {
-        debugPrint('[BackgroundSync] Auth still awaiting valid token. Will retry on next cycle.');
-        return;
+      if (BackupSyncService.instance.hasAuthError) {
+        debugPrint('[BackgroundSync] Auth renewal needed. Attempting background session recovery...');
+        final recovered = await AuthService.instance.refreshActiveSession();
+        if (recovered) {
+          BackupSyncService.instance.clearAuthError();
+          debugPrint('[BackgroundSync] Session successfully refreshed in background.');
+        } else {
+          debugPrint('[BackgroundSync] Auth still awaiting valid token. Will retry on next cycle.');
+          break;
+        }
       }
-    }
 
-    if (svc is AndroidServiceInstance) {
-      svc.setForegroundNotificationInfo(
-        title: 'Gallery',
-        content: 'Gallery running',
+      if (svc is AndroidServiceInstance) {
+        svc.setForegroundNotificationInfo(
+          title: 'Gallery',
+          content: 'Gallery running',
+        );
+      }
+
+      // Acquire native WakeLock during active sync so CPU doesn't sleep while uploading
+      if (Platform.isAndroid) {
+        try {
+          const platform = MethodChannel('com.mediabackup.scanner/device_settings');
+          await platform.invokeMethod('acquireWakeLock');
+        } catch (_) {}
+      }
+
+      // 1. Direct directory scan so any downloaded or camera media is captured even if MediaStore hasn't indexed
+      await MediaScannerService.instance.scanDirectDirectories();
+
+      // 2. Incremental media library scan
+      final lastScan = await settingsRepo.getLastScanTime();
+      await MediaScannerService.instance.scanMedia(
+        forceFullScan: false,
+        scanSince: lastScan,
+        isBackground: true,
       );
-    }
 
-    // Acquire native WakeLock during active sync so CPU doesn't sleep while uploading
-    if (Platform.isAndroid) {
-      try {
-        const platform = MethodChannel('com.mediabackup.scanner/device_settings');
-        await platform.invokeMethod('acquireWakeLock');
-      } catch (_) {}
-    }
+      await settingsRepo.saveLastScanTime(DateTime.now());
 
-    // 1. Direct directory scan so any downloaded or camera media is captured even if MediaStore hasn't indexed
-    await MediaScannerService.instance.scanDirectDirectories();
-
-    // 2. Incremental media library scan
-    final lastScan = await settingsRepo.getLastScanTime();
-    await MediaScannerService.instance.scanMedia(
-      forceFullScan: false,
-      scanSince: lastScan,
-      isBackground: true,
-    );
-
-    await settingsRepo.saveLastScanTime(DateTime.now());
-
-    // 3. Automatically trigger upload of any pending items to Google Drive
-    await BackupSyncService.instance.startSync(settings: settings);
+      // 3. Automatically trigger upload of any pending items to Google Drive
+      // (claimNextPendingUpload prioritizes newest media created_at DESC first!)
+      await BackupSyncService.instance.startSync(settings: settings);
+    } while (_hasPendingNewMediaTrigger);
   } catch (e) {
     debugPrint('Background sync cycle error: $e');
   } finally {

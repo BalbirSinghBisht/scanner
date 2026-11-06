@@ -25,6 +25,10 @@ class MediaSyncWatchdogReceiver : BroadcastReceiver() {
 
         // 4. Re-arm the next silent alarm clock (unbroken alarm chain)
         MediaSyncWatchdog.scheduleSilentAlarm(context)
+
+        // 5. Ensure JobScheduler content URI trigger is active for new media
+        MediaSyncJobService.scheduleMediaChangeJob(context)
+        MediaSyncJobService.schedulePeriodicWakeJob(context)
     }
 }
 
