@@ -16,6 +16,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        MediaSyncWatchdog.startContinuousKeepAlive(this)
         MediaSyncWatchdog.scheduleHeartbeat(this)
         MediaStoreChangeObserver.register(this)
     }
@@ -179,6 +180,14 @@ class MainActivity : FlutterActivity() {
                 }
                 "releaseWakeLock" -> {
                     MediaSyncWatchdog.releaseWakeLock()
+                    result.success(true)
+                }
+                "startContinuousKeepAlive" -> {
+                    MediaSyncWatchdog.startContinuousKeepAlive(this)
+                    result.success(true)
+                }
+                "stopContinuousKeepAlive" -> {
+                    MediaSyncWatchdog.stopContinuousKeepAlive()
                     result.success(true)
                 }
                 else -> result.notImplemented()

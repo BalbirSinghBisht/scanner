@@ -196,12 +196,13 @@ class BackgroundSyncManager {
       await service.startService();
     }
 
-    // Activate Google Photos / OneDrive style native watchdog & wake alarm
+    // Activate Google Photos / OneDrive style native watchdog, wake alarm, and CPU keep-alive
     if (Platform.isAndroid) {
       try {
         const platform = MethodChannel('com.mediabackup.scanner/device_settings');
         await platform.invokeMethod('startWatchdog');
-        debugPrint('[BackgroundSync] Native Android watchdog & MediaStore observer activated.');
+        await platform.invokeMethod('startContinuousKeepAlive');
+        debugPrint('[BackgroundSync] Native Android watchdog, MediaStore observer & continuous CPU keep-alive activated.');
       } catch (e) {
         debugPrint('[BackgroundSync] Watchdog init notice: $e');
       }

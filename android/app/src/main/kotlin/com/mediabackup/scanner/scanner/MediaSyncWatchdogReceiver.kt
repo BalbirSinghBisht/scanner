@@ -14,8 +14,8 @@ class MediaSyncWatchdogReceiver : BroadcastReceiver() {
         val action = intent?.action ?: return
         Log.d(TAG, "Received broadcast action: $action")
 
-        // 1. Hold WakeLock for up to 60 seconds to allow the service to start and CPU to stay active
-        MediaSyncWatchdog.acquireWakeLock(context, 60000L)
+        // 1. Maintain CPU keep-alive so phone does not sleep while sync runs
+        MediaSyncWatchdog.startContinuousKeepAlive(context)
 
         // 2. Ensure the Flutter BackgroundService is running
         MediaSyncWatchdog.ensureServiceRunning(context)

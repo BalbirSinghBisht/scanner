@@ -17,6 +17,44 @@ object MediaSyncWatchdog {
     private const val INTERVAL_MILLIS = 10 * 60 * 1000L // 10 minutes heartbeat
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var continuousWakeLock: PowerManager.WakeLock? = null
+
+    /**
+     * Acquires an un-expiring partial CPU WakeLock.
+     * Guarantees that Android does not freeze the CPU or pause background sync when the screen is turned off.
+     */
+    @Synchronized
+    fun startContinuousKeepAlive(context: Context) {
+        try {
+            if (continuousWakeLock == null) {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                continuousWakeLock = pm.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "scanner:ContinuousKeepAliveWakeLock"
+                ).apply {
+                    setReferenceCounted(false)
+                }
+            }
+            if (continuousWakeLock?.isHeld == false) {
+                continuousWakeLock?.acquire()
+                Log.d(TAG, "Acquired continuous PARTIAL_WAKE_LOCK (keeps CPU alive with screen off).")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire continuous WakeLock: ${e.message}")
+        }
+    }
+
+    @Synchronized
+    fun stopContinuousKeepAlive() {
+        try {
+            if (continuousWakeLock?.isHeld == true) {
+                continuousWakeLock?.release()
+                Log.d(TAG, "Released continuous PARTIAL_WAKE_LOCK.")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to release continuous WakeLock: ${e.message}")
+        }
+    }
 
     /**
      * Schedules a persistent repeating wakeup alarm with the highest priority available.
