@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -42,6 +43,15 @@ class MediaScannerService {
   PermissionState get lastPermissionState => _lastPermissionState;
 
   final Map<String, Uint8List> _thumbnailCache = {};
+
+  void _putInThumbnailCache(String key, Uint8List bytes) {
+    // Keep max 120 thumbnails in memory to prevent GC lag and memory pressure
+    if (_thumbnailCache.length >= 120) {
+      final firstKey = _thumbnailCache.keys.first;
+      _thumbnailCache.remove(firstKey);
+    }
+    _thumbnailCache[key] = bytes;
+  }
 
   /// Synchronously returns cached thumbnail bytes if already loaded in memory.
   /// If [size] is specified, it first checks for that exact size, falling back to any cached resolution.
@@ -219,6 +229,15 @@ class MediaScannerService {
     }
 
     // Step 2: Resilient Fallback - If PhotoManager returned 0 albums (strict OEM, background isolate, or MediaStore propagation)
+    // Filter out .thumbnail and internal hidden albums
+    albums.removeWhere((album) {
+      final name = album.name.toLowerCase();
+      return name.startsWith('.') || 
+             name.contains('thumbnail') || 
+             name.contains('.thumbnail') || 
+             name == 'thumbnails';
+    });
+
     if (albums.isEmpty) {
       debugPrint('No albums from PhotoManager. Falling back to direct storage scan and SQLite cache...');
       final directItems = await scanDirectDirectories();
@@ -259,7 +278,8 @@ class MediaScannerService {
         break;
       }
     }
-    recentAlbum ??= albums.first;
+    recentAlbum ??= albums.isNotEmpty ? albums.first : null;
+    if (recentAlbum == null) return [];
     final List<AssetPathEntity> scanTargets = recentAlbum.isAll ? [recentAlbum] : albums;
 
     int totalAssetCount = 0;
@@ -340,11 +360,43 @@ class MediaScannerService {
             }
             folderName ??= (mediaType == AppMediaType.video ? 'Videos' : 'Camera');
 
+            // Strictly filter out any items from .thumbnail / .thumbnails folders
+            if (folderName.toLowerCase().contains('thumbnail') || folderName.startsWith('.')) {
+              processedCount++;
+              continue;
+            }
+
+            if (entity.relativePath != null) {
+              final rel = entity.relativePath!.toLowerCase();
+              if (rel.startsWith('.') || 
+                  rel.contains('.thumbnail') || 
+                  rel.contains('thumbnail') || 
+                  rel.contains('/.thumbnails/')) {
+                processedCount++;
+                continue;
+              }
+            }
+
+            if (entity.title != null && entity.title!.toLowerCase().contains('thumbnail')) {
+              processedCount++;
+              continue;
+            }
+
             String? localFilePath = existingItem?.localFilePath;
             if (localFilePath == null && entity.relativePath != null && entity.title != null) {
               final candidate = '/storage/emulated/0/${entity.relativePath}${entity.title}';
               if (File(candidate).existsSync()) {
                 localFilePath = candidate;
+              }
+            }
+
+            if (localFilePath != null) {
+              final pathLower = localFilePath.toLowerCase();
+              if (pathLower.contains('.thumbnail') || 
+                  pathLower.contains('/.thumbnails') || 
+                  pathLower.contains('/thumbnails/')) {
+                processedCount++;
+                continue;
               }
             }
 
@@ -470,7 +522,7 @@ class MediaScannerService {
   Future<Uint8List?> getThumbnail(
     String assetId, {
     int size = 500,
-    int quality = 95,
+    int quality = 90,
   }) async {
     final cacheKey = '${assetId}_$size';
     if (_thumbnailCache.containsKey(cacheKey)) {
@@ -488,8 +540,8 @@ class MediaScannerService {
           quality: quality,
         );
         if (data != null && data.isNotEmpty) {
-          _thumbnailCache[cacheKey] = data;
-          _thumbnailCache[assetId] = data;
+          _putInThumbnailCache(cacheKey, data);
+          _putInThumbnailCache(assetId, data);
           return data;
         }
       }
@@ -497,11 +549,29 @@ class MediaScannerService {
       if (item?.localFilePath != null) {
         final f = File(item!.localFilePath!);
         if (await f.exists()) {
-          final bytes = await f.readAsBytes();
-          if (bytes.isNotEmpty) {
-            _thumbnailCache[cacheKey] = bytes;
-            _thumbnailCache[assetId] = bytes;
-            return bytes;
+          final rawBytes = await f.readAsBytes();
+          if (rawBytes.isNotEmpty) {
+            try {
+              final codec = await instantiateImageCodec(
+                rawBytes,
+                targetWidth: size,
+                targetHeight: size,
+              );
+              final frame = await codec.getNextFrame();
+              final byteData =
+                  await frame.image.toByteData(format: ImageByteFormat.png);
+              if (byteData != null) {
+                final downsampled = byteData.buffer.asUint8List();
+                _putInThumbnailCache(cacheKey, downsampled);
+                _putInThumbnailCache(assetId, downsampled);
+                return downsampled;
+              }
+            } catch (_) {
+              if (rawBytes.length < 500000) {
+                _putInThumbnailCache(cacheKey, rawBytes);
+                return rawBytes;
+              }
+            }
           }
         }
       }
@@ -570,6 +640,11 @@ class MediaScannerService {
   Future<List<MediaItem>> scanDirectDirectories() async {
     final discovered = <MediaItem>[];
     if (!Platform.isAndroid) return discovered;
+
+    // Purge any previously indexed thumbnail items
+    try {
+      await _db.purgeThumbnailItems();
+    } catch (_) {}
 
     final targetDirs = [
       // Standard Camera, Screenshots & System Media
@@ -640,6 +715,13 @@ class MediaScannerService {
         if (await d.exists()) {
           await for (final sub in d.list(recursive: false, followLinks: false)) {
             if (sub is Directory) {
+              final subName = sub.path.split(RegExp(r'[\\/]')).last.toLowerCase();
+              if (subName.startsWith('.') || 
+                  subName.contains('thumbnail') || 
+                  sub.path.toLowerCase().contains('.thumbnail') ||
+                  sub.path.toLowerCase().contains('/.thumbnails')) {
+                continue;
+              }
               allDirsToScan.add(sub.path);
             }
           }
@@ -650,14 +732,38 @@ class MediaScannerService {
     const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif'};
     const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp', '.webm'};
 
+    // Fast O(1) in-memory lookup instead of thousands of individual SQLite queries
+    final existingPaths = await _db.getAllLocalFilePathsSet();
+
     for (final dirPath in allDirsToScan) {
+      final dirLower = dirPath.toLowerCase();
+      if (dirLower.contains('.thumbnail') || 
+          dirLower.contains('/.thumbnails') || 
+          dirLower.contains('/thumbnails') || 
+          dirLower.contains('thumbnails') ||
+          dirPath.split(RegExp(r'[\\/]')).any((seg) => seg.startsWith('.') || seg.toLowerCase().contains('thumbnail'))) {
+        continue;
+      }
+
       final dir = Directory(dirPath);
       if (!await dir.exists()) continue;
+
+      // Ignore directories with .nomedia marker
+      if (File('$dirPath/.nomedia').existsSync()) continue;
 
       try {
         await for (final entity in dir.list(recursive: false, followLinks: false)) {
           if (entity is! File) continue;
           final path = entity.path;
+          final pathLower = path.toLowerCase();
+          if (pathLower.contains('.thumbnail') || 
+              pathLower.contains('/.thumbnails') || 
+              pathLower.contains('/thumbnails/') || 
+              pathLower.contains('/.thumbnail/')) {
+            continue;
+          }
+          if (existingPaths.contains(path)) continue;
+
           final dotIndex = path.lastIndexOf('.');
           if (dotIndex == -1) continue;
           final ext = path.toLowerCase().substring(dotIndex);
@@ -665,8 +771,7 @@ class MediaScannerService {
           final isVideo = videoExtensions.contains(ext);
           if (!isImage && !isVideo) continue;
 
-          final existing = await _db.getItemByPath(path);
-          if (existing != null) continue;
+          existingPaths.add(path);
 
           final stat = await entity.stat();
           final fileName = path.split(RegExp(r'[\\/]')).last;

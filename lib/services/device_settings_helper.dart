@@ -9,8 +9,13 @@ class DeviceSettingsHelper {
 
   static const String _keyAutostartConfigured = 'oem_autostart_configured_v1';
 
-  /// Checks if OEM autostart has been opened/configured by the user
+  /// Checks if OEM autostart is active on device
   static Future<bool> isAutostartConfigured() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final res = await _channel.invokeMethod<bool>('isAutostartEnabled');
+      if (res != null) return res;
+    } catch (_) {}
     try {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getBool(_keyAutostartConfigured) ?? false;

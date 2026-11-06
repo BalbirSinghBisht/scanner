@@ -1,5 +1,6 @@
 package com.mediabackup.scanner.scanner
 
+import android.app.AppOpsManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -80,6 +81,10 @@ class MainActivity : FlutterActivity() {
                 "openAutostartSettings" -> {
                     val opened = openAutostartSettings()
                     result.success(opened)
+                }
+                "isAutostartEnabled" -> {
+                    val enabled = isXiaomiAutostartEnabled()
+                    result.success(enabled)
                 }
                 "areNotificationsEnabled" -> {
                     val nm = androidx.core.app.NotificationManagerCompat.from(this)
@@ -415,6 +420,32 @@ class MainActivity : FlutterActivity() {
         }
 
         return openAppInfo()
+    }
+
+    private fun isXiaomiAutostartEnabled(): Boolean {
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        val brand = Build.BRAND.lowercase()
+        val isXiaomi = manufacturer.contains("xiaomi") || brand.contains("xiaomi") ||
+                manufacturer.contains("redmi") || brand.contains("redmi") ||
+                manufacturer.contains("poco") || brand.contains("poco")
+
+        if (!isXiaomi) {
+            return true
+        }
+
+        return try {
+            val appOps = getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
+            val method = appOps.javaClass.getMethod(
+                "checkOpNoThrow",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                String::class.java
+            )
+            val mode = method.invoke(appOps, 10008, android.os.Process.myUid(), packageName) as Int
+            mode == AppOpsManager.MODE_ALLOWED
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun openAppInfo(): Boolean {

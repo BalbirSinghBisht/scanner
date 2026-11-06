@@ -216,7 +216,11 @@ class BackupProvider extends ChangeNotifier {
     if (distinctDbFolders.isNotEmpty) {
       _folders = distinctDbFolders;
     } else {
-      final s = _mediaItems.map((e) => e.displayFolderName).toSet().toList();
+      final s = _mediaItems
+          .map((e) => e.displayFolderName)
+          .where((f) => !f.toLowerCase().contains('thumbnail') && !f.startsWith('.'))
+          .toSet()
+          .toList();
       s.sort();
       _folders = s;
     }

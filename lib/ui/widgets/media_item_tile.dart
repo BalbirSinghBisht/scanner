@@ -100,7 +100,9 @@ class _MediaItemTileState extends State<MediaItemTile>
                   tag: 'media_tile_${widget.item.localId}',
                   child: CachedThumbnailImage(
                     localId: widget.item.localId,
-                    size: 400,
+                    filePath: widget.item.localFilePath,
+                    isVideo: widget.item.isVideo,
+                    size: 500,
                     fit: BoxFit.cover,
                     placeholder: _buildPlaceholder(c),
                   ),

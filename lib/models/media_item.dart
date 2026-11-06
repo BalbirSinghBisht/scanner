@@ -68,6 +68,8 @@ class MediaItem {
       uploadState == UploadState.READY_TO_UPLOAD ||
       uploadState == UploadState.RETRY_PENDING;
   bool get isUploading => uploadState == UploadState.UPLOADING;
+  bool get isVideo => mediaType == AppMediaType.video;
+  bool get isImage => mediaType == AppMediaType.image;
 
   String get formattedSize {
     if (fileSize < 1024) return '$fileSize B';

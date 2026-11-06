@@ -43,6 +43,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
   late List<MediaItem> _items;
   late int _currentIndex;
   bool _showControls = true;
+  bool _isCoverMode = false;
 
   // Active video controller for video playback
   VideoPlayerController? _videoController;
@@ -673,21 +674,35 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     onDoubleTapDown: _handleDoubleTapZoom,
                     onDoubleTap: () {},
                     behavior: HitTestBehavior.opaque,
-                    child: PageView.builder(
-                      controller: _pageController,
-                      itemCount: _items.length,
-                      onPageChanged: _onPageChanged,
-                      physics: _isDraggingDown
-                          ? const NeverScrollableScrollPhysics()
-                          : const BouncingScrollPhysics(),
-                      itemBuilder: (context, index) {
-                        final item = _items[index];
-                        if (item.mediaType == AppMediaType.video) {
-                          return _buildVideoPage(index, item);
-                        } else {
-                          return _buildImagePage(item);
-                        }
-                      },
+                    child: AnimatedPadding(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      padding: EdgeInsets.only(
+                        top: (_showControls && !_isDraggingDown)
+                            ? MediaQuery.of(context).padding.top + 54.0
+                            : 0.0,
+                        bottom: (_showControls && !_isDraggingDown)
+                            ? (isVideo
+                                ? MediaQuery.of(context).padding.bottom + 120.0
+                                : MediaQuery.of(context).padding.bottom + 82.0)
+                            : 0.0,
+                      ),
+                      child: PageView.builder(
+                        controller: _pageController,
+                        itemCount: _items.length,
+                        onPageChanged: _onPageChanged,
+                        physics: _isDraggingDown
+                            ? const NeverScrollableScrollPhysics()
+                            : const BouncingScrollPhysics(),
+                        itemBuilder: (context, index) {
+                          final item = _items[index];
+                          if (item.mediaType == AppMediaType.video) {
+                            return _buildVideoPage(index, item);
+                          } else {
+                            return _buildImagePage(item);
+                          }
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -761,19 +776,48 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                             ],
                           ),
                         ),
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          minSize: 0,
-                          onPressed: _showItemDetailsBottomSheet,
-                          child: Container(
-                            padding: const EdgeInsets.all(7),
-                            decoration: BoxDecoration(
-                              color: c.isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: c.glassBorder, width: 0.5),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minSize: 0,
+                              onPressed: () {
+                                setState(() {
+                                  _isCoverMode = !_isCoverMode;
+                                  _transformationController.value = Matrix4.identity();
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: c.isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: c.glassBorder, width: 0.5),
+                                ),
+                                child: Icon(
+                                  _isCoverMode ? Icons.fit_screen_rounded : Icons.fullscreen_rounded,
+                                  color: c.primary,
+                                  size: 20,
+                                ),
+                              ),
                             ),
-                            child: Icon(CupertinoIcons.info_circle, color: c.primary, size: 20),
-                          ),
+                            const SizedBox(width: 8),
+                            CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minSize: 0,
+                              onPressed: _showItemDetailsBottomSheet,
+                              child: Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: c.isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: c.glassBorder, width: 0.5),
+                                ),
+                                child: Icon(CupertinoIcons.info_circle, color: c.primary, size: 20),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -880,6 +924,21 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
+                                onPressed: () {
+                                  setState(() {
+                                    _isCoverMode = !_isCoverMode;
+                                    _transformationController.value = Matrix4.identity();
+                                  });
+                                },
+                                child: Icon(
+                                  _isCoverMode ? Icons.fit_screen_rounded : Icons.fullscreen_rounded,
+                                  color: c.primary,
+                                  size: 24,
+                                ),
+                              ),
+                              CupertinoButton(
+                                padding: const EdgeInsets.all(8),
+                                minSize: 0,
                                 onPressed: _showItemDetailsBottomSheet,
                                 child: Icon(CupertinoIcons.info, color: c.primary, size: 24),
                               ),
@@ -912,6 +971,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       transformationController: _transformationController,
       errorBuilder: _buildMissingFileError,
       isDraggingDown: _isDraggingDown,
+      isCoverMode: _isCoverMode,
     );
   }
 
@@ -921,12 +981,28 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            AspectRatio(
-              aspectRatio: _videoController!.value.aspectRatio > 0
-                  ? _videoController!.value.aspectRatio
-                  : 16 / 9,
-              child: VideoPlayer(_videoController!),
-            ),
+            _isCoverMode
+                ? SizedBox.expand(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      clipBehavior: Clip.hardEdge,
+                      child: SizedBox(
+                        width: _videoController!.value.size.width > 0
+                            ? _videoController!.value.size.width
+                            : 16,
+                        height: _videoController!.value.size.height > 0
+                            ? _videoController!.value.size.height
+                            : 9,
+                        child: VideoPlayer(_videoController!),
+                      ),
+                    ),
+                  )
+                : AspectRatio(
+                    aspectRatio: _videoController!.value.aspectRatio > 0
+                        ? _videoController!.value.aspectRatio
+                        : 16 / 9,
+                    child: VideoPlayer(_videoController!),
+                  ),
             // 3D Frosted Play/Pause Center Button
             if (!_videoController!.value.isPlaying)
               GestureDetector(
@@ -969,13 +1045,25 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            Image.memory(
-              cachedBytes,
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) =>
-                  _buildMissingFileError(),
-            ),
+            _isCoverMode
+                ? SizedBox.expand(
+                    child: Image.memory(
+                      cachedBytes,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      gaplessPlayback: true,
+                      errorBuilder: (context, error, stackTrace) =>
+                          _buildMissingFileError(),
+                    ),
+                  )
+                : Image.memory(
+                    cachedBytes,
+                    fit: BoxFit.contain,
+                    gaplessPlayback: true,
+                    errorBuilder: (context, error, stackTrace) =>
+                        _buildMissingFileError(),
+                  ),
             const CircularProgressIndicator(
               color: AppTheme.primaryAccent,
               strokeWidth: 2.5,
@@ -994,12 +1082,23 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Image.memory(
-                    snapshot.data!,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) =>
-                        _buildMissingFileError(),
-                  ),
+                  _isCoverMode
+                      ? SizedBox.expand(
+                          child: Image.memory(
+                            snapshot.data!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildMissingFileError(),
+                          ),
+                        )
+                      : Image.memory(
+                          snapshot.data!,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              _buildMissingFileError(),
+                        ),
                   const CircularProgressIndicator(
                     color: AppTheme.primaryAccent,
                     strokeWidth: 2.5,
@@ -1072,6 +1171,7 @@ class _FullImagePreviewPage extends StatefulWidget {
   final TransformationController transformationController;
   final Widget Function() errorBuilder;
   final bool isDraggingDown;
+  final bool isCoverMode;
 
   const _FullImagePreviewPage({
     super.key,
@@ -1079,6 +1179,7 @@ class _FullImagePreviewPage extends StatefulWidget {
     required this.transformationController,
     required this.errorBuilder,
     this.isDraggingDown = false,
+    this.isCoverMode = true,
   });
 
   @override
@@ -1173,12 +1274,24 @@ class _FullImagePreviewPageState extends State<_FullImagePreviewPage> {
         child: Center(
           child: Hero(
             tag: 'media_tile_${widget.item.localId}',
-            child: Image.file(
-              _resolvedFile!,
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) => widget.errorBuilder(),
-            ),
+            child: widget.isCoverMode
+                ? SizedBox.expand(
+                    child: Image.file(
+                      _resolvedFile!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      alignment: Alignment.center,
+                      gaplessPlayback: true,
+                      errorBuilder: (context, error, stackTrace) => widget.errorBuilder(),
+                    ),
+                  )
+                : Image.file(
+                    _resolvedFile!,
+                    fit: BoxFit.contain,
+                    gaplessPlayback: true,
+                    errorBuilder: (context, error, stackTrace) => widget.errorBuilder(),
+                  ),
           ),
         ),
       );
@@ -1195,12 +1308,24 @@ class _FullImagePreviewPageState extends State<_FullImagePreviewPage> {
         child: Center(
           child: Hero(
             tag: 'media_tile_${widget.item.localId}',
-            child: Image.memory(
-              _resolvedBytes!,
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) => widget.errorBuilder(),
-            ),
+            child: widget.isCoverMode
+                ? SizedBox.expand(
+                    child: Image.memory(
+                      _resolvedBytes!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      alignment: Alignment.center,
+                      gaplessPlayback: true,
+                      errorBuilder: (context, error, stackTrace) => widget.errorBuilder(),
+                    ),
+                  )
+                : Image.memory(
+                    _resolvedBytes!,
+                    fit: BoxFit.contain,
+                    gaplessPlayback: true,
+                    errorBuilder: (context, error, stackTrace) => widget.errorBuilder(),
+                  ),
           ),
         ),
       );
@@ -1222,11 +1347,22 @@ class _FullImagePreviewPageState extends State<_FullImagePreviewPage> {
         child: Center(
           child: Hero(
             tag: 'media_tile_${widget.item.localId}',
-            child: Image.memory(
-              cachedThumbnail,
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-            ),
+            child: widget.isCoverMode
+                ? SizedBox.expand(
+                    child: Image.memory(
+                      cachedThumbnail,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      alignment: Alignment.center,
+                      gaplessPlayback: true,
+                    ),
+                  )
+                : Image.memory(
+                    cachedThumbnail,
+                    fit: BoxFit.contain,
+                    gaplessPlayback: true,
+                  ),
           ),
         ),
       );

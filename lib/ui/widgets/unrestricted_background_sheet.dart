@@ -1,7 +1,5 @@
-import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/device_settings_helper.dart';
@@ -42,7 +40,6 @@ class _UnrestrictedBackgroundSheetState
   bool _isOEM = false;
   bool _isAutostartConfigured = false;
   String _manufacturer = 'Android';
-  List<String> _guidanceTips = [];
 
   @override
   void initState() {
@@ -85,7 +82,6 @@ class _UnrestrictedBackgroundSheetState
     final isOemDevice = await DeviceSettingsHelper.isStrictOEMDevice();
     final autostartDone = await DeviceSettingsHelper.isAutostartConfigured();
     final manufacturer = await DeviceSettingsHelper.getDeviceManufacturer();
-    final tips = DeviceSettingsHelper.getOEMGuidanceTips(manufacturer);
 
     if (mounted) {
       setState(() {
@@ -96,7 +92,6 @@ class _UnrestrictedBackgroundSheetState
         _isOEM = isOemDevice;
         _isAutostartConfigured = autostartDone;
         _manufacturer = manufacturer;
-        _guidanceTips = tips;
         _isLoading = false;
       });
       widget.onSettingsChanged?.call();
@@ -128,10 +123,6 @@ class _UnrestrictedBackgroundSheetState
     await _checkStatus();
   }
 
-  Future<void> _openXiaomiBatterySaver() async {
-    await DeviceSettingsHelper.openXiaomiBatterySaver();
-  }
-
   Future<void> _requestNotification() async {
     await DeviceSettingsHelper.requestNotificationPermission();
     await Future.delayed(const Duration(milliseconds: 600));
@@ -141,15 +132,6 @@ class _UnrestrictedBackgroundSheetState
   Future<void> _openOEMAutostartSettings() async {
     // Only opens settings screen, does NOT mark as configured automatically
     await DeviceSettingsHelper.openAutostartSettings();
-  }
-
-  Future<void> _toggleAutostartConfigured(bool value) async {
-    HapticFeedback.lightImpact();
-    await DeviceSettingsHelper.setAutostartConfigured(value);
-    if (mounted) {
-      setState(() => _isAutostartConfigured = value);
-    }
-    widget.onSettingsChanged?.call();
   }
 
   Future<void> _openAppInfo() async {
@@ -198,13 +180,18 @@ class _UnrestrictedBackgroundSheetState
       },
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
         child: Container(
           decoration: BoxDecoration(
-            color: c.surfaceGlassFloating,
+            color: c.bgSecondary,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border.all(color: c.glassBorder, width: 0.6),
+            border: Border.all(color: c.glassBorder, width: 0.8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 30,
+                offset: const Offset(0, -6),
+              ),
+            ],
           ),
           padding: EdgeInsets.only(
             top: 14,
@@ -238,8 +225,8 @@ class _UnrestrictedBackgroundSheetState
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: _isAllConfigured
-                            ? const Color(0xFF2E7D32).withOpacity(0.14)
-                            : c.primary.withOpacity(0.14),
+                            ? const Color(0xFF2E7D32).withOpacity(0.18)
+                            : c.primary.withOpacity(0.18),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -277,30 +264,6 @@ class _UnrestrictedBackgroundSheetState
                         ],
                       ),
                     ),
-                    // Quick Refresh Button
-                    CupertinoButton(
-                      padding: const EdgeInsets.all(6),
-                      minSize: 0,
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        _checkStatus();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: c.isDark
-                              ? Colors.white.withOpacity(0.06)
-                              : Colors.black.withOpacity(0.04),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.glassBorder, width: 0.6),
-                        ),
-                        child: Icon(
-                          CupertinoIcons.arrow_clockwise,
-                          color: c.primary,
-                          size: 17,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
 
@@ -316,13 +279,13 @@ class _UnrestrictedBackgroundSheetState
                   ),
                   decoration: BoxDecoration(
                     color: _isAllConfigured
-                        ? const Color(0xFF2E7D32).withOpacity(0.12)
-                        : Colors.orange.withOpacity(0.12),
+                        ? const Color(0xFF142417)
+                        : const Color(0xFF26190B),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: _isAllConfigured
-                          ? const Color(0xFF2E7D32).withOpacity(0.4)
-                          : Colors.orange.withOpacity(0.4),
+                          ? const Color(0xFF2E7D32).withOpacity(0.5)
+                          : Colors.orange.withOpacity(0.5),
                       width: 0.8,
                     ),
                   ),
@@ -408,24 +371,14 @@ class _UnrestrictedBackgroundSheetState
                   title: 'Unrestricted Battery',
                   subtitle: _isUnrestricted
                       ? 'Battery optimization is disabled. Gallery can run continuously in the background.'
-                      : 'Prevents Android from putting the app to sleep or stopping background indexing after 15 minutes.',
+                      : (_manufacturer.toLowerCase().contains('xiaomi') ||
+                              _manufacturer.toLowerCase().contains('redmi') ||
+                              _manufacturer.toLowerCase().contains('poco'))
+                          ? 'Tap "Allow Unrestricted Run" below and select "Allow".\n\nFor Xiaomi HyperOS / MIUI:\n1. Open Settings > Apps > Manage Apps > Gallery\n2. Tap "Battery saver"\n3. Select "No restrictions" so background sync is never frozen.'
+                          : 'Tap "Allow Unrestricted Run" below and select "Allow" when prompted so Android keeps background sync running without sleeping.',
                   isGranted: _isUnrestricted,
                   actionText: 'Allow Unrestricted Run',
                   onAction: _requestUnrestrictedBattery,
-                  secondaryActionText: _manufacturer.toLowerCase().contains('xiaomi') ||
-                          _manufacturer.toLowerCase().contains('redmi') ||
-                          _manufacturer.toLowerCase().contains('poco')
-                      ? 'Battery Saver (No Restrictions)'
-                      : 'Battery Settings',
-                  onSecondaryAction: () {
-                    if (_manufacturer.toLowerCase().contains('xiaomi') ||
-                        _manufacturer.toLowerCase().contains('redmi') ||
-                        _manufacturer.toLowerCase().contains('poco')) {
-                      _openXiaomiBatterySaver();
-                    } else {
-                      DeviceSettingsHelper.openBatteryOptimizationSettings();
-                    }
-                  },
                   c: c,
                 ),
 
@@ -466,18 +419,16 @@ class _UnrestrictedBackgroundSheetState
                     decoration: BoxDecoration(
                       color: _isAllConfigured
                           ? const Color(0xFF2E7D32)
-                          : (c.isDark
-                              ? Colors.white.withOpacity(0.08)
-                              : Colors.black.withOpacity(0.06)),
+                          : c.surfaceElevated,
                       borderRadius: BorderRadius.circular(16),
                       border: _isAllConfigured
                           ? null
-                          : Border.all(color: c.glassBorder, width: 0.8),
+                          : Border.all(color: c.glassBorderSubtle, width: 0.8),
                       boxShadow: _isAllConfigured
                           ? [
                               BoxShadow(
-                                color: const Color(0xFF2E7D32).withOpacity(0.35),
-                                blurRadius: 10,
+                                color: const Color(0xFF2E7D32).withOpacity(0.4),
+                                blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
                             ]
@@ -511,32 +462,13 @@ class _UnrestrictedBackgroundSheetState
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 8),
-
-                // Secondary button: App Info
-                Center(
-                  child: TextButton.icon(
-                    onPressed: _openAppInfo,
-                    icon: Icon(Icons.settings_outlined,
-                        size: 16, color: c.textSecondary),
-                    label: Text(
-                      'Open System App Settings',
-                      style: TextStyle(
-                        color: c.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildPermissionCard({
     required BuildContext context,
@@ -555,12 +487,14 @@ class _UnrestrictedBackgroundSheetState
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: c.surfaceGlass,
+        color: isGranted
+            ? const Color(0xFF131F17)
+            : c.surfaceElevated,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isGranted
-              ? const Color(0xFF2E7D32).withOpacity(0.35)
-              : c.glassBorder,
+              ? const Color(0xFF2E7D32).withOpacity(0.4)
+              : c.glassBorderSubtle,
           width: 0.8,
         ),
       ),
@@ -573,8 +507,8 @@ class _UnrestrictedBackgroundSheetState
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: isGranted
-                      ? const Color(0xFF2E7D32).withOpacity(0.14)
-                      : c.primary.withOpacity(0.12),
+                      ? const Color(0xFF2E7D32).withOpacity(0.18)
+                      : c.primary.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -639,11 +573,11 @@ class _UnrestrictedBackgroundSheetState
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: isGranted
-                          ? c.surfaceGlass
+                          ? c.surface
                           : c.primary,
                       borderRadius: BorderRadius.circular(12),
                       border: isGranted
-                          ? Border.all(color: c.glassBorder, width: 0.8)
+                          ? Border.all(color: c.glassBorderSubtle, width: 0.8)
                           : null,
                     ),
                     child: Row(
@@ -679,9 +613,9 @@ class _UnrestrictedBackgroundSheetState
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: c.surfaceGlass,
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: c.glassBorder, width: 0.8),
+                      border: Border.all(color: c.glassBorderSubtle, width: 0.8),
                     ),
                     child: Text(
                       secondaryActionText,
@@ -708,12 +642,14 @@ class _UnrestrictedBackgroundSheetState
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: c.surfaceGlass,
+        color: isGranted
+            ? const Color(0xFF131F17)
+            : c.surfaceElevated,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isGranted
-              ? const Color(0xFF2E7D32).withOpacity(0.35)
-              : c.glassBorder,
+              ? const Color(0xFF2E7D32).withOpacity(0.4)
+              : c.glassBorderSubtle,
           width: 0.8,
         ),
       ),
@@ -726,8 +662,8 @@ class _UnrestrictedBackgroundSheetState
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: isGranted
-                      ? const Color(0xFF2E7D32).withOpacity(0.14)
-                      : c.primary.withOpacity(0.12),
+                      ? const Color(0xFF2E7D32).withOpacity(0.18)
+                      : c.primary.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -763,18 +699,19 @@ class _UnrestrictedBackgroundSheetState
                   ],
                 ),
               ),
-              CupertinoSwitch(
-                value: isGranted,
-                activeColor: const Color(0xFF2E7D32),
-                onChanged: (val) => _toggleAutostartConfigured(val),
-              ),
+              if (isGranted)
+                const Icon(
+                  CupertinoIcons.checkmark_circle_fill,
+                  color: Color(0xFF2E7D32),
+                  size: 22,
+                ),
             ],
           ),
           const SizedBox(height: 10),
           Text(
-            _guidanceTips.isNotEmpty
-                ? _guidanceTips.join('\n')
-                : 'Allow Autostart so new media from Camera or WhatsApp triggers real-time syncing even when the app is closed.',
+            isGranted
+                ? 'Autostart is verified and active in Xiaomi Security Settings. Background sync will run reliably.'
+                : 'Xiaomi HyperOS requires enabling Autostart manually in System Settings. Tap below, locate Gallery, and switch Autostart ON.',
             style: TextStyle(
               color: c.textSecondary,
               fontSize: 12.5,
@@ -792,24 +729,26 @@ class _UnrestrictedBackgroundSheetState
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: isGranted
-                          ? c.surfaceGlass
+                          ? c.surface
                           : c.primary,
                       borderRadius: BorderRadius.circular(12),
                       border: isGranted
-                          ? Border.all(color: c.glassBorder, width: 0.8)
+                          ? Border.all(color: c.glassBorderSubtle, width: 0.8)
                           : null,
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          CupertinoIcons.gear_alt_fill,
+                          isGranted
+                              ? CupertinoIcons.arrow_up_right_square
+                              : CupertinoIcons.gear_alt_fill,
                           color: isGranted ? c.textPrimary : Colors.white,
                           size: 15,
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          'Open Autostart Settings',
+                          isGranted ? 'Open Autostart Settings' : 'Open Autostart in Settings',
                           style: TextStyle(
                             color: isGranted ? c.textPrimary : Colors.white,
                             fontSize: 13,
@@ -817,37 +756,6 @@ class _UnrestrictedBackgroundSheetState
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => _toggleAutostartConfigured(!isGranted),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isGranted
-                        ? c.surfaceGlass
-                        : const Color(0xFF2E7D32).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isGranted
-                          ? c.glassBorder
-                          : const Color(0xFF2E7D32).withOpacity(0.4),
-                      width: 0.8,
-                    ),
-                  ),
-                  child: Text(
-                    isGranted ? 'Disable' : 'I\'ve Enabled It',
-                    style: TextStyle(
-                      color: isGranted
-                          ? c.textSecondary
-                          : const Color(0xFF2E7D32),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),

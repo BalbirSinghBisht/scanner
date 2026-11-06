@@ -122,7 +122,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       MediaScannerService.instance.requestPermission().then((_) {
         if (MediaScannerService.instance.isPermissionGranted) {
           if (!backup.isScanning) {
-            backup.startScan(forceFullScan: true);
+            backup.startScan(forceFullScan: false);
           }
         }
       });
@@ -140,7 +140,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
     final backup = context.read<BackupProvider>();
     if (!backup.isScanning) {
-      await backup.startScan(forceFullScan: true);
+      await backup.startScan(forceFullScan: false);
     }
 
     // Check device background permissions and show guide if any are missing
@@ -160,6 +160,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final map = <String, List<MediaItem>>{};
     for (final item in items) {
       final folder = item.displayFolderName;
+      final folderLower = folder.toLowerCase();
+      if (folderLower.contains('thumbnail') || folderLower.startsWith('.')) {
+        continue;
+      }
       map.putIfAbsent(folder, () => []).add(item);
     }
     return map;
@@ -173,6 +177,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final yesterday = today.subtract(const Duration(days: 1));
 
     for (final item in items) {
+      final folderLower = item.displayFolderName.toLowerCase();
+      final pathLower = item.localFilePath?.toLowerCase() ?? '';
+      if (folderLower.contains('thumbnail') || folderLower.startsWith('.') || pathLower.contains('.thumbnail') || pathLower.contains('/.thumbnails/')) {
+        continue;
+      }
+
       final itemDate =
           DateTime(item.createdAt.year, item.createdAt.month, item.createdAt.day);
       String label;
@@ -192,6 +202,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   List<MediaItem> _filterAndSortItems(List<MediaItem> items) {
     var result = List<MediaItem>.from(items);
+
+    // Filter out any internal/system thumbnail items
+    result.removeWhere((it) {
+      final f = it.displayFolderName.toLowerCase();
+      final p = it.localFilePath?.toLowerCase() ?? '';
+      return f.contains('thumbnail') || f.startsWith('.') || p.contains('.thumbnail') || p.contains('/.thumbnails/');
+    });
 
     // 1. Search Query Filter
     if (_searchQuery.trim().isNotEmpty) {
@@ -1212,6 +1229,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: true),
       child: CustomScrollView(
+        cacheExtent: 600,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           for (final entry in dateGroups.entries) ...[
@@ -1383,6 +1401,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: true),
       child: CustomScrollView(
+        cacheExtent: 600,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           // 3D Featured Showcase Carousel
@@ -1605,6 +1624,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: true),
       child: GridView.builder(
+        cacheExtent: 600,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(2, 4, 2, 110),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(

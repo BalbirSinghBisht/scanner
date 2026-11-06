@@ -22,12 +22,33 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = p.join(dbPath, filePath);
 
-    return await openDatabase(
+    final db = await openDatabase(
       path,
       version: AppConstants.databaseVersion,
       onCreate: _createDB,
       onUpgrade: _onUpgradeDB,
     );
+
+    // Automatically purge any indexed items originating from .thumbnail / .thumbnails folders
+    try {
+      await db.delete(
+        AppConstants.manifestTableName,
+        where: '''
+          folder_name LIKE '%.thumbnail%' OR 
+          folder_name LIKE '%.thumbnails%' OR 
+          folder_name = 'thumbnails' OR 
+          folder_name = 'thumbnail' OR 
+          folder_name LIKE '.%' OR
+          local_file_path LIKE '%.thumbnail%' OR 
+          local_file_path LIKE '%.thumbnails%' OR 
+          local_file_path LIKE '%/.thumbnails/%' OR
+          local_file_path LIKE '%/.thumbnail/%' OR
+          file_name LIKE '%.thumbnail%'
+        ''',
+      );
+    } catch (_) {}
+
+    return db;
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -229,6 +250,23 @@ class DatabaseHelper {
       return MediaItem.fromMap(maps.first);
     }
     return null;
+  }
+
+  Future<Set<String>> getAllLocalFilePathsSet() async {
+    final db = await database;
+    final maps = await db.query(
+      AppConstants.manifestTableName,
+      columns: ['local_file_path'],
+      where: 'local_file_path IS NOT NULL',
+    );
+    final set = <String>{};
+    for (final row in maps) {
+      final p = row['local_file_path'] as String?;
+      if (p != null && p.isNotEmpty) {
+        set.add(p);
+      }
+    }
+    return set;
   }
 
   Future<MediaItem?> getItemByPath(String path) async {
@@ -475,6 +513,25 @@ class DatabaseHelper {
       args.add(stateFilter);
     }
 
+    // Exclude any internal/cached thumbnail items
+    conditions.add('''
+      (folder_name IS NULL OR (
+        folder_name NOT LIKE '%.thumbnail%' AND 
+        folder_name NOT LIKE '%.thumbnails%' AND 
+        folder_name != 'thumbnails' AND 
+        folder_name != 'thumbnail' AND 
+        folder_name NOT LIKE '.%'
+      ))
+    ''');
+    conditions.add('''
+      (local_file_path IS NULL OR (
+        local_file_path NOT LIKE '%.thumbnail%' AND 
+        local_file_path NOT LIKE '%.thumbnails%' AND 
+        local_file_path NOT LIKE '%/.thumbnails/%' AND 
+        local_file_path NOT LIKE '%/.thumbnail/%'
+      ))
+    ''');
+
     final whereClause = conditions.isNotEmpty ? conditions.join(' AND ') : null;
 
     final maps = await db.query(
@@ -691,10 +748,36 @@ class DatabaseHelper {
     final res = await db.rawQuery('''
       SELECT DISTINCT folder_name
       FROM ${AppConstants.manifestTableName}
-      WHERE folder_name IS NOT NULL AND folder_name != ''
+      WHERE folder_name IS NOT NULL 
+        AND folder_name != ''
+        AND folder_name NOT LIKE '%.thumbnail%'
+        AND folder_name NOT LIKE '%.thumbnails%'
+        AND folder_name != 'thumbnails'
+        AND folder_name != 'thumbnail'
+        AND folder_name NOT LIKE '.%'
       ORDER BY folder_name ASC
     ''');
     return res.map((r) => r['folder_name'] as String).toList();
+  }
+
+  /// Purges any legacy records indexed from .thumbnail / .thumbnails folders
+  Future<int> purgeThumbnailItems() async {
+    final db = await database;
+    return await db.delete(
+      AppConstants.manifestTableName,
+      where: '''
+        folder_name LIKE '%.thumbnail%' OR 
+        folder_name LIKE '%.thumbnails%' OR 
+        folder_name = 'thumbnails' OR 
+        folder_name = 'thumbnail' OR 
+        folder_name LIKE '.%' OR
+        local_file_path LIKE '%.thumbnail%' OR 
+        local_file_path LIKE '%.thumbnails%' OR 
+        local_file_path LIKE '%/.thumbnails/%' OR
+        local_file_path LIKE '%/.thumbnail/%' OR
+        file_name LIKE '%.thumbnail%'
+      ''',
+    );
   }
 
   Future<List<MediaItem>> getItemsByFolder(String folderName, {int limit = 500}) async {
