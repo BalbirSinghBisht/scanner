@@ -23,7 +23,7 @@ void onStartBackgroundService(ServiceInstance service) async {
     await service.setAutoStartOnBootMode(true);
     service.setForegroundNotificationInfo(
       title: 'Gallery',
-      content: 'Auto-sync active in background',
+      content: 'Gallery running',
     );
 
     service.on('setAsForeground').listen((event) {
@@ -155,9 +155,11 @@ class BackgroundSyncManager {
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'media_backup_service_channel',
       'Media Backup Service',
-      description: 'Keeps automatic photo and video backup running continuously',
-      importance: Importance.low,
+      description: 'Keep gallery running automatically',
+      importance: Importance.defaultImportance,
       showBadge: false,
+      playSound: false,
+      enableVibration: false,
     );
 
     final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -176,11 +178,10 @@ class BackgroundSyncManager {
         autoStartOnBoot: true,
         notificationChannelId: 'media_backup_service_channel',
         initialNotificationTitle: 'Gallery',
-        initialNotificationContent: 'Auto-sync active in background',
+        initialNotificationContent: 'Gallery running',
         foregroundServiceNotificationId: 991,
         foregroundServiceTypes: [
           AndroidForegroundType.dataSync,
-          AndroidForegroundType.specialUse,
         ],
       ),
       iosConfiguration: IosConfiguration(

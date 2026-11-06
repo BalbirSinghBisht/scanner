@@ -200,26 +200,8 @@ class DeviceSettingsHelper {
 
   /// Automatically opens the Autostart settings once on first launch for Realme, Xiaomi, and other strict OEMs
   static Future<void> checkAndOpenXiaomiAutostartOnFirstLaunch() async {
-    if (!Platform.isAndroid) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final alreadyPrompted = prefs.getBool(_keyAutostartPrompted) ?? false;
-      if (alreadyPrompted) return;
-
-      final isOEM = await isStrictOEMDevice();
-      if (!isOEM) {
-        await prefs.setBool(_keyAutostartPrompted, true);
-        return;
-      }
-
-      // Mark as prompted so it only redirects once on first launch
-      await prefs.setBool(_keyAutostartPrompted, true);
-
-      // Brief delay to allow initial media permission dialog to settle
-      await Future.delayed(const Duration(milliseconds: 1200));
-
-      await openAutostartSettings();
-    } catch (_) {}
+    // Disabled: User only wants standard background permission prompt, not OEM autostart redirects
+    return;
   }
 
   /// Starts native AlarmManager watchdog and MediaStore content observer (Google Photos & OneDrive architecture)

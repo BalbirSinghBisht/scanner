@@ -8,7 +8,6 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
@@ -32,14 +31,10 @@
         <!-- Flutter Background Service for persistent sync and auto-start on boot -->
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
-            android:foregroundServiceType="dataSync|specialUse"
+            android:foregroundServiceType="dataSync"
             android:stopWithTask="false"
             android:exported="true"
-            android:enabled="true">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Continuous cloud and local media sync and backup service" />
-        </service>
+            android:enabled="true" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

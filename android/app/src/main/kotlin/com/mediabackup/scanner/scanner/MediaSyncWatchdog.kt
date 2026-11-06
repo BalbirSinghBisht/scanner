@@ -36,26 +36,9 @@ object MediaSyncWatchdog {
             val pendingIntent = PendingIntent.getBroadcast(context, REQUEST_CODE, intent, flags)
 
             val triggerAtElapsed = SystemClock.elapsedRealtime() + INTERVAL_MILLIS
-            val triggerAtWallClock = System.currentTimeMillis() + INTERVAL_MILLIS
 
-            // 1. Try setAlarmClock first (highest priority, ignores Doze, standard for backup/alarm apps)
+            // Schedule silent wakeup alarm (bypasses Doze mode without creating an alarm clock icon)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                try {
-                    val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                    val showPendingIntent = if (launchIntent != null) {
-                        PendingIntent.getActivity(context, REQUEST_CODE + 1, launchIntent, flags)
-                    } else {
-                        pendingIntent
-                    }
-                    val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerAtWallClock, showPendingIntent)
-                    alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
-                    Log.d(TAG, "Watchdog scheduled via setAlarmClock (+10m)")
-                    return
-                } catch (e: Exception) {
-                    Log.w(TAG, "setAlarmClock not permitted or failed: ${e.message}, falling back...")
-                }
-
-                // 2. Fallback to exact/allowWhileIdle
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     if (alarmManager.canScheduleExactAlarms()) {
                         alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtElapsed, pendingIntent)

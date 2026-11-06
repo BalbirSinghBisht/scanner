@@ -11,6 +11,7 @@ import '../../models/media_item.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/backup_provider.dart';
 import '../../services/backup_sync_service.dart';
+import '../../services/background_sync_manager.dart';
 import '../../services/device_settings_helper.dart';
 import '../../services/favorites_service.dart';
 import '../../services/google_drive_service.dart';
@@ -123,13 +124,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     await MediaScannerService.instance.requestAllAppPermissions();
     if (!mounted) return;
 
+    try {
+      await BackgroundSyncManager.instance.initialize();
+    } catch (_) {}
+
     final backup = context.read<BackupProvider>();
     if (!backup.isScanning) {
       await backup.startScan(forceFullScan: true);
     }
-    if (!mounted) return;
-
-    DeviceSettingsHelper.checkAndOpenXiaomiAutostartOnFirstLaunch();
   }
 
   Map<String, List<MediaItem>> _groupItemsByFolder(List<MediaItem> items) {

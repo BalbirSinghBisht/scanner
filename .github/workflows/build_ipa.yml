@@ -9,8 +9,10 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    runs-on: macos-latest
+  # Fast parallel Android build on Ubuntu Linux (runs in 2-3 minutes)
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,39 +22,87 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.7'
           channel: 'stable'
+          cache: true
 
       - name: Install dependencies
-        run: |
-          flutter pub get
-          cd ios && pod install && cd ..
+        run: flutter pub get
 
       - name: Build Android APK
         run: |
           chmod +x scripts/build_android_apk.sh
           ./scripts/build_android_apk.sh
 
+      - name: Upload Android Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gallery-Android-APK
+          path: build/Gallery.apk
+          if-no-files-found: error
+
+  # Parallel iOS build on macOS
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          flutter pub get
+          cd ios && pod install && cd ..
+
       - name: Build and Package iOS IPA
         run: |
           chmod +x scripts/build_trollstore_ipa.sh
           ./scripts/build_trollstore_ipa.sh
 
-      - name: Upload Release Artifacts
+      - name: Upload iOS Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Gallery-Release-Packages
+          name: Gallery-iOS-IPA
           path: |
-            build/Gallery.apk
             build/gallery-scarlet.ipa
             build/Gallery.ipa
+          if-no-files-found: error
+
+  # Release job that gathers artifacts and publishes release
+  release:
+    name: Publish Release
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Android Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Gallery-Android-APK
+          path: build
+
+      - name: Download iOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Gallery-iOS-IPA
+          path: build
 
       - name: Publish to GitHub Release
-        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
