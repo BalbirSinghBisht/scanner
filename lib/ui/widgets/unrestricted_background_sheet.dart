@@ -270,116 +270,24 @@ class _UnrestrictedBackgroundSheetState
                         ],
                       ),
                       child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(CupertinoIcons.bolt_fill,
-                              color: Colors.white, size: 19),
-                          SizedBox(width: 8),
-                          Text(
-                            'Allow Unrestricted Background Run',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-
-                // OEM Instructions Section (if Samsung, Xiaomi, Realme, Oppo, Vivo, OnePlus)
-                if (Platform.isAndroid && _guidanceTips.isNotEmpty) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: c.surfaceElevated.withOpacity(0.55),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: c.glassBorder, width: 0.6),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(CupertinoIcons.device_phone_portrait,
-                                color: c.primary, size: 16),
-                            const SizedBox(width: 6),
+                            Icon(CupertinoIcons.bolt_fill,
+                                color: Colors.white, size: 19),
+                            SizedBox(width: 8),
                             Text(
-                              '$_manufacturer Device Optimization Tips',
+                              'Allow Unrestricted Background Run',
                               style: TextStyle(
-                                color: c.textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        ..._guidanceTips.map(
-                          (tip) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 3),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('• ',
-                                    style: TextStyle(
-                                        color: c.primary,
-                                        fontWeight: FontWeight.bold)),
-                                Expanded(
-                                  child: Text(
-                                    tip,
-                                    style: TextStyle(
-                                      color: c.textSecondary,
-                                      fontSize: 12.2,
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          onPressed: _openOEMSettings,
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: c.surfaceGlass,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: c.primary.withOpacity(0.4),
-                                width: 0.7,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.tune_rounded,
-                                    color: c.primary, size: 16),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Open $_manufacturer Autostart & Battery Settings',
-                                  style: TextStyle(
-                                    color: c.primary,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                 ],
 
                 // App Info Settings button

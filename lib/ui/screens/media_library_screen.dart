@@ -656,13 +656,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         builder: (context, snapshot) {
                           final isUnrestricted = snapshot.data ?? false;
                           return InkWell(
-                            onTap: () {
-                              UnrestrictedBackgroundSheet.show(
-                                context,
-                                onSettingsChanged: () {
-                                  setSheetState(() {});
-                                },
-                              );
+                            onTap: () async {
+                              if (!isUnrestricted) {
+                                // 1-tap direct system prompt to set Unrestricted
+                                await DeviceSettingsHelper.requestIgnoreBatteryOptimizations();
+                                await Future.delayed(const Duration(milliseconds: 600));
+                                setSheetState(() {});
+                              } else {
+                                UnrestrictedBackgroundSheet.show(
+                                  context,
+                                  onSettingsChanged: () {
+                                    setSheetState(() {});
+                                  },
+                                );
+                              }
                             },
                             borderRadius: BorderRadius.circular(16),
                             child: Container(
