@@ -57,10 +57,11 @@ object MediaSyncWatchdog {
     }
 
     /**
-     * Schedules a persistent repeating wakeup alarm with the highest priority available.
-     * Uses setAlarmClock or setExactAndAllowWhileIdle to punch through Android Doze mode.
+     * Schedules a persistent silent alarm clock wake-up.
+     * Uses the exact same AlarmClock hardware mechanism as an Android Alarm Clock app,
+     * but wakes up completely silently in the background with zero sound, vibration, or popup.
      */
-    fun scheduleHeartbeat(context: Context) {
+    fun scheduleSilentAlarm(context: Context, triggerAtMillis: Long? = null) {
         try {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
             val intent = Intent(context, MediaSyncWatchdogReceiver::class.java).apply {
@@ -73,29 +74,52 @@ object MediaSyncWatchdog {
             }
             val pendingIntent = PendingIntent.getBroadcast(context, REQUEST_CODE, intent, flags)
 
-            val triggerAtElapsed = SystemClock.elapsedRealtime() + INTERVAL_MILLIS
+            val wallClockTime = triggerAtMillis ?: (System.currentTimeMillis() + INTERVAL_MILLIS)
+            val elapsedDelay = wallClockTime - System.currentTimeMillis()
+            val elapsedTrigger = SystemClock.elapsedRealtime() + if (elapsedDelay > 0) elapsedDelay else INTERVAL_MILLIS
 
-            // Schedule silent wakeup alarm (bypasses Doze mode without creating an alarm clock icon)
+            // 1. Alarm Clock API: Exact same mechanism used by Google Clock and Alarm apps.
+            // Bypasses Doze mode, bypasses OEM task killers, wakes up CPU silently with zero sound or UI,
+            // and grants the official Android 12+ exemption to start background sync.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                    val showPendingIntent = if (launchIntent != null) {
+                        PendingIntent.getActivity(context, REQUEST_CODE + 1, launchIntent, flags)
+                    } else {
+                        pendingIntent
+                    }
+                    val alarmClockInfo = AlarmManager.AlarmClockInfo(wallClockTime, showPendingIntent)
+                    alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+                    Log.d(TAG, "Silent alarm wake-up successfully set via setAlarmClock for time: $wallClockTime")
+                    return
+                } catch (e: Exception) {
+                    Log.w(TAG, "setAlarmClock not permitted or failed: ${e.message}, falling back to setExactAndAllowWhileIdle")
+                }
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     if (alarmManager.canScheduleExactAlarms()) {
-                        alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtElapsed, pendingIntent)
-                        Log.d(TAG, "Watchdog scheduled via setExactAndAllowWhileIdle (+10m)")
+                        alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsedTrigger, pendingIntent)
                     } else {
-                        alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtElapsed, pendingIntent)
-                        Log.d(TAG, "Watchdog scheduled via setAndAllowWhileIdle (+10m)")
+                        alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsedTrigger, pendingIntent)
                     }
                 } else {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtElapsed, pendingIntent)
-                    Log.d(TAG, "Watchdog scheduled via setExactAndAllowWhileIdle (+10m)")
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsedTrigger, pendingIntent)
                 }
             } else {
-                alarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtElapsed, pendingIntent)
-                Log.d(TAG, "Watchdog scheduled via set (+10m)")
+                alarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsedTrigger, pendingIntent)
             }
+            Log.d(TAG, "Silent alarm wake-up set via exact alarm for time: $wallClockTime")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to schedule watchdog heartbeat: ${e.message}", e)
+            Log.e(TAG, "Failed to schedule silent alarm: ${e.message}", e)
         }
+    }
+
+    /**
+     * Alias for scheduleSilentAlarm to maintain backwards compatibility.
+     */
+    fun scheduleHeartbeat(context: Context) {
+        scheduleSilentAlarm(context)
     }
 
     /**
@@ -114,6 +138,30 @@ object MediaSyncWatchdog {
             Log.d(TAG, "Ensured BackgroundService is started.")
         } catch (e: Exception) {
             Log.e(TAG, "Could not start BackgroundService: ${e.message}")
+        }
+    }
+
+    /**
+     * Ensures the background service is alive and immediately triggers a backup sync cycle in Dart.
+     */
+    fun triggerSyncNow(context: Context) {
+        try {
+            ensureServiceRunning(context)
+            val data = org.json.JSONObject().apply {
+                put("action", "triggerSync")
+                put("method", "triggerSync")
+            }
+            val pluginClass = Class.forName("id.flutter.flutter_background_service.FlutterBackgroundServicePlugin")
+            val field = pluginClass.getDeclaredField("servicePipe")
+            field.isAccessible = true
+            val pipe = field.get(null)
+            if (pipe != null) {
+                val invokeMethod = pipe.javaClass.getMethod("invoke", org.json.JSONObject::class.java)
+                invokeMethod.invoke(pipe, data)
+                Log.d(TAG, "Successfully dispatched triggerSync to BackgroundService.")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "triggerSync dispatch note: ${e.message}")
         }
     }
 

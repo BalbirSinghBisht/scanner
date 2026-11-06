@@ -37,6 +37,11 @@ void onStartBackgroundService(ServiceInstance service) async {
     service.on('stopService').listen((event) {
       service.stopSelf();
     });
+
+    service.on('triggerSync').listen((event) {
+      debugPrint('[BackgroundSync] 10-minute silent alarm event received! Running backup cycle now...');
+      _runBackgroundSyncCycle(service);
+    });
   }
 
   // Initial check immediately after startup

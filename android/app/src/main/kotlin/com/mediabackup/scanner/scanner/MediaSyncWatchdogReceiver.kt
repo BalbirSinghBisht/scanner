@@ -17,14 +17,14 @@ class MediaSyncWatchdogReceiver : BroadcastReceiver() {
         // 1. Maintain CPU keep-alive so phone does not sleep while sync runs
         MediaSyncWatchdog.startContinuousKeepAlive(context)
 
-        // 2. Ensure the Flutter BackgroundService is running
-        MediaSyncWatchdog.ensureServiceRunning(context)
+        // 2. Immediately trigger the backup sync cycle in BackgroundService
+        MediaSyncWatchdog.triggerSyncNow(context)
 
         // 3. Register ContentObserver if not already active
         MediaStoreChangeObserver.register(context)
 
-        // 4. Re-arm the next heartbeat alarm (unbroken chain)
-        MediaSyncWatchdog.scheduleHeartbeat(context)
+        // 4. Re-arm the next silent alarm clock (unbroken alarm chain)
+        MediaSyncWatchdog.scheduleSilentAlarm(context)
     }
 }
 

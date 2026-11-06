@@ -227,4 +227,14 @@ class DeviceSettingsHelper {
       await _channel.invokeMethod('releaseWakeLock');
     } catch (_) {}
   }
+
+  /// Schedules an unkillable silent alarm clock wakeup (uses Android Alarm Clock hardware RTC, but 100% silent with no sound or vibration)
+  static Future<void> scheduleSilentAlarm({DateTime? at}) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('scheduleSilentAlarm', {
+        if (at != null) 'triggerAtMillis': at.millisecondsSinceEpoch,
+      });
+    } catch (_) {}
+  }
 }

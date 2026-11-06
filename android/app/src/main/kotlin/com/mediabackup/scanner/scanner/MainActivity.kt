@@ -170,8 +170,13 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "startWatchdog" -> {
-                    MediaSyncWatchdog.scheduleHeartbeat(this)
+                    MediaSyncWatchdog.scheduleSilentAlarm(this)
                     MediaStoreChangeObserver.register(this)
+                    result.success(true)
+                }
+                "scheduleSilentAlarm" -> {
+                    val triggerAtMillis = (call.argument<Number>("triggerAtMillis"))?.toLong()
+                    MediaSyncWatchdog.scheduleSilentAlarm(this, triggerAtMillis)
                     result.success(true)
                 }
                 "acquireWakeLock" -> {
