@@ -300,6 +300,11 @@ class MainActivity : FlutterActivity() {
 
     private fun requestIgnoreBattery(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            if (pm != null && pm.isIgnoringBatteryOptimizations(packageName)) {
+                // Already unrestricted! Do not reopen battery settings
+                return true
+            }
             try {
                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                     data = Uri.parse("package:$packageName")
@@ -308,7 +313,7 @@ class MainActivity : FlutterActivity() {
                 startActivity(intent)
                 return true
             } catch (_: Exception) {
-                return openAppInfo()
+                return openBatteryOptimizationSettings()
             }
         }
         return false

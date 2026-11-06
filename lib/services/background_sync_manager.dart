@@ -90,8 +90,8 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
 
     if (svc is AndroidServiceInstance) {
       svc.setForegroundNotificationInfo(
-        title: 'Gallery',
-        content: 'Auto-sync active in background',
+        title: 'Gallery Backup Active',
+        content: 'Continuous background running',
       );
     }
 
