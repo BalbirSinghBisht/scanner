@@ -13,6 +13,8 @@ void main() {
       expect(settings.backupPhotos, isTrue);
       expect(settings.backupVideos, isTrue);
       expect(settings.localOnlyMode, isFalse);
+      expect(settings.syncLockedFolders, isTrue);
+      expect(settings.customFolderPaths, isEmpty);
     });
 
     test('serializes and deserializes correctly', () {
@@ -26,6 +28,8 @@ void main() {
         chargingOnly: true,
         maxVideoSizeBytes: 104857600,
         localOnlyMode: true,
+        syncLockedFolders: true,
+        customFolderPaths: ['/storage/emulated/0/MyPrivateVault'],
       );
 
       final map = original.toMap();
@@ -39,6 +43,8 @@ void main() {
       expect(restored.chargingOnly, isTrue);
       expect(restored.maxVideoSizeBytes, equals(104857600));
       expect(restored.localOnlyMode, isTrue);
+      expect(restored.syncLockedFolders, isTrue);
+      expect(restored.customFolderPaths, contains('/storage/emulated/0/MyPrivateVault'));
     });
   });
 

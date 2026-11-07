@@ -134,10 +134,6 @@ class _UnrestrictedBackgroundSheetState
     await DeviceSettingsHelper.openAutostartSettings();
   }
 
-  Future<void> _openAppInfo() async {
-    await DeviceSettingsHelper.openAppInfoSettings();
-  }
-
   bool get _isAllConfigured {
     if (!_isMediaGranted) return false;
     if (!_isAllFilesGranted) return false;
@@ -165,19 +161,6 @@ class _UnrestrictedBackgroundSheetState
 
     return PopScope(
       canPop: _isAllConfigured,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Please enable all permissions above to proceed ($_remainingPermissionsCount remaining).',
-              ),
-              backgroundColor: c.surfaceElevated,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      },
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         child: Container(
@@ -217,7 +200,7 @@ class _UnrestrictedBackgroundSheetState
                 ),
                 const SizedBox(height: 16),
 
-                // Header with live refresh button
+                // Header with live status icon
                 Row(
                   children: [
                     AnimatedContainer(
@@ -307,7 +290,7 @@ class _UnrestrictedBackgroundSheetState
                               ? 'Checking device permissions...'
                               : (_isAllConfigured
                                   ? 'Fully Configured: All permissions are active. Media will sync and delete seamlessly.'
-                                  : 'Configuration Needed: Enable missing permissions below. You can tap "Open Settings" on any item at any time.'),
+                                  : 'Configuration Needed: Please enable the required permissions below to proceed.'),
                           style: TextStyle(
                             color: _isAllConfigured
                                 ? (isDark
@@ -339,8 +322,6 @@ class _UnrestrictedBackgroundSheetState
                   isGranted: _isAllFilesGranted,
                   actionText: 'Allow All Files Access',
                   onAction: _requestAllFilesAccess,
-                  secondaryActionText: 'Manage in Settings',
-                  onSecondaryAction: _requestAllFilesAccess,
                   c: c,
                 ),
 
@@ -357,8 +338,6 @@ class _UnrestrictedBackgroundSheetState
                   isGranted: _isMediaGranted,
                   actionText: 'Grant Media Access',
                   onAction: _requestMediaAccess,
-                  secondaryActionText: 'App Settings',
-                  onSecondaryAction: _openAppInfo,
                   c: c,
                 ),
 
@@ -371,11 +350,7 @@ class _UnrestrictedBackgroundSheetState
                   title: 'Unrestricted Battery',
                   subtitle: _isUnrestricted
                       ? 'Battery optimization is disabled. Gallery can run continuously in the background.'
-                      : (_manufacturer.toLowerCase().contains('xiaomi') ||
-                              _manufacturer.toLowerCase().contains('redmi') ||
-                              _manufacturer.toLowerCase().contains('poco'))
-                          ? 'Tap "Allow Unrestricted Run" below and select "Allow".\n\nFor Xiaomi HyperOS / MIUI:\n1. Open Settings > Apps > Manage Apps > Gallery\n2. Tap "Battery saver"\n3. Select "No restrictions" so background sync is never frozen.'
-                          : 'Tap "Allow Unrestricted Run" below and select "Allow" when prompted so Android keeps background sync running without sleeping.',
+                      : 'Allows background sync to run continuously without being paused or put to sleep by the operating system.',
                   isGranted: _isUnrestricted,
                   actionText: 'Allow Unrestricted Run',
                   onAction: _requestUnrestrictedBattery,
@@ -400,8 +375,6 @@ class _UnrestrictedBackgroundSheetState
                     isGranted: _isNotificationGranted,
                     actionText: 'Enable Notifications',
                     onAction: _requestNotification,
-                    secondaryActionText: 'Notification Settings',
-                    onSecondaryAction: _openAppInfo,
                     c: c,
                   ),
                 ],
@@ -411,7 +384,7 @@ class _UnrestrictedBackgroundSheetState
                 // Bottom Action Button: Next / Continue to Gallery (Disabled until all permissions granted)
                 CupertinoButton(
                   padding: EdgeInsets.zero,
-                  onPressed: _isAllConfigured ? () => Navigator.pop(context) : null,
+                  onPressed: _isAllConfigured ? () => Navigator.of(context).pop() : null,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 250),
                     width: double.infinity,
@@ -441,19 +414,16 @@ class _UnrestrictedBackgroundSheetState
                           _isAllConfigured
                               ? CupertinoIcons.check_mark_circled_solid
                               : CupertinoIcons.lock_fill,
-                          color:
-                              _isAllConfigured ? Colors.white : c.textTertiary,
+                          color: _isAllConfigured ? Colors.white : c.textTertiary,
                           size: 18,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           _isAllConfigured
                               ? 'Continue to Gallery'
-                              : 'Enable All Permissions to Continue ($_remainingPermissionsCount left)',
+                              : 'Enable All Permissions to Continue ($_remainingPermissionsCount remaining)',
                           style: TextStyle(
-                            color: _isAllConfigured
-                                ? Colors.white
-                                : c.textTertiary,
+                            color: _isAllConfigured ? Colors.white : c.textTertiary,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -478,8 +448,6 @@ class _UnrestrictedBackgroundSheetState
     required bool isGranted,
     required String actionText,
     required VoidCallback onAction,
-    String? secondaryActionText,
-    VoidCallback? onSecondaryAction,
     required AppThemeColors c,
   }) {
     return AnimatedContainer(
@@ -561,75 +529,40 @@ class _UnrestrictedBackgroundSheetState
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 12),
-          // Action Buttons: ALWAYS available so the user is never locked out
-          Row(
-            children: [
-              Expanded(
-                child: CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: onAction,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isGranted
-                          ? c.surface
-                          : c.primary,
-                      borderRadius: BorderRadius.circular(12),
-                      border: isGranted
-                          ? Border.all(color: c.glassBorderSubtle, width: 0.8)
-                          : null,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          isGranted ? 'Open Settings' : actionText,
-                          style: TextStyle(
-                            color: isGranted ? c.textPrimary : Colors.white,
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(
-                          isGranted
-                              ? CupertinoIcons.arrow_up_right_square
-                              : CupertinoIcons.chevron_right,
-                          color: isGranted ? c.textPrimary : Colors.white,
-                          size: 14,
-                        ),
-                      ],
-                    ),
-                  ),
+          if (!isGranted) ...[
+            const SizedBox(height: 12),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: onAction,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: c.primary,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ),
-              if (secondaryActionText != null && onSecondaryAction != null) ...[
-                const SizedBox(width: 8),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: onSecondaryAction,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: c.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: c.glassBorderSubtle, width: 0.8),
-                    ),
-                    child: Text(
-                      secondaryActionText,
-                      style: TextStyle(
-                        color: c.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      actionText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    const Icon(
+                      CupertinoIcons.chevron_right,
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                  ],
                 ),
-              ],
-            ],
-          ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -710,58 +643,48 @@ class _UnrestrictedBackgroundSheetState
           const SizedBox(height: 10),
           Text(
             isGranted
-                ? 'Autostart is verified and active in Xiaomi Security Settings. Background sync will run reliably.'
-                : 'Xiaomi HyperOS requires enabling Autostart manually in System Settings. Tap below, locate Gallery, and switch Autostart ON.',
+                ? 'Autostart is enabled. Background sync will run reliably.'
+                : 'Allows automatic background backup to start and resume reliably.',
             style: TextStyle(
               color: c.textSecondary,
               fontSize: 12.5,
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: _openOEMAutostartSettings,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isGranted
-                          ? c.surface
-                          : c.primary,
-                      borderRadius: BorderRadius.circular(12),
-                      border: isGranted
-                          ? Border.all(color: c.glassBorderSubtle, width: 0.8)
-                          : null,
+          if (!isGranted) ...[
+            const SizedBox(height: 12),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: _openOEMAutostartSettings,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: c.primary,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.play_circle_fill,
+                      color: Colors.white,
+                      size: 15,
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          isGranted
-                              ? CupertinoIcons.arrow_up_right_square
-                              : CupertinoIcons.gear_alt_fill,
-                          color: isGranted ? c.textPrimary : Colors.white,
-                          size: 15,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          isGranted ? 'Open Autostart Settings' : 'Open Autostart in Settings',
-                          style: TextStyle(
-                            color: isGranted ? c.textPrimary : Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+                    SizedBox(width: 6),
+                    Text(
+                      'Enable Autostart',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ],
       ),
     );

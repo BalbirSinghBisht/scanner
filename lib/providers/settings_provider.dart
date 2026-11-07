@@ -86,4 +86,26 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
     await _repo.saveSettings(_settings);
   }
+
+  Future<void> toggleSyncLockedFolders(bool enabled) async {
+    _settings = _settings.copyWith(syncLockedFolders: enabled);
+    notifyListeners();
+    await _repo.saveSettings(_settings);
+  }
+
+  Future<void> addCustomFolderPath(String path) async {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty || _settings.customFolderPaths.contains(trimmed)) return;
+    final updated = List<String>.from(_settings.customFolderPaths)..add(trimmed);
+    _settings = _settings.copyWith(customFolderPaths: updated);
+    notifyListeners();
+    await _repo.saveSettings(_settings);
+  }
+
+  Future<void> removeCustomFolderPath(String path) async {
+    final updated = List<String>.from(_settings.customFolderPaths)..remove(path.trim());
+    _settings = _settings.copyWith(customFolderPaths: updated);
+    notifyListeners();
+    await _repo.saveSettings(_settings);
+  }
 }

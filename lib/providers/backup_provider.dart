@@ -208,25 +208,27 @@ class BackupProvider extends ChangeNotifier {
       lastScanTime: _lastScanTime,
     );
 
-    _mediaItems = await _db.getAllItems(limit: 500);
-    _failedItems = await _db.getFailedUploads();
-    _recentUploads = await _db.getRecentUploads();
+    final rawItems = await _db.getAllItems(limit: 500);
+    _mediaItems = rawItems.where((it) => !it.isLockedFolder).toList();
+    _failedItems = (await _db.getFailedUploads()).where((it) => !it.isLockedFolder).toList();
+    _recentUploads = (await _db.getRecentUploads()).where((it) => !it.isLockedFolder).toList();
 
     final distinctDbFolders = await _db.getDistinctFolders();
-    if (distinctDbFolders.isNotEmpty) {
-      _folders = distinctDbFolders;
-    } else {
-      final s = _mediaItems
-          .map((e) => e.displayFolderName)
-          .where((f) => !f.toLowerCase().contains('thumbnail') && !f.startsWith('.'))
-          .toSet()
-          .toList();
-      s.sort();
-      _folders = s;
-    }
+    _folders = distinctDbFolders
+        .where((f) =>
+            !f.startsWith('.') &&
+            !f.toLowerCase().contains('private') &&
+            !f.toLowerCase().contains('locked') &&
+            !f.toLowerCase().contains('secret') &&
+            !f.toLowerCase().contains('vault'))
+        .toList();
 
     final rawDupes = await _db.getDuplicateGroups();
-    _duplicateGroups = rawGroupsToDuplicateGroups(rawDupes);
+    final filteredDupes = rawDupes
+        .map((g) => g.where((it) => !it.isLockedFolder).toList())
+        .where((g) => g.length > 1)
+        .toList();
+    _duplicateGroups = rawGroupsToDuplicateGroups(filteredDupes);
 
     notifyListeners();
   }

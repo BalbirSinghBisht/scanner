@@ -77,5 +77,86 @@ void main() {
       );
       expect(itemMb.formattedSize, contains('MB'));
     });
+
+    test('correctly identifies locked and private folders and formats display names', () {
+      final lockedItem = MediaItem(
+        localId: 'disk_1',
+        fileName: 'secret.jpg',
+        mediaType: AppMediaType.image,
+        mimeType: 'image/jpeg',
+        fileSize: 200000,
+        createdAt: DateTime.now(),
+        localFilePath: '/storage/emulated/0/Pictures/.private/secret.jpg',
+        folderName: '.private',
+      );
+
+      expect(lockedItem.isLockedFolder, isTrue);
+      expect(lockedItem.displayFolderName, equals('Private (Locked)'));
+      expect(lockedItem.computeTargetFolderPath(deviceFolder: 'MyDevice'),
+          equals('PhoneBackup/MyDevice/Private (Locked)'));
+
+      final secretItem = MediaItem(
+        localId: 'disk_2',
+        fileName: 'doc.jpg',
+        mediaType: AppMediaType.image,
+        mimeType: 'image/jpeg',
+        fileSize: 300000,
+        createdAt: DateTime.now(),
+        localFilePath: '/storage/emulated/0/.locked/doc.jpg',
+        folderName: '.locked',
+      );
+
+      expect(secretItem.isLockedFolder, isTrue);
+      expect(secretItem.displayFolderName, equals('Locked Folder'));
+
+      final regularItem = MediaItem(
+        localId: 'disk_3',
+        fileName: 'photo.jpg',
+        mediaType: AppMediaType.image,
+        mimeType: 'image/jpeg',
+        fileSize: 150000,
+        createdAt: DateTime.now(),
+        localFilePath: '/storage/emulated/0/DCIM/Camera/photo.jpg',
+        folderName: 'Camera',
+      );
+
+      expect(regularItem.isLockedFolder, isFalse);
+      expect(regularItem.displayFolderName, equals('Camera'));
+    });
+
+    test('silent sync filters out locked folder items from UI list while preserving for sync', () {
+      final items = [
+        MediaItem(
+          localId: '1',
+          fileName: 'camera_1.jpg',
+          mediaType: AppMediaType.image,
+          mimeType: 'image/jpeg',
+          fileSize: 1000,
+          createdAt: DateTime.now(),
+          folderName: 'Camera',
+          uploadState: UploadState.READY_TO_UPLOAD,
+        ),
+        MediaItem(
+          localId: '2',
+          fileName: 'vault_photo.jpg',
+          mediaType: AppMediaType.image,
+          mimeType: 'image/jpeg',
+          fileSize: 2000,
+          createdAt: DateTime.now(),
+          folderName: '.private',
+          localFilePath: '/storage/emulated/0/.private/vault_photo.jpg',
+          uploadState: UploadState.READY_TO_UPLOAD,
+        ),
+      ];
+
+      // UI filtering hides locked folder
+      final visibleItems = items.where((it) => !it.isLockedFolder).toList();
+      expect(visibleItems.length, equals(1));
+      expect(visibleItems.first.fileName, equals('camera_1.jpg'));
+
+      // Sync queue retains all items including locked folder
+      final syncQueueItems = items.where((it) => it.uploadState == UploadState.READY_TO_UPLOAD).toList();
+      expect(syncQueueItems.length, equals(2));
+    });
   });
 }

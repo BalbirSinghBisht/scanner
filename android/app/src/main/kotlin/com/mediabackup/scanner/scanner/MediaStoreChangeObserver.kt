@@ -32,6 +32,9 @@ class MediaStoreChangeObserver(private val context: Context, handler: Handler) :
 
     override fun onChange(selfChange: Boolean, uri: Uri?) {
         super.onChange(selfChange, uri)
+        if (!MediaSyncWatchdog.hasMediaPermissions(context)) {
+            return
+        }
         val now = System.currentTimeMillis()
         // Debounce to prevent multiple fires within 5 seconds for rapid photo taking
         if (now - lastTriggerTime < 5000L) return

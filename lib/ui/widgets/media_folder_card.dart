@@ -105,6 +105,8 @@ class MediaFolderCard extends StatelessWidget {
                       if (coverItem != null)
                         CachedThumbnailImage(
                           localId: coverItem!.localId,
+                          filePath: coverItem!.localFilePath,
+                          isVideo: coverItem!.isVideo,
                           size: 500,
                           fit: BoxFit.cover,
                           placeholder: _buildPlaceholder(c),
@@ -153,7 +155,9 @@ class MediaFolderCard extends StatelessWidget {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    isAll ? CupertinoIcons.photo_on_rectangle : CupertinoIcons.folder_fill,
+                                    isAll
+                                        ? CupertinoIcons.photo_on_rectangle
+                                        : CupertinoIcons.folder_fill,
                                     size: 10,
                                     color: Colors.white70,
                                   ),
@@ -183,16 +187,22 @@ class MediaFolderCard extends StatelessWidget {
           // Album Name
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(
-              isAll ? 'Recents' : folderName,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: c.textPrimary,
-                letterSpacing: -0.2,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    isAll ? 'Recents' : folderName,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: c.textPrimary,
+                      letterSpacing: -0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 2),

@@ -96,18 +96,44 @@ class MediaItem {
     return '';
   }
 
+  /// Determines if this item belongs to a private, locked, hidden, or secure vault folder
+  bool get isLockedFolder {
+    final fn = (folderName ?? '').toLowerCase().trim();
+    final p = (localFilePath ?? '').toLowerCase();
+
+    // 1. Hidden folders starting with '.' (e.g. .private, .locked, .vault, .secret, .hidden)
+    if (fn.startsWith('.')) return true;
+
+    // 2. Exact or compound private folder names (e.g. "Private", "Locked Folder", "WhatsApp Private", "Secret Album", "Private Safe", "Vault")
+    final isExplicitFolder = RegExp(
+      r'(^|[_\s\W])(private|locked|vault|secret|privatesafe|secretalbum)([_\s\W]|$)',
+    ).hasMatch(fn);
+    if (isExplicitFolder) return true;
+
+    // 3. Filesystem path markers for hidden or locked vaults
+    return p.contains('/.hidden') ||
+        p.contains('/.secret') ||
+        p.contains('/.private') ||
+        p.contains('/.locked') ||
+        p.contains('/.vault') ||
+        p.contains('/.safe') ||
+        p.contains('/.privatesafe') ||
+        p.contains('secretalbum') ||
+        p.contains('/private/') ||
+        p.contains('/locked/') ||
+        p.contains('/vault/');
+  }
+
   /// Builds folder path based on device root folder and phone album folder, e.g. PhoneBackup/Pixel_7/Camera
   String computeTargetFolderPath({String deviceFolder = 'Phone_Device'}) {
     return 'PhoneBackup/$deviceFolder/$displayFolderName';
   }
 
   String get displayFolderName {
+    String? rawName;
     if (folderName != null && folderName!.trim().isNotEmpty) {
-      final name = folderName!.trim();
-      if (name.toUpperCase() == 'DCIM') return 'Camera';
-      return name;
-    }
-    if (localFilePath != null && localFilePath!.isNotEmpty) {
+      rawName = folderName!.trim();
+    } else if (localFilePath != null && localFilePath!.isNotEmpty) {
       final parts = localFilePath!.split(RegExp(r'[\\/]'));
       if (parts.length >= 2) {
         final parent = parts[parts.length - 2];
@@ -116,10 +142,25 @@ class MediaItem {
             parent != 'emulated' &&
             parent != 'storage' &&
             parent != 'sdcard') {
-          if (parent.toUpperCase() == 'DCIM') return 'Camera';
-          return parent;
+          rawName = parent;
         }
       }
+    }
+
+    if (rawName != null && rawName.isNotEmpty) {
+      if (rawName.toUpperCase() == 'DCIM') return 'Camera';
+      if (rawName.startsWith('.')) {
+        final stripped = rawName.replaceFirst(RegExp(r'^\.+'), '');
+        final sLower = stripped.toLowerCase();
+        if (sLower == 'private') return 'Private (Locked)';
+        if (sLower == 'locked') return 'Locked Folder';
+        if (sLower == 'secret') return 'Secret Folder';
+        if (sLower == 'privatesafe') return 'Private Safe';
+        if (sLower == 'hidden') return 'Hidden (Locked)';
+        if (stripped.isNotEmpty) return '$stripped (Locked)';
+      }
+      if (rawName == 'secretAlbum') return 'Private Album';
+      return rawName;
     }
     return mediaType == AppMediaType.video ? 'Videos' : 'Camera';
   }

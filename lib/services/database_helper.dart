@@ -38,7 +38,10 @@ class DatabaseHelper {
           folder_name LIKE '%.thumbnails%' OR 
           folder_name = 'thumbnails' OR 
           folder_name = 'thumbnail' OR 
-          folder_name LIKE '.%' OR
+          folder_name = '.thumbnails' OR 
+          folder_name = '.thumbnail' OR 
+          folder_name = '.cache' OR 
+          folder_name LIKE '%.cache%' OR 
           local_file_path LIKE '%.thumbnail%' OR 
           local_file_path LIKE '%.thumbnails%' OR 
           local_file_path LIKE '%/.thumbnails/%' OR
@@ -520,7 +523,10 @@ class DatabaseHelper {
         folder_name NOT LIKE '%.thumbnails%' AND 
         folder_name != 'thumbnails' AND 
         folder_name != 'thumbnail' AND 
-        folder_name NOT LIKE '.%'
+        folder_name != '.thumbnails' AND 
+        folder_name != '.thumbnail' AND 
+        folder_name != '.cache' AND 
+        folder_name NOT LIKE '%.cache%'
       ))
     ''');
     conditions.add('''
@@ -754,7 +760,10 @@ class DatabaseHelper {
         AND folder_name NOT LIKE '%.thumbnails%'
         AND folder_name != 'thumbnails'
         AND folder_name != 'thumbnail'
-        AND folder_name NOT LIKE '.%'
+        AND folder_name != '.thumbnails'
+        AND folder_name != '.thumbnail'
+        AND folder_name != '.cache'
+        AND folder_name NOT LIKE '%.cache%'
       ORDER BY folder_name ASC
     ''');
     return res.map((r) => r['folder_name'] as String).toList();
@@ -770,7 +779,10 @@ class DatabaseHelper {
         folder_name LIKE '%.thumbnails%' OR 
         folder_name = 'thumbnails' OR 
         folder_name = 'thumbnail' OR 
-        folder_name LIKE '.%' OR
+        folder_name = '.thumbnails' OR 
+        folder_name = '.thumbnail' OR 
+        folder_name = '.cache' OR 
+        folder_name LIKE '%.cache%' OR 
         local_file_path LIKE '%.thumbnail%' OR 
         local_file_path LIKE '%.thumbnails%' OR 
         local_file_path LIKE '%/.thumbnails/%' OR

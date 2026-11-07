@@ -9,6 +9,8 @@ class BackupSettings {
   final int? maxVideoSizeBytes;
   final bool localOnlyMode;
   final bool isPaused;
+  final bool syncLockedFolders;
+  final List<String> customFolderPaths;
 
   const BackupSettings({
     this.autoBackupEnabled = true,
@@ -21,6 +23,8 @@ class BackupSettings {
     this.maxVideoSizeBytes,
     this.localOnlyMode = false,
     this.isPaused = false,
+    this.syncLockedFolders = true,
+    this.customFolderPaths = const [],
   });
 
   BackupSettings copyWith({
@@ -34,6 +38,8 @@ class BackupSettings {
     int? maxVideoSizeBytes,
     bool? localOnlyMode,
     bool? isPaused,
+    bool? syncLockedFolders,
+    List<String>? customFolderPaths,
   }) {
     return BackupSettings(
       autoBackupEnabled: autoBackupEnabled ?? this.autoBackupEnabled,
@@ -46,6 +52,8 @@ class BackupSettings {
       maxVideoSizeBytes: maxVideoSizeBytes ?? this.maxVideoSizeBytes,
       localOnlyMode: localOnlyMode ?? this.localOnlyMode,
       isPaused: isPaused ?? this.isPaused,
+      syncLockedFolders: syncLockedFolders ?? this.syncLockedFolders,
+      customFolderPaths: customFolderPaths ?? this.customFolderPaths,
     );
   }
 
@@ -61,6 +69,8 @@ class BackupSettings {
       'maxVideoSizeBytes': maxVideoSizeBytes,
       'localOnlyMode': localOnlyMode,
       'isPaused': isPaused,
+      'syncLockedFolders': syncLockedFolders,
+      'customFolderPaths': customFolderPaths,
     };
   }
 
@@ -76,6 +86,11 @@ class BackupSettings {
       maxVideoSizeBytes: (map['maxVideoSizeBytes'] as num?)?.toInt(),
       localOnlyMode: map['localOnlyMode'] as bool? ?? false,
       isPaused: map['isPaused'] as bool? ?? false,
+      syncLockedFolders: map['syncLockedFolders'] as bool? ?? true,
+      customFolderPaths: (map['customFolderPaths'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
     );
   }
 }

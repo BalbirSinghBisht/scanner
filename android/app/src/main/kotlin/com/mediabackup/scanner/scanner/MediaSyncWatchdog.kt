@@ -123,9 +123,55 @@ object MediaSyncWatchdog {
     }
 
     /**
+     * Checks if media read permissions have been granted.
+     * Prevents triggering foreground services prematurely during initial permission requests.
+     */
+    fun hasMediaPermissions(context: Context): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.READ_MEDIA_IMAGES
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.READ_MEDIA_VIDEO
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else {
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
      * Ensures that flutter_background_service is alive and running as a Foreground Service.
      */
     fun ensureServiceRunning(context: Context) {
+        if (!hasMediaPermissions(context)) {
+            Log.d(TAG, "Permissions not yet granted. Skipping ensureServiceRunning to avoid premature service crash.")
+            return
+        }
+
+        try {
+            val pluginClass = Class.forName("id.flutter.flutter_background_service.FlutterBackgroundServicePlugin")
+            val field = pluginClass.getDeclaredField("servicePipe")
+            field.isAccessible = true
+            val pipe = field.get(null)
+            if (pipe != null) {
+                val hasListenerMethod = pipe.javaClass.getMethod("hasListener")
+                val isServiceActive = hasListenerMethod.invoke(pipe) as? Boolean ?: false
+                if (isServiceActive) {
+                    Log.d(TAG, "BackgroundService is already active and listening. No need to restart.")
+                    return
+                }
+            }
+        } catch (_: Exception) {}
+
         try {
             val serviceClass = Class.forName("id.flutter.flutter_background_service.BackgroundService")
             // Acquire flutter_background_service static wake lock like BootReceiver does
@@ -138,7 +184,16 @@ object MediaSyncWatchdog {
             } catch (_: Exception) {}
 
             val serviceIntent = Intent(context, serviceClass)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val hasNotification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasNotification) {
                 try {
                     context.startForegroundService(serviceIntent)
                 } catch (e: Exception) {
@@ -148,7 +203,9 @@ object MediaSyncWatchdog {
                     } catch (_: Exception) {}
                 }
             } else {
-                context.startService(serviceIntent)
+                try {
+                    context.startService(serviceIntent)
+                } catch (_: Exception) {}
             }
             Log.d(TAG, "Ensured BackgroundService is started.")
         } catch (e: Exception) {

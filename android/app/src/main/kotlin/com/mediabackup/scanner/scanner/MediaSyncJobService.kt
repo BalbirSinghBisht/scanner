@@ -73,6 +73,12 @@ class MediaSyncJobService : JobService() {
         val jobId = params?.jobId ?: 0
         Log.d(TAG, "Job started! Job ID: $jobId. Triggered by Android OS.")
 
+        if (!MediaSyncWatchdog.hasMediaPermissions(this)) {
+            Log.d(TAG, "Media permissions not yet granted. Finishing Job without running.")
+            jobFinished(params, false)
+            return false
+        }
+
         // 1. Re-arm media trigger immediately for continuous detection
         if (jobId == JOB_ID_MEDIA_CHANGE) {
             scheduleMediaChangeJob(this)

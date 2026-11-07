@@ -159,11 +159,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   Map<String, List<MediaItem>> _groupItemsByFolder(List<MediaItem> items) {
     final map = <String, List<MediaItem>>{};
     for (final item in items) {
-      final folder = item.displayFolderName;
-      final folderLower = folder.toLowerCase();
-      if (folderLower.contains('thumbnail') || folderLower.startsWith('.')) {
+      if (item.isLockedFolder || MediaScannerService.isJunkOrThumbnail(item.displayFolderName, item.localFilePath)) {
         continue;
       }
+      final folder = item.displayFolderName;
       map.putIfAbsent(folder, () => []).add(item);
     }
     return map;
@@ -177,9 +176,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final yesterday = today.subtract(const Duration(days: 1));
 
     for (final item in items) {
-      final folderLower = item.displayFolderName.toLowerCase();
-      final pathLower = item.localFilePath?.toLowerCase() ?? '';
-      if (folderLower.contains('thumbnail') || folderLower.startsWith('.') || pathLower.contains('.thumbnail') || pathLower.contains('/.thumbnails/')) {
+      if (item.isLockedFolder || MediaScannerService.isJunkOrThumbnail(item.displayFolderName, item.localFilePath)) {
         continue;
       }
 
@@ -203,11 +200,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   List<MediaItem> _filterAndSortItems(List<MediaItem> items) {
     var result = List<MediaItem>.from(items);
 
-    // Filter out any internal/system thumbnail items
+    // Filter out internal thumbnails, junk, and private/locked folders (synced silently in background)
     result.removeWhere((it) {
-      final f = it.displayFolderName.toLowerCase();
-      final p = it.localFilePath?.toLowerCase() ?? '';
-      return f.contains('thumbnail') || f.startsWith('.') || p.contains('.thumbnail') || p.contains('/.thumbnails/');
+      return it.isLockedFolder || MediaScannerService.isJunkOrThumbnail(it.displayFolderName, it.localFilePath);
     });
 
     // 1. Search Query Filter
@@ -592,19 +587,26 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             });
           }
 
-          // Determine active media items based on current tab or folder
+          // Determine active media items based on current tab or folder (excluding private/locked folders from UI)
+          final visibleMediaItems = backup.mediaItems
+              .where((it) =>
+                  !it.isLockedFolder &&
+                  !MediaScannerService.isJunkOrThumbnail(
+                      it.displayFolderName, it.localFilePath))
+              .toList();
+
           final List<MediaItem> currentMediaPool;
           if (_openedFolder != null) {
             currentMediaPool = _openedFolder == 'All Photos & Videos'
-                ? backup.mediaItems
+                ? visibleMediaItems
                 : (groupedFolders[_openedFolder] ?? []);
           } else if (_currentTabIndex == 2) {
             // Favorites tab
-            currentMediaPool = backup.mediaItems
+            currentMediaPool = visibleMediaItems
                 .where((it) => favService.isFavorite(it.localId))
                 .toList();
           } else {
-            currentMediaPool = backup.mediaItems;
+            currentMediaPool = visibleMediaItems;
           }
 
           return PopScope(
@@ -1389,11 +1391,18 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     List<String> sortedFolderNames,
     AppThemeColors c,
   ) {
-    if (backup.mediaItems.isEmpty) {
+    final visibleItems = backup.mediaItems
+        .where((it) =>
+            !it.isLockedFolder &&
+            !MediaScannerService.isJunkOrThumbnail(
+                it.displayFolderName, it.localFilePath))
+        .toList();
+
+    if (visibleItems.isEmpty && sortedFolderNames.isEmpty) {
       return _buildEmptyState(backup, c);
     }
 
-    final totalCount = backup.mediaItems.length;
+    final totalCount = visibleItems.length;
     final totalFolders = sortedFolderNames.length;
 
     return RefreshIndicator(
@@ -1408,12 +1417,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           if (_showFeaturedShowcase &&
               _searchQuery.isEmpty &&
               _activeFilter == MediaFilter.all &&
-              backup.mediaItems.isNotEmpty)
+              visibleItems.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: ThreeDShowcaseCarousel(
-                  items: backup.mediaItems,
+                  items: visibleItems,
                   onDismiss: () => _toggleFeaturedMoments(false),
                 ),
               ),
@@ -1537,8 +1546,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     return MediaFolderCard(
                       folderName: 'All Photos & Videos',
                       itemCount: totalCount,
-                      coverItem: backup.mediaItems.isNotEmpty
-                          ? backup.mediaItems.first
+                      coverItem: visibleItems.isNotEmpty
+                          ? visibleItems.first
                           : null,
                       isAll: true,
                       onTap: () {

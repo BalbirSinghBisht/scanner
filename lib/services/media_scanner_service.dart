@@ -9,6 +9,7 @@ import '../core/errors/app_exceptions.dart';
 import '../models/media_item.dart';
 import 'database_helper.dart';
 import 'device_settings_helper.dart';
+import 'settings_repository.dart';
 
 class ScanProgressReport {
   final int scannedItems;
@@ -31,6 +32,49 @@ class ScanProgressReport {
 class MediaScannerService {
   static final MediaScannerService instance = MediaScannerService._init();
   MediaScannerService._init();
+
+  /// Checks whether a given directory or file name represents non-media system junk (thumbnails, app cache, build files).
+  /// Deliberately preserves private, locked, hidden (.private, .locked, .secret), and user-secured folders.
+  static bool isJunkOrThumbnail(String? name, String? path) {
+    final n = (name ?? '').toLowerCase();
+    final p = (path ?? '').toLowerCase();
+
+    // 1. Thumbnails
+    if (n.contains('thumbnail') ||
+        p.contains('.thumbnail') ||
+        p.contains('/.thumbnails/') ||
+        p.contains('/thumbnails/')) {
+      return true;
+    }
+
+    // 2. Cache directories
+    if (n == 'cache' ||
+        n == '.cache' ||
+        n.contains('image_cache') ||
+        p.contains('/.cache/') ||
+        p.contains('/cache/')) {
+      return true;
+    }
+
+    // 3. App development, git, and system trash
+    if (n == '.git' ||
+        p.contains('/.git/') ||
+        n == '.dart_tool' ||
+        p.contains('/.dart_tool/') ||
+        n == '.trash' ||
+        p.contains('/.trash/') ||
+        n == '.recycle' ||
+        p.contains('/.recycle/')) {
+      return true;
+    }
+
+    // 4. Android internal package app caches
+    if (p.contains('/android/data/') && (p.contains('/cache') || p.contains('/code_cache'))) {
+      return true;
+    }
+
+    return false;
+  }
 
   final DatabaseHelper _db = DatabaseHelper.instance;
 
@@ -229,14 +273,8 @@ class MediaScannerService {
     }
 
     // Step 2: Resilient Fallback - If PhotoManager returned 0 albums (strict OEM, background isolate, or MediaStore propagation)
-    // Filter out .thumbnail and internal hidden albums
-    albums.removeWhere((album) {
-      final name = album.name.toLowerCase();
-      return name.startsWith('.') || 
-             name.contains('thumbnail') || 
-             name.contains('.thumbnail') || 
-             name == 'thumbnails';
-    });
+    // Filter out thumbnail and internal cache albums, preserving locked and private albums
+    albums.removeWhere((album) => isJunkOrThumbnail(album.name, null));
 
     if (albums.isEmpty) {
       debugPrint('No albums from PhotoManager. Falling back to direct storage scan and SQLite cache...');
@@ -360,24 +398,13 @@ class MediaScannerService {
             }
             folderName ??= (mediaType == AppMediaType.video ? 'Videos' : 'Camera');
 
-            // Strictly filter out any items from .thumbnail / .thumbnails folders
-            if (folderName.toLowerCase().contains('thumbnail') || folderName.startsWith('.')) {
+            // Strictly filter out any items from system thumbnail / cache folders
+            if (isJunkOrThumbnail(folderName, entity.relativePath)) {
               processedCount++;
               continue;
             }
 
-            if (entity.relativePath != null) {
-              final rel = entity.relativePath!.toLowerCase();
-              if (rel.startsWith('.') || 
-                  rel.contains('.thumbnail') || 
-                  rel.contains('thumbnail') || 
-                  rel.contains('/.thumbnails/')) {
-                processedCount++;
-                continue;
-              }
-            }
-
-            if (entity.title != null && entity.title!.toLowerCase().contains('thumbnail')) {
+            if (entity.title != null && isJunkOrThumbnail(entity.title, null)) {
               processedCount++;
               continue;
             }
@@ -390,14 +417,9 @@ class MediaScannerService {
               }
             }
 
-            if (localFilePath != null) {
-              final pathLower = localFilePath.toLowerCase();
-              if (pathLower.contains('.thumbnail') || 
-                  pathLower.contains('/.thumbnails') || 
-                  pathLower.contains('/thumbnails/')) {
-                processedCount++;
-                continue;
-              }
+            if (localFilePath != null && isJunkOrThumbnail(null, localFilePath)) {
+              processedCount++;
+              continue;
             }
 
             final item = MediaItem(
@@ -447,9 +469,20 @@ class MediaScannerService {
       }
     }
 
+    // Also scan direct storage for private, locked, hidden, and .nomedia folders so they are indexed for silent sync
+    try {
+      final directDiscovered = await scanDirectDirectories();
+      if (directDiscovered.isNotEmpty) {
+        discoveredList.addAll(directDiscovered);
+        processedCount += directDiscovered.length;
+      }
+    } catch (e) {
+      debugPrint('Direct directory scan error: $e');
+    }
+
     _scanProgressController.add(ScanProgressReport(
       scannedItems: processedCount,
-      totalDiscovered: totalAssetCount,
+      totalDiscovered: totalAssetCount + (discoveredList.length > totalAssetCount ? discoveredList.length - totalAssetCount : 0),
       currentBatchStatus: 'Scan complete! Indexed $processedCount items.',
       isCompleted: true,
     ));
@@ -635,8 +668,8 @@ class MediaScannerService {
     return fileDeleted;
   }
 
-  /// Scans direct Android storage directories for newly added photos/videos
-  /// (e.g. downloaded from Chrome, WhatsApp, or taken when MediaStore hasn't indexed yet)
+  /// Scans direct Android storage directories for newly added photos/videos,
+  /// including private, locked, hidden, .nomedia, and vault folders so they are fully accessible for syncing.
   Future<List<MediaItem>> scanDirectDirectories() async {
     final discovered = <MediaItem>[];
     if (!Platform.isAndroid) return discovered;
@@ -645,6 +678,8 @@ class MediaScannerService {
     try {
       await _db.purgeThumbnailItems();
     } catch (_) {}
+
+    final settings = await SettingsRepository.instance.loadSettings();
 
     final targetDirs = [
       // Standard Camera, Screenshots & System Media
@@ -661,15 +696,71 @@ class MediaScannerService {
       '/storage/emulated/0/Download',
       '/storage/emulated/0/Downloads',
       '/storage/emulated/0/Bluetooth',
+      '/storage/emulated/0/Documents',
 
-      // WhatsApp & WhatsApp Business (Android 11+ & Legacy)
+      // Private, Locked & Vault Folders (Android / OEM / User)
+      '/storage/emulated/0/Private',
+      '/storage/emulated/0/Locked',
+      '/storage/emulated/0/Secret',
+      '/storage/emulated/0/Vault',
+      '/storage/emulated/0/Safe',
+      '/storage/emulated/0/.private',
+      '/storage/emulated/0/.locked',
+      '/storage/emulated/0/.secret',
+      '/storage/emulated/0/.hidden',
+      '/storage/emulated/0/.vault',
+      '/storage/emulated/0/.safe',
+      '/storage/emulated/0/.PrivateSafe',
+      '/storage/emulated/0/.safebox',
+      '/storage/emulated/0/DCIM/.hidden',
+      '/storage/emulated/0/DCIM/.private',
+      '/storage/emulated/0/DCIM/.locked',
+      '/storage/emulated/0/DCIM/Private',
+      '/storage/emulated/0/DCIM/Locked',
+      '/storage/emulated/0/Pictures/.hidden',
+      '/storage/emulated/0/Pictures/.private',
+      '/storage/emulated/0/Pictures/.locked',
+      '/storage/emulated/0/Pictures/.secret',
+      '/storage/emulated/0/Pictures/Private',
+      '/storage/emulated/0/Pictures/Locked',
+      '/storage/emulated/0/Pictures/Vault',
+      '/storage/emulated/0/Pictures/Safe',
+      '/storage/emulated/0/Movies/.hidden',
+      '/storage/emulated/0/Movies/.private',
+      '/storage/emulated/0/Movies/.locked',
+      '/storage/emulated/0/Movies/Private',
+      '/storage/emulated/0/Movies/Locked',
+      '/storage/emulated/0/Download/.private',
+      '/storage/emulated/0/Download/.locked',
+      '/storage/emulated/0/Download/Private',
+      '/storage/emulated/0/Documents/Private',
+      '/storage/emulated/0/Documents/Locked',
+
+      // OEM Specific Vault & Hidden Album Paths
+      '/storage/emulated/0/MIUI/Gallery/cloud/secretAlbum',
+      '/storage/emulated/0/MIUI/secretAlbum',
+      '/storage/emulated/0/Tencent/MicroMsg/WeiXin',
+      '/storage/emulated/0/.KeepSafe',
+      '/storage/emulated/0/.galleryvault',
+      '/storage/emulated/0/.calculator',
+      '/storage/emulated/0/.calculatorvault',
+      '/storage/emulated/0/.lockmypix',
+
+      // WhatsApp & WhatsApp Business (Including Private folders)
       '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images',
+      '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Private',
       '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video',
+      '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Private',
       '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images',
+      '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images/Private',
       '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video',
+      '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video/Private',
       '/storage/emulated/0/WhatsApp/Media/WhatsApp Images',
+      '/storage/emulated/0/WhatsApp/Media/WhatsApp Images/Private',
       '/storage/emulated/0/WhatsApp/Media/WhatsApp Video',
+      '/storage/emulated/0/WhatsApp/Media/WhatsApp Video/Private',
       '/storage/emulated/0/Pictures/WhatsApp',
+      '/storage/emulated/0/Pictures/WhatsApp/Private',
 
       // Telegram
       '/storage/emulated/0/Telegram/Telegram Images',
@@ -703,24 +794,48 @@ class MediaScannerService {
       '/storage/emulated/0/Movies/CapCut',
     ];
 
-    // Dynamically discover all existing subdirectories under Pictures, DCIM, and Movies (e.g. Signal, Discord, Threads, BeReal, etc.)
+    // Add user-configured custom private folder paths
+    for (final customPath in settings.customFolderPaths) {
+      if (customPath.trim().isNotEmpty) {
+        targetDirs.add(customPath.trim());
+      }
+    }
+
+    // Dynamically discover subdirectories under Pictures, DCIM, Movies, Download, Documents, and root storage
     final allDirsToScan = Set<String>.from(targetDirs);
     for (final baseDir in [
       '/storage/emulated/0/Pictures',
       '/storage/emulated/0/DCIM',
       '/storage/emulated/0/Movies',
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Documents',
+      '/storage/emulated/0',
     ]) {
       try {
         final d = Directory(baseDir);
         if (await d.exists()) {
           await for (final sub in d.list(recursive: false, followLinks: false)) {
             if (sub is Directory) {
-              final subName = sub.path.split(RegExp(r'[\\/]')).last.toLowerCase();
-              if (subName.startsWith('.') || 
-                  subName.contains('thumbnail') || 
-                  sub.path.toLowerCase().contains('.thumbnail') ||
-                  sub.path.toLowerCase().contains('/.thumbnails')) {
+              final subName = sub.path.split(RegExp(r'[\\/]')).last;
+              if (isJunkOrThumbnail(subName, sub.path)) {
                 continue;
+              }
+              // For root /storage/emulated/0, only index directories that look like media or private/locked vaults
+              if (baseDir == '/storage/emulated/0') {
+                final sLower = subName.toLowerCase();
+                final isMediaOrVault = sLower.contains('photo') ||
+                    sLower.contains('picture') ||
+                    sLower.contains('video') ||
+                    sLower.contains('image') ||
+                    sLower.contains('media') ||
+                    sLower.contains('camera') ||
+                    sLower.contains('private') ||
+                    sLower.contains('locked') ||
+                    sLower.contains('secret') ||
+                    sLower.contains('vault') ||
+                    sLower.contains('safe') ||
+                    subName.startsWith('.');
+                if (!isMediaOrVault) continue;
               }
               allDirsToScan.add(sub.path);
             }
@@ -736,30 +851,21 @@ class MediaScannerService {
     final existingPaths = await _db.getAllLocalFilePathsSet();
 
     for (final dirPath in allDirsToScan) {
-      final dirLower = dirPath.toLowerCase();
-      if (dirLower.contains('.thumbnail') || 
-          dirLower.contains('/.thumbnails') || 
-          dirLower.contains('/thumbnails') || 
-          dirLower.contains('thumbnails') ||
-          dirPath.split(RegExp(r'[\\/]')).any((seg) => seg.startsWith('.') || seg.toLowerCase().contains('thumbnail'))) {
+      if (isJunkOrThumbnail(null, dirPath)) {
         continue;
       }
 
       final dir = Directory(dirPath);
       if (!await dir.exists()) continue;
 
-      // Ignore directories with .nomedia marker
-      if (File('$dirPath/.nomedia').existsSync()) continue;
+      // Note: We deliberately DO NOT skip folders containing .nomedia!
+      // In Android, .nomedia is standard for private/locked folders. We scan them so they are synced.
 
       try {
         await for (final entity in dir.list(recursive: false, followLinks: false)) {
           if (entity is! File) continue;
           final path = entity.path;
-          final pathLower = path.toLowerCase();
-          if (pathLower.contains('.thumbnail') || 
-              pathLower.contains('/.thumbnails') || 
-              pathLower.contains('/thumbnails/') || 
-              pathLower.contains('/.thumbnail/')) {
+          if (isJunkOrThumbnail(null, path)) {
             continue;
           }
           if (existingPaths.contains(path)) continue;
@@ -776,8 +882,32 @@ class MediaScannerService {
           final stat = await entity.stat();
           final fileName = path.split(RegExp(r'[\\/]')).last;
           var folderName = dirPath.split(RegExp(r'[\\/]')).last;
-          if (folderName == 'DCIM') folderName = 'Camera';
-          if (folderName == 'Downloads') folderName = 'Download';
+          
+          if (dirPath.contains('WhatsApp') && folderName.toLowerCase() == 'private') {
+            folderName = 'WhatsApp Private';
+          } else if (folderName == 'DCIM') {
+            folderName = 'Camera';
+          } else if (folderName == 'Downloads') {
+            folderName = 'Download';
+          } else if (folderName.startsWith('.')) {
+            final clean = folderName.replaceFirst(RegExp(r'^\.+'), '');
+            final cLower = clean.toLowerCase();
+            if (cLower == 'private') {
+              folderName = 'Private (Locked)';
+            } else if (cLower == 'locked') {
+              folderName = 'Locked Folder';
+            } else if (cLower == 'secret') {
+              folderName = 'Secret Folder';
+            } else if (cLower == 'privatesafe') {
+              folderName = 'Private Safe';
+            } else if (cLower == 'hidden') {
+              folderName = 'Hidden (Locked)';
+            } else if (clean.isNotEmpty) {
+              folderName = '$clean (Locked)';
+            }
+          } else if (folderName.toLowerCase() == 'secretalbum') {
+            folderName = 'Private Album';
+          }
 
           final mediaType = isVideo ? AppMediaType.video : AppMediaType.image;
           final mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
