@@ -30,6 +30,7 @@
         android:label="Gallery"
         android:name=".MainApplication"
         android:icon="@mipmap/ic_launcher"
+        android:largeHeap="true"
         android:requestLegacyExternalStorage="true">
         <!-- Flutter Background Service for persistent sync and auto-start on boot -->
         <service

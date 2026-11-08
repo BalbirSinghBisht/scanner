@@ -19,6 +19,10 @@ void main() async {
     debugPrint('BackgroundSyncManager initialization error: $e');
   }
 
+  // Prevent OOM crashes on heavy media libraries by bounding Flutter's raster cache
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024; // 50 MB
+  PaintingBinding.instance.imageCache.maximumSize = 200;
+
   // System Chrome configuration for seamless edge-to-edge transparent bars
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 

@@ -411,9 +411,14 @@ class GoogleDriveService {
             'contentHash': item.contentHash!,
         };
 
+        final uploadOptions = fileLength > 5 * 1024 * 1024
+            ? drive.UploadOptions.resumable
+            : drive.UploadOptions.defaultOptions;
+
         final result = await api.files.create(
           driveFile,
           uploadMedia: media,
+          uploadOptions: uploadOptions,
           supportsAllDrives: true,
           $fields: 'id, name, size, md5Checksum, mimeType',
         );

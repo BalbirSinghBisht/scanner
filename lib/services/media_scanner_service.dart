@@ -593,31 +593,38 @@ class MediaScannerService {
       }
       final item = await _db.getItemByLocalId(assetId);
       if (item?.localFilePath != null) {
-        final f = File(item!.localFilePath!);
+        if (item!.isVideo) {
+          // Never attempt to read raw video files into memory
+          return null;
+        }
+        final path = item.localFilePath!;
+        final f = File(path);
         if (await f.exists()) {
-          final rawBytes = await f.readAsBytes();
-          if (rawBytes.isNotEmpty) {
-            try {
-              final codec = await instantiateImageCodec(
-                rawBytes,
-                targetWidth: size,
-                targetHeight: size,
-              );
-              final frame = await codec.getNextFrame();
-              final byteData =
-                  await frame.image.toByteData(format: ImageByteFormat.png);
-              if (byteData != null) {
-                final downsampled = byteData.buffer.asUint8List();
-                _putInThumbnailCache(cacheKey, downsampled);
-                _putInThumbnailCache(assetId, downsampled);
-                return downsampled;
-              }
-            } catch (_) {
-              if (rawBytes.length < 500000) {
-                _putInThumbnailCache(cacheKey, rawBytes);
-                return rawBytes;
-              }
+          ImmutableBuffer? buffer;
+          Codec? codec;
+          FrameInfo? frame;
+          try {
+            // Memory-mapped zero-copy file buffer via C++ OS mmap
+            buffer = await ImmutableBuffer.fromFilePath(path);
+            final descriptor = await ImageDescriptor.encoded(buffer);
+            codec = await descriptor.instantiateCodec(
+              targetWidth: size,
+              targetHeight: size,
+            );
+            frame = await codec.getNextFrame();
+            final byteData =
+                await frame.image.toByteData(format: ImageByteFormat.png);
+            if (byteData != null) {
+              final downsampled = byteData.buffer.asUint8List();
+              _putInThumbnailCache(cacheKey, downsampled);
+              _putInThumbnailCache(assetId, downsampled);
+              return downsampled;
             }
+          } catch (_) {
+          } finally {
+            frame?.image.dispose();
+            codec?.dispose();
+            buffer?.dispose();
           }
         }
       }
