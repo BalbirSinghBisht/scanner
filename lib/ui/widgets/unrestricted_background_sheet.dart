@@ -16,8 +16,8 @@ class UnrestrictedBackgroundSheet extends StatefulWidget {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: true,
-      enableDrag: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (_) => UnrestrictedBackgroundSheet(
         onSettingsChanged: onSettingsChanged,
@@ -247,20 +247,6 @@ class _UnrestrictedBackgroundSheetState
                         ],
                       ),
                     ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      minSize: 32,
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: c.surfaceElevated,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.glassBorderSubtle, width: 0.6),
-                        ),
-                        child: Icon(Icons.close, size: 16, color: c.textSecondary),
-                      ),
-                    ),
                   ],
                 ),
 
@@ -395,10 +381,10 @@ class _UnrestrictedBackgroundSheetState
 
                 const SizedBox(height: 18),
 
-                // Bottom Action Button: Next / Continue to Gallery
+                // Bottom Action Button: Strictly locked until all permissions granted
                 CupertinoButton(
                   padding: EdgeInsets.zero,
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: _isAllConfigured ? () => Navigator.of(context).pop() : null,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 250),
                     width: double.infinity,
@@ -406,16 +392,20 @@ class _UnrestrictedBackgroundSheetState
                     decoration: BoxDecoration(
                       color: _isAllConfigured
                           ? const Color(0xFF2E7D32)
-                          : c.primary,
+                          : c.surfaceElevated,
                       borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (_isAllConfigured ? const Color(0xFF2E7D32) : c.primary)
-                              .withOpacity(0.35),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
+                      border: _isAllConfigured
+                          ? null
+                          : Border.all(color: c.glassBorder, width: 0.8),
+                      boxShadow: _isAllConfigured
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFF2E7D32).withOpacity(0.35),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ]
+                          : null,
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -423,17 +413,21 @@ class _UnrestrictedBackgroundSheetState
                         Icon(
                           _isAllConfigured
                               ? CupertinoIcons.check_mark_circled_solid
-                              : CupertinoIcons.arrow_right_circle_fill,
-                          color: Colors.white,
+                              : CupertinoIcons.lock_fill,
+                          color: _isAllConfigured
+                              ? Colors.white
+                              : c.textTertiary,
                           size: 18,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           _isAllConfigured
                               ? 'Continue to Gallery'
-                              : 'Continue to Gallery ($_remainingPermissionsCount setup optional)',
-                          style: const TextStyle(
-                            color: Colors.white,
+                              : 'Enable All Permissions to Continue ($_remainingPermissionsCount remaining)',
+                          style: TextStyle(
+                            color: _isAllConfigured
+                                ? Colors.white
+                                : c.textTertiary,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
