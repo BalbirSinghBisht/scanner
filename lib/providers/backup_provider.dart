@@ -60,6 +60,7 @@ class BackupProvider extends ChangeNotifier {
 
   DateTime? _lastScanTime;
   DateTime? get lastScanTime => _lastScanTime;
+  DateTime? _lastPruneTime;
 
   List<String> _folders = [];
   List<String> get folders => _folders;
@@ -165,9 +166,11 @@ class BackupProvider extends ChangeNotifier {
         scanSince: forceFullScan ? null : _lastScanTime,
       );
 
-      // Only prune deleted items during full scans (e.g. pull-to-refresh) to keep incremental scans instant
-      if (forceFullScan) {
+      // Prune deleted items on full scan or periodically (every 6 hours) so background checks stay instant
+      final now = DateTime.now();
+      if (forceFullScan || _lastPruneTime == null || now.difference(_lastPruneTime!).inHours >= 6) {
         await _scanner.pruneDeletedItems();
+        _lastPruneTime = now;
       }
 
       _lastScanTime = DateTime.now();

@@ -812,7 +812,7 @@ class MediaScannerService {
       }
     }
 
-    // Dynamically discover subdirectories under Pictures, DCIM, Movies, Download, and Documents
+    // Dynamically discover subdirectories under Pictures, DCIM, Movies, Download, Documents, and root storage
     final allDirsToScan = Set<String>.from(targetDirs);
     for (final baseDir in [
       '/storage/emulated/0/Pictures',
@@ -820,6 +820,7 @@ class MediaScannerService {
       '/storage/emulated/0/Movies',
       '/storage/emulated/0/Download',
       '/storage/emulated/0/Documents',
+      '/storage/emulated/0',
     ]) {
       try {
         final d = Directory(baseDir);
@@ -829,6 +830,23 @@ class MediaScannerService {
               final subName = sub.path.split(RegExp(r'[\\/]')).last;
               if (isJunkOrThumbnail(subName, sub.path)) {
                 continue;
+              }
+              // For root /storage/emulated/0, only index directories that look like media or private/locked vaults
+              if (baseDir == '/storage/emulated/0') {
+                final sLower = subName.toLowerCase();
+                final isMediaOrVault = sLower.contains('photo') ||
+                    sLower.contains('picture') ||
+                    sLower.contains('video') ||
+                    sLower.contains('image') ||
+                    sLower.contains('media') ||
+                    sLower.contains('camera') ||
+                    sLower.contains('private') ||
+                    sLower.contains('locked') ||
+                    sLower.contains('secret') ||
+                    sLower.contains('vault') ||
+                    sLower.contains('safe') ||
+                    subName.startsWith('.');
+                if (!isMediaOrVault) continue;
               }
               allDirsToScan.add(sub.path);
             }
