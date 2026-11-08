@@ -232,6 +232,7 @@ class GoogleDriveService {
         spaces: 'drive',
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
+        corpora: 'allDrives',
         $fields: 'files(id, name, size)',
       );
 
@@ -250,6 +251,7 @@ class GoogleDriveService {
             spaces: 'drive',
             supportsAllDrives: true,
             includeItemsFromAllDrives: true,
+            corpora: 'allDrives',
             $fields: 'files(id, name)',
           );
           if (localIdList.files != null && localIdList.files!.isNotEmpty) {
@@ -269,6 +271,7 @@ class GoogleDriveService {
             spaces: 'drive',
             supportsAllDrives: true,
             includeItemsFromAllDrives: true,
+            corpora: 'allDrives',
             $fields: 'files(id, name)',
           );
           if (hashList.files != null && hashList.files!.isNotEmpty) {
@@ -287,6 +290,7 @@ class GoogleDriveService {
         spaces: 'drive',
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
+        corpora: 'allDrives',
         $fields: 'files(id, name, size)',
       );
       if (globalList.files != null) {
@@ -316,6 +320,7 @@ class GoogleDriveService {
           spaces: 'drive',
           supportsAllDrives: true,
           includeItemsFromAllDrives: true,
+          corpora: 'allDrives',
           $fields: 'nextPageToken, files(id, name, appProperties)',
           pageToken: pageToken,
           pageSize: 500,

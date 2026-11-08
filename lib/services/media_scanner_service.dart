@@ -860,6 +860,14 @@ class MediaScannerService {
 
     // Fast O(1) in-memory lookup instead of thousands of individual SQLite queries
     final existingPaths = await _db.getAllLocalFilePathsSet();
+    final allDbItems = await _db.getAllItems(limit: 50000);
+    final existingNameSizeMap = <String, MediaItem>{};
+    for (final it in allDbItems) {
+      if (it.localFilePath != null && it.localFilePath!.isNotEmpty) {
+        existingPaths.add(it.localFilePath!);
+      }
+      existingNameSizeMap['${it.fileName}_${it.fileSize}'] = it;
+    }
 
     for (final dirPath in allDirsToScan) {
       if (isJunkOrThumbnail(null, dirPath)) {
@@ -888,10 +896,21 @@ class MediaScannerService {
           final isVideo = videoExtensions.contains(ext);
           if (!isImage && !isVideo) continue;
 
-          existingPaths.add(path);
-
           final stat = await entity.stat();
           final fileName = path.split(RegExp(r'[\\/]')).last;
+          final nameSizeKey = '${fileName}_${stat.size}';
+
+          // Zero-duplication guarantee: check if file is already indexed in SQLite under any localId
+          if (existingNameSizeMap.containsKey(nameSizeKey)) {
+            final existing = existingNameSizeMap[nameSizeKey]!;
+            if (existing.localFilePath == null || existing.localFilePath!.isEmpty) {
+              await _db.updateLocalFilePath(existing.localId, path);
+              existingPaths.add(path);
+            }
+            continue;
+          }
+
+          existingPaths.add(path);
           var folderName = dirPath.split(RegExp(r'[\\/]')).last;
           
           if (dirPath.contains('WhatsApp') && folderName.toLowerCase() == 'private') {
