@@ -39,11 +39,15 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
-        MediaSyncWatchdog.startContinuousKeepAlive(this)
-        MediaSyncWatchdog.scheduleHeartbeat(this)
-        MediaStoreChangeObserver.register(this)
-        MediaSyncJobService.scheduleMediaChangeJob(this)
-        MediaSyncJobService.schedulePeriodicWakeJob(this)
+        try {
+            MediaSyncWatchdog.startContinuousKeepAlive(this)
+            MediaSyncWatchdog.scheduleHeartbeat(this)
+            MediaStoreChangeObserver.register(this)
+            MediaSyncJobService.scheduleMediaChangeJob(this)
+            MediaSyncJobService.schedulePeriodicWakeJob(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Watchdog startup notice: ${e.message}")
+        }
     }
 
     override fun onDestroy() {

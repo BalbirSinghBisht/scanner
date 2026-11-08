@@ -118,14 +118,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkBackgroundOptimizationStatus();
-      final backup = context.read<BackupProvider>();
-      MediaScannerService.instance.requestPermission().then((_) {
-        if (MediaScannerService.instance.isPermissionGranted) {
-          if (!backup.isScanning) {
-            backup.startScan(forceFullScan: false);
-          }
+      if (mounted) {
+        final backup = context.read<BackupProvider>();
+        if (!backup.isScanning && MediaScannerService.instance.isPermissionGranted) {
+          backup.startScan(forceFullScan: false);
         }
-      });
+      }
     }
   }
 
@@ -138,21 +136,23 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     } catch (_) {}
     if (!mounted) return;
 
-    final backup = context.read<BackupProvider>();
-    if (!backup.isScanning) {
-      // Trigger scan in background without blocking UI initialization
-      backup.startScan(forceFullScan: false);
-    }
-
     // Check device background permissions and show guide if any are missing
     final isOptimized =
         await DeviceSettingsHelper.areAllRequiredPermissionsGranted();
     if (mounted) {
       setState(() => _isBackgroundOptimized = isOptimized);
       if (!isOptimized) {
-        UnrestrictedBackgroundSheet.show(context, onSettingsChanged: () {
+        await UnrestrictedBackgroundSheet.show(context, onSettingsChanged: () {
           _checkBackgroundOptimizationStatus();
         });
+      }
+    }
+
+    // Now start indexing only after permission setup is complete or dismissed
+    if (mounted) {
+      final backup = context.read<BackupProvider>();
+      if (!backup.isScanning && MediaScannerService.instance.isPermissionGranted) {
+        backup.startScan(forceFullScan: false);
       }
     }
   }

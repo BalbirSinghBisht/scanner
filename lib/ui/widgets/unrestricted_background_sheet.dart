@@ -16,8 +16,8 @@ class UnrestrictedBackgroundSheet extends StatefulWidget {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
+      isDismissible: true,
+      enableDrag: true,
       backgroundColor: Colors.transparent,
       builder: (_) => UnrestrictedBackgroundSheet(
         onSettingsChanged: onSettingsChanged,
@@ -33,6 +33,7 @@ class UnrestrictedBackgroundSheet extends StatefulWidget {
 class _UnrestrictedBackgroundSheetState
     extends State<UnrestrictedBackgroundSheet> with WidgetsBindingObserver {
   bool _isLoading = true;
+  bool _isCheckingStatus = false;
   bool _isMediaGranted = true;
   bool _isAllFilesGranted = true;
   bool _isUnrestricted = false;
@@ -58,46 +59,42 @@ class _UnrestrictedBackgroundSheetState
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkStatus();
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) _checkStatus();
-      });
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) _checkStatus();
-      });
     }
   }
 
   Future<void> _checkStatus() async {
-    if (!mounted) return;
+    if (!mounted || _isCheckingStatus) return;
+    _isCheckingStatus = true;
 
-    bool mediaOk = true;
     try {
-      final perm = await PhotoManager.requestPermissionExtend();
-      mediaOk = perm.hasAccess;
-    } catch (_) {}
+      bool mediaOk = true;
+      try {
+        final perm = await PhotoManager.requestPermissionExtend();
+        mediaOk = perm.hasAccess;
+      } catch (_) {}
 
-    final allFilesOk = await DeviceSettingsHelper.isAllFilesAccessGranted();
-    final isIgnored = await DeviceSettingsHelper.isIgnoringBatteryOptimizations();
-    final notifOk = await DeviceSettingsHelper.isNotificationPermissionGranted();
-    final isOemDevice = await DeviceSettingsHelper.isStrictOEMDevice();
-    final autostartDone = await DeviceSettingsHelper.isAutostartConfigured();
-    final manufacturer = await DeviceSettingsHelper.getDeviceManufacturer();
+      final allFilesOk = await DeviceSettingsHelper.isAllFilesAccessGranted();
+      final isIgnored = await DeviceSettingsHelper.isIgnoringBatteryOptimizations();
+      final notifOk = await DeviceSettingsHelper.isNotificationPermissionGranted();
+      final isOemDevice = await DeviceSettingsHelper.isStrictOEMDevice();
+      final autostartDone = await DeviceSettingsHelper.isAutostartConfigured();
+      final manufacturer = await DeviceSettingsHelper.getDeviceManufacturer();
 
-    if (mounted) {
-      if (allFilesOk || mediaOk) {
-        DeviceSettingsHelper.startWatchdog();
+      if (mounted) {
+        setState(() {
+          _isMediaGranted = mediaOk;
+          _isAllFilesGranted = allFilesOk;
+          _isUnrestricted = isIgnored;
+          _isNotificationGranted = notifOk;
+          _isOEM = isOemDevice;
+          _isAutostartConfigured = autostartDone;
+          _manufacturer = manufacturer;
+          _isLoading = false;
+        });
+        widget.onSettingsChanged?.call();
       }
-      setState(() {
-        _isMediaGranted = mediaOk;
-        _isAllFilesGranted = allFilesOk;
-        _isUnrestricted = isIgnored;
-        _isNotificationGranted = notifOk;
-        _isOEM = isOemDevice;
-        _isAutostartConfigured = autostartDone;
-        _manufacturer = manufacturer;
-        _isLoading = false;
-      });
-      widget.onSettingsChanged?.call();
+    } finally {
+      _isCheckingStatus = false;
     }
   }
 
@@ -250,6 +247,20 @@ class _UnrestrictedBackgroundSheetState
                         ],
                       ),
                     ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minSize: 32,
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: c.surfaceElevated,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: c.glassBorderSubtle, width: 0.6),
+                        ),
+                        child: Icon(Icons.close, size: 16, color: c.textSecondary),
+                      ),
+                    ),
                   ],
                 ),
 
@@ -384,10 +395,10 @@ class _UnrestrictedBackgroundSheetState
 
                 const SizedBox(height: 18),
 
-                // Bottom Action Button: Next / Continue to Gallery (Disabled until all permissions granted)
+                // Bottom Action Button: Next / Continue to Gallery
                 CupertinoButton(
                   padding: EdgeInsets.zero,
-                  onPressed: _isAllConfigured ? () => Navigator.of(context).pop() : null,
+                  onPressed: () => Navigator.of(context).pop(),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 250),
                     width: double.infinity,
@@ -395,20 +406,16 @@ class _UnrestrictedBackgroundSheetState
                     decoration: BoxDecoration(
                       color: _isAllConfigured
                           ? const Color(0xFF2E7D32)
-                          : c.surfaceElevated,
+                          : c.primary,
                       borderRadius: BorderRadius.circular(16),
-                      border: _isAllConfigured
-                          ? null
-                          : Border.all(color: c.glassBorderSubtle, width: 0.8),
-                      boxShadow: _isAllConfigured
-                          ? [
-                              BoxShadow(
-                                color: const Color(0xFF2E7D32).withOpacity(0.4),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ]
-                          : null,
+                      boxShadow: [
+                        BoxShadow(
+                          color: (_isAllConfigured ? const Color(0xFF2E7D32) : c.primary)
+                              .withOpacity(0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -416,17 +423,17 @@ class _UnrestrictedBackgroundSheetState
                         Icon(
                           _isAllConfigured
                               ? CupertinoIcons.check_mark_circled_solid
-                              : CupertinoIcons.lock_fill,
-                          color: _isAllConfigured ? Colors.white : c.textTertiary,
+                              : CupertinoIcons.arrow_right_circle_fill,
+                          color: Colors.white,
                           size: 18,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           _isAllConfigured
                               ? 'Continue to Gallery'
-                              : 'Enable All Permissions to Continue ($_remainingPermissionsCount remaining)',
-                          style: TextStyle(
-                            color: _isAllConfigured ? Colors.white : c.textTertiary,
+                              : 'Continue to Gallery ($_remainingPermissionsCount setup optional)',
+                          style: const TextStyle(
+                            color: Colors.white,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
