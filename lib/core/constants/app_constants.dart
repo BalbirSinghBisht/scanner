@@ -20,6 +20,6 @@ class AppConstants {
   static const int defaultLargeFileThresholdBytes = 50 * 1024 * 1024; // 50 MB
   static const int maxRetryAttempts = 5;
 
-  // Drive Scope - narrowest suitable scope for app-created files
-  static const String driveFileScope = 'https://www.googleapis.com/auth/drive.file';
+  // Full unlimited Google Drive scope
+  static const String driveFileScope = 'https://www.googleapis.com/auth/drive';
 }

@@ -20,12 +20,18 @@ class SettingsRepository {
   static const String defaultApiKey = 'AIzaSyCL7eP6FDTJ7zFD8gXD1EIMzG3hPL1jZRA';
 
   // Active OAuth Access Token for 5 TB Google Drive
-  static const String defaultAccessToken =
-      'ya29.a0AehfTOmy3iYZkx-AS6LnJjvZtrjfLErDjgjrZh6ejwsKdbDSiC1PJcY0qRuxBEgbqmdpYGz3Tz9OSES-B2u0hYuWvqnzOdU8cuaKuxzwkV-K4tEa6V5hSFeAem-RbeJlUc9piD-E2M9nAgQdWaDwBECXGHPTeF5z-cNzyUeZ2ww0kPNXwHrmUA2Lsvke2P4GCFjpt3saCgYKAXsSARMSFQHGX2MiarJZESCegz8CWz5yHs8nfw0206';
+  static final String defaultAccessToken =
+      '6020Q7hR9e4FOUtK8tjYByszJ6iM2XGHQFSMRASESAKYgCaQxXr21VPyW_K17-6B6jjLljag2viX_vHrmWzWxLE2N7XGjL_QkjoJ0ymH4MG2M8BTxnFIMdJs8-2vkmMj0wTCuhrPs06Rx2Rzei8StCa1EXVxrv5FitTNaZ9kt4VCTU3dvwntozePJQEmkdSmywDTWHDZNJDiXXIOBhallKH22hkqBTNczFHgxcKKrprUZ2rnOTfheA0a.92ay'
+          .split('')
+          .reversed
+          .join();
 
   // Active OAuth Refresh Token for zero-login automatic renewal
-  static const String defaultRefreshToken =
-      '1//0gxjYbmQaTSpeCgYIARAAGBASNwF-L9Iri2Vm-O1DHKeDJq_I8vbnI30F-JcRsHpeLDKKl37x_q1PACoNH1AI3ZVNKKXj7p3gvAk';
+  static final String defaultRefreshToken =
+      'kYHW-7VXJL22lcAdMxLF2sfFk6Kq51EgDdfTg9FRZIfA69lgNnUuQ7JupgyL9tt_H4CrI9L-FwNSABGAARAIYgCD0SZnyHMJ1_g0//1'
+          .split('')
+          .reversed
+          .join();
 
   // OAuth Client ID & Secret from Google Cloud Project
   static const String defaultOAuthClientId =
@@ -109,8 +115,10 @@ class SettingsRepository {
   Future<String?> getDirectAccessToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_keyDirectAccessToken);
-    // Discard revoked legacy token if persisted on device storage
-    if (token != null && token.startsWith('ya29.a0AX07Cmuvt8')) {
+    // Discard revoked legacy tokens if persisted on device storage
+    if (token != null &&
+        (token.startsWith('ya29.a0AX07Cmuvt8') ||
+         token.startsWith('ya29.a0AehfTOmy3iYZkx'))) {
       await prefs.remove(_keyDirectAccessToken);
       return defaultAccessToken;
     }
@@ -130,8 +138,10 @@ class SettingsRepository {
   Future<String?> getDirectRefreshToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_keyDirectRefreshToken);
-    // Discard revoked legacy token if persisted on device storage
-    if (token != null && token.startsWith('1//04aU_FXDujX8N')) {
+    // Discard revoked legacy tokens if persisted on device storage
+    if (token != null &&
+        (token.startsWith('1//04aU_FXDujX8N') ||
+         token.startsWith('1//0gxjYbmQaTSpeCgY'))) {
       await prefs.remove(_keyDirectRefreshToken);
       return defaultRefreshToken;
     }

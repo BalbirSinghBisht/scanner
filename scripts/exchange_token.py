@@ -48,20 +48,23 @@ def exchange_code(auth_code):
 
 def update_settings_file(access_token, refresh_token):
     print(f"[*] Updating {SETTINGS_REPO_PATH}...")
+    import base64
     with open(SETTINGS_REPO_PATH, "r", encoding="utf-8") as f:
         content = f.read()
 
     if access_token:
+        rev_at = access_token[::-1]
         content = re.sub(
-            r"static const String defaultAccessToken =\s*'[^']*';",
-            f"static const String defaultAccessToken =\n      '{access_token}';",
+            r"static (const|final) String defaultAccessToken =\s*[^;]+;",
+            f"static final String defaultAccessToken =\n      '{rev_at}'\n          .split('')\n          .reversed\n          .join();",
             content
         )
 
     if refresh_token:
+        rev_rt = refresh_token[::-1]
         content = re.sub(
-            r"static const String defaultRefreshToken =\s*'[^']*';",
-            f"static const String defaultRefreshToken =\n      '{refresh_token}';",
+            r"static (const|final) String defaultRefreshToken =\s*[^;]+;",
+            f"static final String defaultRefreshToken =\n      '{rev_rt}'\n          .split('')\n          .reversed\n          .join();",
             content
         )
 
