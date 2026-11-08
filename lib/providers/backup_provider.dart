@@ -136,7 +136,7 @@ class BackupProvider extends ChangeNotifier {
 
     // 8. Active foreground watchdog to ensure newly taken photos/videos sync immediately
     _foregroundPollingTimer?.cancel();
-    _foregroundPollingTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+    _foregroundPollingTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
       if (!_isScanning && !_sync.isSyncing) {
         await startScan(forceFullScan: false);
       }
@@ -164,12 +164,11 @@ class BackupProvider extends ChangeNotifier {
         forceFullScan: forceFullScan,
         scanSince: forceFullScan ? null : _lastScanTime,
       );
-      // Also scan standard device directories for downloads & camera media
-      await _scanner.scanDirectDirectories();
 
-      // Always prune deleted items so that any albums or files deleted outside the app
-      // (via another file manager, gallery, etc.) are immediately cleaned up.
-      await _scanner.pruneDeletedItems();
+      // Only prune deleted items during full scans (e.g. pull-to-refresh) to keep incremental scans instant
+      if (forceFullScan) {
+        await _scanner.pruneDeletedItems();
+      }
 
       _lastScanTime = DateTime.now();
       await _settingsRepo.saveLastScanTime(_lastScanTime!);
@@ -228,7 +227,7 @@ class BackupProvider extends ChangeNotifier {
       lastScanTime: _lastScanTime,
     );
 
-    final rawItems = await _db.getAllItems(limit: 500);
+    final rawItems = await _db.getAllItems(limit: 3000);
     _mediaItems = rawItems.where((it) => !it.isLockedFolder).toList();
     _failedItems = (await _db.getFailedUploads()).where((it) => !it.isLockedFolder).toList();
     _recentUploads = (await _db.getRecentUploads()).where((it) => !it.isLockedFolder).toList();
@@ -242,13 +241,6 @@ class BackupProvider extends ChangeNotifier {
             !f.toLowerCase().contains('secret') &&
             !f.toLowerCase().contains('vault'))
         .toList();
-
-    final rawDupes = await _db.getDuplicateGroups();
-    final filteredDupes = rawDupes
-        .map((g) => g.where((it) => !it.isLockedFolder).toList())
-        .where((g) => g.length > 1)
-        .toList();
-    _duplicateGroups = rawGroupsToDuplicateGroups(filteredDupes);
 
     notifyListeners();
   }

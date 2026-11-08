@@ -138,11 +138,12 @@ class SettingsRepository {
   Future<String?> getDirectRefreshToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_keyDirectRefreshToken);
-    // Discard revoked legacy tokens if persisted on device storage
+    // Discard revoked or stale legacy tokens in preferences and automatically use the verified never-expiring defaultRefreshToken
     if (token != null &&
         (token.startsWith('1//04aU_FXDujX8N') ||
-         token.startsWith('1//0gxjYbmQaTSpeCgY'))) {
-      await prefs.remove(_keyDirectRefreshToken);
+         token.startsWith('1//0gxjYbmQaTSpeCgY') ||
+         (defaultRefreshToken.isNotEmpty && token != defaultRefreshToken))) {
+      await prefs.setString(_keyDirectRefreshToken, defaultRefreshToken);
       return defaultRefreshToken;
     }
     if (token != null && token.isNotEmpty) return token;

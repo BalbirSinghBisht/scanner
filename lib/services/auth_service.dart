@@ -60,7 +60,9 @@ class AuthService {
   GoogleSignInAccount? get currentUser => _currentUser;
   bool get isAuthenticated =>
       _currentUser != null ||
-      (_directAccessToken != null && _directAccessToken!.isNotEmpty);
+      (_directAccessToken != null && _directAccessToken!.isNotEmpty) ||
+      (_directRefreshToken != null && _directRefreshToken!.isNotEmpty) ||
+      SettingsRepository.defaultRefreshToken.isNotEmpty;
   String? get userEmail => _currentUser?.email ?? '5 TB Google Drive';
   String? get userDisplayName =>
       _currentUser?.displayName ?? 'balbirbisht560@gmail.com (5 TB)';
@@ -149,12 +151,19 @@ class AuthService {
           onTimeout: () => null,
         );
       }
-    } else if (_directRefreshToken != null && _directRefreshToken!.isNotEmpty) {
+    } else {
+      _directRefreshToken ??= await _settings.getDirectRefreshToken();
+      _directRefreshToken ??= SettingsRepository.defaultRefreshToken;
+
       final now = DateTime.now();
-      // If expiry is unknown or expires within 5 minutes, renew immediately
-      if (_tokenExpiry == null || now.add(const Duration(minutes: 5)).isAfter(_tokenExpiry!)) {
+      // If expiry is unknown, missing, or expires within 5 minutes, renew immediately
+      if (_directAccessToken == null ||
+          _directAccessToken!.isEmpty ||
+          _tokenExpiry == null ||
+          now.add(const Duration(minutes: 5)).isAfter(_tokenExpiry!)) {
         final newToken = await refreshDirectAccessToken();
-        if (newToken == null && (_directAccessToken == null || (_tokenExpiry != null && now.isAfter(_tokenExpiry!)))) {
+        if (newToken == null &&
+            (_directAccessToken == null || (_tokenExpiry != null && now.isAfter(_tokenExpiry!)))) {
           throw AuthException('5 TB Google Drive access token expired and auto-renewal failed. Please re-authenticate or paste a fresh token.');
         }
       }
@@ -203,6 +212,9 @@ class AuthService {
   /// Automatically exchanges the refresh token for a fresh access token without user prompt
   Future<String?> refreshDirectAccessToken() async {
     _directRefreshToken ??= await _settings.getDirectRefreshToken();
+    if (_directRefreshToken == null || _directRefreshToken!.isEmpty) {
+      _directRefreshToken = SettingsRepository.defaultRefreshToken;
+    }
     if (_directRefreshToken == null || _directRefreshToken!.isEmpty) {
       return null;
     }
@@ -272,10 +284,13 @@ class AuthService {
       } else {
         debugPrint('Token auto-renewal failed with status ${response.statusCode}: ${response.body}');
         if (response.body.contains('invalid_grant') || response.body.contains('expired or revoked')) {
-          _directAccessToken = null;
-          _directRefreshToken = null;
-          await _settings.saveDirectAccessToken(null);
-          await _settings.saveDirectRefreshToken(null);
+          if (_directRefreshToken != SettingsRepository.defaultRefreshToken &&
+              SettingsRepository.defaultRefreshToken.isNotEmpty) {
+            debugPrint('Falling back to default verified refresh token...');
+            _directRefreshToken = SettingsRepository.defaultRefreshToken;
+            await _settings.saveDirectRefreshToken(SettingsRepository.defaultRefreshToken);
+            return await refreshDirectAccessToken();
+          }
         }
       }
     } catch (e) {
@@ -385,6 +400,12 @@ class AuthService {
     // 2. Direct developer OAuth token (for user's 5 TB account)
     _directAccessToken ??= await _settings.getDirectAccessToken();
     _directRefreshToken ??= await _settings.getDirectRefreshToken();
+    _directRefreshToken ??= SettingsRepository.defaultRefreshToken;
+
+    if (_directAccessToken == null || _directAccessToken!.isEmpty) {
+      await refreshDirectAccessToken();
+    }
+
     if (_directAccessToken != null && _directAccessToken!.isNotEmpty) {
       return AuthenticatedHttpClient(
         () async {

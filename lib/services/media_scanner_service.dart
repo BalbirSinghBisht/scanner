@@ -89,8 +89,8 @@ class MediaScannerService {
   final Map<String, Uint8List> _thumbnailCache = {};
 
   void _putInThumbnailCache(String key, Uint8List bytes) {
-    // Keep max 120 thumbnails in memory to prevent GC lag and memory pressure
-    if (_thumbnailCache.length >= 120) {
+    // Keep max 250 thumbnails in memory for smooth fluid scrolling without GC lag
+    if (_thumbnailCache.length >= 250) {
       final firstKey = _thumbnailCache.keys.first;
       _thumbnailCache.remove(firstKey);
     }
@@ -335,6 +335,9 @@ class MediaScannerService {
     const pageSize = AppConstants.scanPageSize;
     int processedCount = 0;
 
+    // Load existing items into high-speed O(1) memory map to eliminate thousands of SQLite round-trips
+    final existingItemsMap = await _db.getAllItemsMap();
+
     for (final album in scanTargets) {
       final albumCount = await album.assetCountAsync;
       final albumPages = (albumCount / pageSize).ceil();
@@ -350,8 +353,8 @@ class MediaScannerService {
 
         for (final entity in entities) {
           try {
-            // Fast incremental check: if already indexed and uploaded, skip immediately
-            final existingItem = await _db.getItemByLocalId(entity.id);
+            // Instant O(1) in-memory check: if already indexed and uploaded, skip immediately
+            final existingItem = existingItemsMap[entity.id];
             if (!forceFullScan &&
                 existingItem != null &&
                 existingItem.uploadState == UploadState.UPLOADED) {
@@ -363,17 +366,22 @@ class MediaScannerService {
                 ? AppMediaType.video
                 : AppMediaType.image;
 
-            String mimeType = mediaType == AppMediaType.video ? 'video/mp4' : 'image/jpeg';
-            try {
-              final m = await entity.mimeTypeAsync;
-              if (m != null && m.isNotEmpty) mimeType = m;
-            } catch (_) {}
+            String mimeType = existingItem?.mimeType ??
+                (mediaType == AppMediaType.video ? 'video/mp4' : 'image/jpeg');
+            if (existingItem == null) {
+              try {
+                final m = await entity.mimeTypeAsync;
+                if (m != null && m.isNotEmpty) mimeType = m;
+              } catch (_) {}
+            }
 
-            // Fast native file size directly from OS MediaStore without copying heavy files into cache
-            int fileSize = 0;
-            try {
-              fileSize = await entity.fileSize;
-            } catch (_) {}
+            // Fast file size: reuse already cached DB size or read from MediaStore
+            int fileSize = existingItem?.fileSize ?? 0;
+            if (fileSize <= 0) {
+              try {
+                fileSize = await entity.fileSize;
+              } catch (_) {}
+            }
 
             // Extract folder name accurately without triggering disk IO
             String? folderName;
@@ -459,6 +467,9 @@ class MediaScannerService {
         // Batch persist to SQLite database
         if (batchItems.isNotEmpty) {
           await _db.batchUpsertMediaItems(batchItems);
+          for (final it in batchItems) {
+            existingItemsMap[it.localId] = it;
+          }
         }
 
         _scanProgressController.add(ScanProgressReport(
@@ -801,7 +812,7 @@ class MediaScannerService {
       }
     }
 
-    // Dynamically discover subdirectories under Pictures, DCIM, Movies, Download, Documents, and root storage
+    // Dynamically discover subdirectories under Pictures, DCIM, Movies, Download, and Documents
     final allDirsToScan = Set<String>.from(targetDirs);
     for (final baseDir in [
       '/storage/emulated/0/Pictures',
@@ -809,7 +820,6 @@ class MediaScannerService {
       '/storage/emulated/0/Movies',
       '/storage/emulated/0/Download',
       '/storage/emulated/0/Documents',
-      '/storage/emulated/0',
     ]) {
       try {
         final d = Directory(baseDir);
@@ -819,23 +829,6 @@ class MediaScannerService {
               final subName = sub.path.split(RegExp(r'[\\/]')).last;
               if (isJunkOrThumbnail(subName, sub.path)) {
                 continue;
-              }
-              // For root /storage/emulated/0, only index directories that look like media or private/locked vaults
-              if (baseDir == '/storage/emulated/0') {
-                final sLower = subName.toLowerCase();
-                final isMediaOrVault = sLower.contains('photo') ||
-                    sLower.contains('picture') ||
-                    sLower.contains('video') ||
-                    sLower.contains('image') ||
-                    sLower.contains('media') ||
-                    sLower.contains('camera') ||
-                    sLower.contains('private') ||
-                    sLower.contains('locked') ||
-                    sLower.contains('secret') ||
-                    sLower.contains('vault') ||
-                    sLower.contains('safe') ||
-                    subName.startsWith('.');
-                if (!isMediaOrVault) continue;
               }
               allDirsToScan.add(sub.path);
             }

@@ -255,6 +255,18 @@ class DatabaseHelper {
     return null;
   }
 
+  /// High-performance batch cache for instant O(1) in-memory scanning lookup
+  Future<Map<String, MediaItem>> getAllItemsMap() async {
+    final db = await database;
+    final maps = await db.query(AppConstants.manifestTableName);
+    final map = <String, MediaItem>{};
+    for (final row in maps) {
+      final item = MediaItem.fromMap(row);
+      map[item.localId] = item;
+    }
+    return map;
+  }
+
   Future<Set<String>> getAllLocalFilePathsSet() async {
     final db = await database;
     final maps = await db.query(
@@ -709,11 +721,19 @@ class DatabaseHelper {
       }
     }
 
-    final duplicateGroups = await getDuplicateGroups();
-    final duplicateItemsCount = duplicateGroups.fold<int>(
-      0,
-      (sum, g) => sum + (g.length > 1 ? g.length - 1 : 0),
-    );
+    int duplicateItemsCount = 0;
+    try {
+      final dupeCountRes = await db.rawQuery('''
+        SELECT SUM(cnt - 1) as dupe_count FROM (
+          SELECT COUNT(*) as cnt FROM ${AppConstants.manifestTableName}
+          WHERE content_hash IS NOT NULL AND content_hash != ''
+          GROUP BY content_hash HAVING cnt > 1
+        )
+      ''');
+      if (dupeCountRes.isNotEmpty && dupeCountRes.first['dupe_count'] != null) {
+        duplicateItemsCount = (dupeCountRes.first['dupe_count'] as num).toInt();
+      }
+    } catch (_) {}
 
     final totalEligible = uploadedCount + pendingCount + failedCount;
     final completionPct = totalEligible > 0

@@ -15,7 +15,7 @@ class AppConstants {
   static const String manifestTableName = 'media_manifest';
 
   // Scan & Upload Batch Sizes
-  static const int scanPageSize = 50;
+  static const int scanPageSize = 100;
   static const int maxConcurrentUploads = 1; // Sequential & resilient for mobile stability
   static const int defaultLargeFileThresholdBytes = 50 * 1024 * 1024; // 50 MB
   static const int maxRetryAttempts = 5;

@@ -140,7 +140,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
     final backup = context.read<BackupProvider>();
     if (!backup.isScanning) {
-      await backup.startScan(forceFullScan: false);
+      // Trigger scan in background without blocking UI initialization
+      backup.startScan(forceFullScan: false);
     }
 
     // Check device background permissions and show guide if any are missing
