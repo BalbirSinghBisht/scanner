@@ -102,7 +102,7 @@ class _MediaItemTileState extends State<MediaItemTile>
                     localId: widget.item.localId,
                     filePath: widget.item.localFilePath,
                     isVideo: widget.item.isVideo,
-                    size: 500,
+                    size: 280,
                     fit: BoxFit.cover,
                     placeholder: _buildPlaceholder(c),
                   ),

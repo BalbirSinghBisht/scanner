@@ -255,16 +255,37 @@ class DatabaseHelper {
     return null;
   }
 
-  /// High-performance batch cache for instant O(1) in-memory scanning lookup
-  Future<Map<String, MediaItem>> getAllItemsMap() async {
+  /// Lightweight set of local IDs that are already uploaded, for instant incremental skip without loading objects
+  Future<Set<String>> getUploadedLocalIdsSet() async {
     final db = await database;
-    final maps = await db.query(AppConstants.manifestTableName);
-    final map = <String, MediaItem>{};
+    final maps = await db.query(
+      AppConstants.manifestTableName,
+      columns: ['local_id'],
+      where: 'upload_state = ?',
+      whereArgs: [UploadState.UPLOADED.name],
+    );
+    final set = <String>{};
     for (final row in maps) {
-      final item = MediaItem.fromMap(row);
-      map[item.localId] = item;
+      final id = row['local_id'] as String?;
+      if (id != null) set.add(id);
     }
-    return map;
+    return set;
+  }
+
+  /// Lightweight set of fileName_fileSize keys for duplicate detection without loading entire rows
+  Future<Set<String>> getAllNameSizeKeysSet() async {
+    final db = await database;
+    final maps = await db.query(
+      AppConstants.manifestTableName,
+      columns: ['file_name', 'file_size'],
+    );
+    final set = <String>{};
+    for (final row in maps) {
+      final name = row['file_name'] as String?;
+      final size = row['file_size'];
+      if (name != null) set.add('${name}_$size');
+    }
+    return set;
   }
 
   Future<Set<String>> getAllLocalFilePathsSet() async {

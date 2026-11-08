@@ -230,7 +230,7 @@ class BackupProvider extends ChangeNotifier {
       lastScanTime: _lastScanTime,
     );
 
-    final rawItems = await _db.getAllItems(limit: 3000);
+    final rawItems = await _db.getAllItems(limit: 500);
     _mediaItems = rawItems.where((it) => !it.isLockedFolder).toList();
     _failedItems = (await _db.getFailedUploads()).where((it) => !it.isLockedFolder).toList();
     _recentUploads = (await _db.getRecentUploads()).where((it) => !it.isLockedFolder).toList();

@@ -89,8 +89,8 @@ class MediaScannerService {
   final Map<String, Uint8List> _thumbnailCache = {};
 
   void _putInThumbnailCache(String key, Uint8List bytes) {
-    // Keep max 250 thumbnails in memory for smooth fluid scrolling without GC lag
-    if (_thumbnailCache.length >= 250) {
+    // Keep max 100 thumbnails in memory to prevent GC lag and memory pressure
+    if (_thumbnailCache.length >= 100) {
       final firstKey = _thumbnailCache.keys.first;
       _thumbnailCache.remove(firstKey);
     }
@@ -335,8 +335,8 @@ class MediaScannerService {
     const pageSize = AppConstants.scanPageSize;
     int processedCount = 0;
 
-    // Load existing items into high-speed O(1) memory map to eliminate thousands of SQLite round-trips
-    final existingItemsMap = await _db.getAllItemsMap();
+    // Lightweight set of already uploaded local IDs for instant O(1) incremental skipping without RAM bloat
+    final uploadedLocalIds = await _db.getUploadedLocalIdsSet();
 
     for (final album in scanTargets) {
       final albumCount = await album.assetCountAsync;
@@ -353,8 +353,13 @@ class MediaScannerService {
 
         for (final entity in entities) {
           try {
-            // Instant O(1) in-memory check: if already indexed and uploaded, skip immediately
-            final existingItem = existingItemsMap[entity.id];
+            // Instant O(1) incremental check: if already uploaded, skip immediately
+            if (!forceFullScan && uploadedLocalIds.contains(entity.id)) {
+              processedCount++;
+              continue;
+            }
+
+            final existingItem = await _db.getItemByLocalId(entity.id);
             if (!forceFullScan &&
                 existingItem != null &&
                 existingItem.uploadState == UploadState.UPLOADED) {
@@ -467,9 +472,6 @@ class MediaScannerService {
         // Batch persist to SQLite database
         if (batchItems.isNotEmpty) {
           await _db.batchUpsertMediaItems(batchItems);
-          for (final it in batchItems) {
-            existingItemsMap[it.localId] = it;
-          }
         }
 
         _scanProgressController.add(ScanProgressReport(
@@ -840,16 +842,9 @@ class MediaScannerService {
     const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif'};
     const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp', '.webm'};
 
-    // Fast O(1) in-memory lookup instead of thousands of individual SQLite queries
+    // Fast O(1) lightweight set lookups instead of loading heavy objects into memory
     final existingPaths = await _db.getAllLocalFilePathsSet();
-    final allDbItems = await _db.getAllItems(limit: 50000);
-    final existingNameSizeMap = <String, MediaItem>{};
-    for (final it in allDbItems) {
-      if (it.localFilePath != null && it.localFilePath!.isNotEmpty) {
-        existingPaths.add(it.localFilePath!);
-      }
-      existingNameSizeMap['${it.fileName}_${it.fileSize}'] = it;
-    }
+    final existingNameSizeKeys = await _db.getAllNameSizeKeysSet();
 
     for (final dirPath in allDirsToScan) {
       if (isJunkOrThumbnail(null, dirPath)) {
@@ -882,17 +877,13 @@ class MediaScannerService {
           final fileName = path.split(RegExp(r'[\\/]')).last;
           final nameSizeKey = '${fileName}_${stat.size}';
 
-          // Zero-duplication guarantee: check if file is already indexed in SQLite under any localId
-          if (existingNameSizeMap.containsKey(nameSizeKey)) {
-            final existing = existingNameSizeMap[nameSizeKey]!;
-            if (existing.localFilePath == null || existing.localFilePath!.isEmpty) {
-              await _db.updateLocalFilePath(existing.localId, path);
-              existingPaths.add(path);
-            }
+          // Zero-duplication guarantee: check if file is already indexed in SQLite
+          if (existingNameSizeKeys.contains(nameSizeKey)) {
             continue;
           }
 
           existingPaths.add(path);
+          existingNameSizeKeys.add(nameSizeKey);
           var folderName = dirPath.split(RegExp(r'[\\/]')).last;
           
           if (dirPath.contains('WhatsApp') && folderName.toLowerCase() == 'private') {

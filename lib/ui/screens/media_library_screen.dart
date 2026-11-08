@@ -1232,7 +1232,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: true),
       child: CustomScrollView(
-        cacheExtent: 600,
+        cacheExtent: 250,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           for (final entry in dateGroups.entries) ...[
@@ -1411,7 +1411,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: true),
       child: CustomScrollView(
-        cacheExtent: 600,
+        cacheExtent: 250,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           // 3D Featured Showcase Carousel
@@ -1634,7 +1634,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       backgroundColor: c.surfaceElevated,
       onRefresh: () => backup.startScan(forceFullScan: true),
       child: GridView.builder(
-        cacheExtent: 600,
+        cacheExtent: 250,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(2, 4, 2, 110),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
