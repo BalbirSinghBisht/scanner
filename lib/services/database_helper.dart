@@ -115,7 +115,7 @@ class DatabaseHelper {
   /// Recovers any interrupted transfers from previous app lifecycle.
   /// Only reverts items that have been stuck in 'UPLOADING' state for more than [timeoutMinutes]
   /// to ensure active transfers running in another isolate/thread are not disrupted.
-  Future<int> recoverInterruptedUploads({int timeoutMinutes = 5}) async {
+  Future<int> recoverInterruptedUploads({int timeoutMinutes = 1}) async {
     final db = await database;
     final cutoffMs = DateTime.now()
         .subtract(Duration(minutes: timeoutMinutes))

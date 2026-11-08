@@ -317,6 +317,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "startWatchdog" -> {
+                    MediaSyncWatchdog.startContinuousKeepAlive(this)
                     MediaSyncWatchdog.scheduleSilentAlarm(this)
                     MediaStoreChangeObserver.register(this)
                     MediaSyncJobService.scheduleMediaChangeJob(this)

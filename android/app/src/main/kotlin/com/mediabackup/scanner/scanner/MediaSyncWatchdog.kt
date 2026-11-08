@@ -187,16 +187,7 @@ object MediaSyncWatchdog {
             } catch (_: Exception) {}
 
             val serviceIntent = Intent(context, serviceClass)
-            val hasNotification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                androidx.core.content.ContextCompat.checkSelfPermission(
-                    context,
-                    android.Manifest.permission.POST_NOTIFICATIONS
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            } else {
-                true
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasNotification) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
                     context.startForegroundService(serviceIntent)
                 } catch (e: Exception) {
@@ -240,6 +231,18 @@ object MediaSyncWatchdog {
                 if (hasListener) {
                     invokeMethod.invoke(pipe, data)
                     Log.d(TAG, "Successfully dispatched triggerSync to BackgroundService.")
+                    // BackgroundService.onCreate registers on servicePipe BEFORE FlutterEngine
+                    // and Dart isolate have finished booting up. If Dart's onStart hasn't registered
+                    // service.on('triggerSync') yet, the initial event gets dropped.
+                    // Fire follow-up pulses after 1.5s and 3.5s to ensure the booting Dart isolate receives it.
+                    Thread {
+                        try {
+                            Thread.sleep(1500)
+                            invokeMethod.invoke(pipe, data)
+                            Thread.sleep(2000)
+                            invokeMethod.invoke(pipe, data)
+                        } catch (_: Exception) {}
+                    }.start()
                 } else {
                     Log.d(TAG, "Service initializing; retrying triggerSync dispatch in background...")
                     Thread {
@@ -248,6 +251,8 @@ object MediaSyncWatchdog {
                                 Thread.sleep(1000)
                                 val ready = hasListenerMethod.invoke(pipe) as? Boolean ?: false
                                 if (ready) {
+                                    invokeMethod.invoke(pipe, data)
+                                    Thread.sleep(1500)
                                     invokeMethod.invoke(pipe, data)
                                     Log.d(TAG, "Successfully dispatched triggerSync on retry $i.")
                                     break
