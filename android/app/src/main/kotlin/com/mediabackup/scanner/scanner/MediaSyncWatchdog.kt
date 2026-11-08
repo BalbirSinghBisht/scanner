@@ -128,6 +128,9 @@ object MediaSyncWatchdog {
      */
     fun hasMediaPermissions(context: Context): Boolean {
         return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && android.os.Environment.isExternalStorageManager()) {
+                return true
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 androidx.core.content.ContextCompat.checkSelfPermission(
                     context,
@@ -223,6 +226,7 @@ object MediaSyncWatchdog {
             val data = org.json.JSONObject().apply {
                 put("action", "triggerSync")
                 put("method", "triggerSync")
+                put("args", org.json.JSONObject())
             }
             val pluginClass = Class.forName("id.flutter.flutter_background_service.FlutterBackgroundServicePlugin")
             val field = pluginClass.getDeclaredField("servicePipe")

@@ -36,12 +36,13 @@ class MediaStoreChangeObserver(private val context: Context, handler: Handler) :
             return
         }
         val now = System.currentTimeMillis()
-        // Debounce to prevent multiple fires within 5 seconds for rapid photo taking
-        if (now - lastTriggerTime < 5000L) return
+        // Debounce to prevent multiple fires within 2 seconds for rapid photo taking
+        if (now - lastTriggerTime < 2000L) return
         lastTriggerTime = now
 
         Log.d(TAG, "Detected new media change via MediaStore: $uri. Waking up background sync immediately...")
         MediaSyncWatchdog.acquireWakeLock(context, 120000L)
+        MainActivity.notifyMediaChange()
         MediaSyncWatchdog.triggerSyncNow(context)
         MediaSyncWatchdog.scheduleSilentAlarm(context)
     }

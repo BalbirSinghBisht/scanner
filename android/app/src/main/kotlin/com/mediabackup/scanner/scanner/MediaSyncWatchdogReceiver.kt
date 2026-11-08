@@ -17,7 +17,8 @@ class MediaSyncWatchdogReceiver : BroadcastReceiver() {
         // 1. Maintain CPU keep-alive so phone does not sleep while sync runs
         MediaSyncWatchdog.startContinuousKeepAlive(context)
 
-        // 2. Immediately trigger the backup sync cycle in BackgroundService
+        // 2. Immediately notify foreground UI if open and trigger background service
+        MainActivity.notifyMediaChange()
         MediaSyncWatchdog.triggerSyncNow(context)
 
         // 3. Register ContentObserver if not already active

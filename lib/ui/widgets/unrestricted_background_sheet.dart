@@ -84,6 +84,9 @@ class _UnrestrictedBackgroundSheetState
     final manufacturer = await DeviceSettingsHelper.getDeviceManufacturer();
 
     if (mounted) {
+      if (allFilesOk || mediaOk) {
+        DeviceSettingsHelper.startWatchdog();
+      }
       setState(() {
         _isMediaGranted = mediaOk;
         _isAllFilesGranted = allFilesOk;

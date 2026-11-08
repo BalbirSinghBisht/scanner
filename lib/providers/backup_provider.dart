@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/backup_settings.dart';
 import '../models/dashboard_stats.dart';
 import '../models/duplicate_group.dart';
@@ -19,6 +20,8 @@ class BackupProvider extends ChangeNotifier {
 
   StreamSubscription<ScanProgressReport>? _scanSub;
   StreamSubscription<UploadProgressEvent?>? _uploadSub;
+  Timer? _foregroundPollingTimer;
+  static const MethodChannel _nativeChannel = MethodChannel('com.mediabackup.scanner/device_settings');
 
   bool _isScanning = false;
   bool get isScanning => _isScanning;
@@ -116,10 +119,27 @@ class BackupProvider extends ChangeNotifier {
       _autoStartUpload();
     }
 
-    // 6. Automatically capture any new data added to device gallery in real-time
+    // 6. Listen to native Android MediaStore & camera change events
+    _nativeChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onMediaChanged') {
+        debugPrint('[BackupProvider] Native onMediaChanged event received! Starting incremental scan and auto-upload...');
+        await startScan(forceFullScan: false);
+        await _autoStartUpload();
+      }
+    });
+
+    // 7. Automatically capture any new data added to device gallery in real-time
     _scanner.startObservingLibraryChanges(() async {
       await startScan(forceFullScan: false);
       await _autoStartUpload();
+    });
+
+    // 8. Active foreground watchdog to ensure newly taken photos/videos sync immediately
+    _foregroundPollingTimer?.cancel();
+    _foregroundPollingTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      if (!_isScanning && !_sync.isSyncing) {
+        await startScan(forceFullScan: false);
+      }
     });
   }
 
@@ -278,6 +298,7 @@ class BackupProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _foregroundPollingTimer?.cancel();
     _scanner.stopObservingLibraryChanges();
     _scanSub?.cancel();
     _uploadSub?.cancel();

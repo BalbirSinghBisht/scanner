@@ -199,7 +199,7 @@ class BackgroundSyncManager {
     await service.configure(
       androidConfiguration: AndroidConfiguration(
         onStart: onStartBackgroundService,
-        autoStart: false,
+        autoStart: true,
         isForegroundMode: true,
         autoStartOnBoot: true,
         notificationChannelId: 'media_backup_service_channel',

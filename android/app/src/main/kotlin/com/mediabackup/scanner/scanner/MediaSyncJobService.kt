@@ -88,7 +88,8 @@ class MediaSyncJobService : JobService() {
         MediaSyncWatchdog.startContinuousKeepAlive(this)
         MediaSyncWatchdog.acquireWakeLock(this, 120000L)
 
-        // 3. Immediately trigger backup sync in BackgroundService
+        // 3. Immediately notify foreground UI if open and trigger background service
+        MainActivity.notifyMediaChange()
         MediaSyncWatchdog.triggerSyncNow(this)
 
         // 4. Also re-arm silent hardware alarm

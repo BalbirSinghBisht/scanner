@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -16,15 +17,38 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.mediabackup.scanner/device_settings"
 
+    companion object {
+        private const val TAG = "MainActivity"
+        private var activeChannel: MethodChannel? = null
+
+        fun notifyMediaChange() {
+            try {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    try {
+                        activeChannel?.invokeMethod("onMediaChanged", null)
+                        Log.d(TAG, "Successfully notified Flutter UI isolate of onMediaChanged")
+                    } catch (e: Exception) {
+                        Log.d(TAG, "activeChannel invokeMethod notice: ${e.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Could not post onMediaChanged to main looper: ${e.message}")
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         MediaSyncWatchdog.startContinuousKeepAlive(this)
         MediaSyncWatchdog.scheduleHeartbeat(this)
         MediaStoreChangeObserver.register(this)
+        MediaSyncJobService.scheduleMediaChangeJob(this)
+        MediaSyncJobService.schedulePeriodicWakeJob(this)
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        activeChannel = null
         // Ensure alarm and service remain scheduled when activity closes
         MediaSyncWatchdog.scheduleHeartbeat(this)
     }
@@ -32,7 +56,9 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        activeChannel = channel
+        channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "isXiaomiDevice" -> {
                     val manufacturer = Build.MANUFACTURER.lowercase()
