@@ -21,7 +21,7 @@ class CachedThumbnailImage extends StatefulWidget {
     required this.localId,
     this.filePath,
     this.isVideo = false,
-    this.size = 280,
+    this.size = 400,
     this.fit = BoxFit.cover,
     required this.placeholder,
   });
@@ -103,7 +103,6 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
         file,
         fit: widget.fit,
         cacheWidth: widget.size,
-        cacheHeight: widget.size,
         filterQuality: FilterQuality.medium,
         gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) {

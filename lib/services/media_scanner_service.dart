@@ -89,8 +89,8 @@ class MediaScannerService {
   final Map<String, Uint8List> _thumbnailCache = {};
 
   void _putInThumbnailCache(String key, Uint8List bytes) {
-    // Keep max 100 thumbnails in memory to prevent GC lag and memory pressure
-    if (_thumbnailCache.length >= 100) {
+    // Keep max 180 thumbnails in memory for fluid scrolling without GC pressure
+    if (_thumbnailCache.length >= 180) {
       final firstKey = _thumbnailCache.keys.first;
       _thumbnailCache.remove(firstKey);
     }
@@ -607,9 +607,15 @@ class MediaScannerService {
             // Memory-mapped zero-copy file buffer via C++ OS mmap
             buffer = await ImmutableBuffer.fromFilePath(path);
             final descriptor = await ImageDescriptor.encoded(buffer);
+            // Maintain exact original aspect ratio without distortion or stretching
+            final double scale = (descriptor.width > descriptor.height)
+                ? size / descriptor.width
+                : size / descriptor.height;
+            final targetW = (descriptor.width * scale).round().clamp(1, size * 2);
+            final targetH = (descriptor.height * scale).round().clamp(1, size * 2);
             codec = await descriptor.instantiateCodec(
-              targetWidth: size,
-              targetHeight: size,
+              targetWidth: targetW,
+              targetHeight: targetH,
             );
             frame = await codec.getNextFrame();
             final byteData =
