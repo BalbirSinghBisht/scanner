@@ -1,8 +1,9 @@
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +14,8 @@ import '../../providers/backup_provider.dart';
 import '../../services/device_settings_helper.dart';
 import '../../services/favorites_service.dart';
 import '../../services/media_scanner_service.dart';
+import 'photo_editor_screen.dart';
+import 'video_editor_screen.dart';
 
 class MediaPreviewScreen extends StatefulWidget {
   final List<MediaItem> items;
@@ -81,6 +84,16 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
         widget.initialIndex.clamp(0, _items.isEmpty ? 0 : _items.length - 1);
     _pageController = PageController(initialPage: _currentIndex);
 
+    // Initial system UI styling with transparent navigation
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
+
     _zoomAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 240),
@@ -108,6 +121,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 
   @override
   void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _dismissAnimController.dispose();
     _videoController?.dispose();
     _pageController.dispose();
@@ -182,6 +196,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 
   void _animateAndDismiss() {
     if (!mounted) return;
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _videoController?.pause();
     final screenHeight = MediaQuery.of(context).size.height;
     _dismissAnimation = Tween<double>(
@@ -221,9 +236,18 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 
   void _toggleControls() {
     if (_isDraggingDown) return;
+    final nextState = !_showControls;
     setState(() {
-      _showControls = !_showControls;
+      _showControls = nextState;
     });
+
+    if (nextState) {
+      // Re-enable system UI overlays when controls appear
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } else {
+      // Enter true immersive full screen: hides mobile status bar & back bar completely
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
   }
 
   void _onPageChanged(int index) {
@@ -297,6 +321,43 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           debugPrint('Error loading video: $e');
         }
       }
+    }
+  }
+
+  Future<void> _openEditorForCurrentItem() async {
+    if (_items.isEmpty || _currentIndex >= _items.length) return;
+    final currentItem = _items[_currentIndex];
+
+    _videoController?.pause();
+
+    MediaItem? editedItem;
+    if (currentItem.mediaType == AppMediaType.video) {
+      editedItem = await Navigator.of(context).push<MediaItem>(
+        MaterialPageRoute(
+          builder: (_) => VideoEditorScreen(item: currentItem),
+        ),
+      );
+    } else {
+      editedItem = await Navigator.of(context).push<MediaItem>(
+        MaterialPageRoute(
+          builder: (_) => PhotoEditorScreen(item: currentItem),
+        ),
+      );
+    }
+
+    if (editedItem != null && mounted) {
+      setState(() {
+        _items.insert(_currentIndex + 1, editedItem!);
+      });
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && _pageController.hasClients) {
+          _pageController.animateToPage(
+            _currentIndex + 1,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
     }
   }
 
@@ -644,7 +705,12 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     final contentScale = (1.0 - dragProgress * 0.14).clamp(0.86, 1.0);
     final controlsOpacity = _showControls ? (1.0 - dragProgress * 2.5).clamp(0.0, 1.0) : 0.0;
 
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      },
+      child: Scaffold(
       backgroundColor: Colors.transparent,
       body: Listener(
         onPointerDown: _onPointerDown,
@@ -679,12 +745,12 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                       curve: Curves.easeOutCubic,
                       padding: EdgeInsets.only(
                         top: (_showControls && !_isDraggingDown)
-                            ? MediaQuery.of(context).padding.top + 54.0
+                            ? math.max(MediaQuery.of(context).padding.top, 32.0) + 64.0
                             : 0.0,
                         bottom: (_showControls && !_isDraggingDown)
                             ? (isVideo
-                                ? MediaQuery.of(context).padding.bottom + 120.0
-                                : MediaQuery.of(context).padding.bottom + 82.0)
+                                ? math.max(MediaQuery.of(context).padding.bottom, 16.0) + 130.0
+                                : math.max(MediaQuery.of(context).padding.bottom, 16.0) + 88.0)
                             : 0.0,
                       ),
                       child: PageView.builder(
@@ -712,7 +778,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           // 2. 3D Frosted Top Navigation Bar
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
-            top: (_showControls && !_isDraggingDown) ? 0 : -120,
+            top: (_showControls && !_isDraggingDown) ? 0 : -140,
             left: 0,
             right: 0,
             child: Opacity(
@@ -722,10 +788,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
                     padding: EdgeInsets.only(
-                      top: MediaQuery.of(context).padding.top + 4,
+                      top: math.max(MediaQuery.of(context).padding.top, 32.0) + 8.0,
                       left: 10,
                       right: 14,
-                      bottom: 10,
+                      bottom: 12,
                     ),
                     decoration: BoxDecoration(
                       color: c.surfaceGlass,
@@ -806,6 +872,21 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                             CupertinoButton(
                               padding: EdgeInsets.zero,
                               minSize: 0,
+                              onPressed: _openEditorForCurrentItem,
+                              child: Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: c.isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: c.glassBorder, width: 0.5),
+                                ),
+                                child: Icon(CupertinoIcons.pencil, color: c.primary, size: 20),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minSize: 0,
                               onPressed: _showItemDetailsBottomSheet,
                               child: Container(
                                 padding: const EdgeInsets.all(7),
@@ -830,7 +911,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           // 3. Floating Rounded Bottom Toolbar
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
-            bottom: (_showControls && !_isDraggingDown) ? 0 : -140,
+            bottom: (_showControls && !_isDraggingDown) ? 0 : -160,
             left: 0,
             right: 0,
             child: Opacity(
@@ -888,9 +969,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     padding: EdgeInsets.only(
                       left: 24,
                       right: 24,
-                      bottom: MediaQuery.of(context).padding.bottom > 0
-                          ? MediaQuery.of(context).padding.bottom + 4
-                          : 16,
+                      bottom: math.max(MediaQuery.of(context).padding.bottom, 16.0) + 14.0,
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(34),
@@ -924,14 +1003,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
-                                onPressed: () {
-                                  setState(() {
-                                    _isCoverMode = !_isCoverMode;
-                                    _transformationController.value = Matrix4.identity();
-                                  });
-                                },
+                                onPressed: _openEditorForCurrentItem,
                                 child: Icon(
-                                  _isCoverMode ? Icons.fit_screen_rounded : Icons.fullscreen_rounded,
+                                  CupertinoIcons.slider_horizontal_3,
                                   color: c.primary,
                                   size: 24,
                                 ),
@@ -960,6 +1034,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           ),
         ],
       ),
+    ),
     ),
   );
   }

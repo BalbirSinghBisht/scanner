@@ -19,4 +19,23 @@ void main() {
 
     expect(find.text('Loading Placeholder'), findsOneWidget);
   });
+
+  testWidgets('CachedThumbnailImage with isVideo renders placeholder gracefully without errors',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: CachedThumbnailImage(
+            localId: 'disk_12345',
+            filePath: '/storage/emulated/0/DCIM/sample.mp4',
+            isVideo: true,
+            size: 320,
+            placeholder: Text('Video Placeholder'),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Video Placeholder'), findsOneWidget);
+  });
 }

@@ -51,6 +51,11 @@ class DatabaseHelper {
       );
     } catch (_) {}
 
+    try {
+      // Auto-purge any duplicate records across MediaStore and direct disk scans
+      await deduplicateManifest(db);
+    } catch (_) {}
+
     return db;
   }
 
@@ -303,6 +308,82 @@ class DatabaseHelper {
       }
     }
     return set;
+  }
+
+  /// Returns a map of fileName -> localId for fast duplicate avoidance
+  Future<Map<String, String>> getAllFileNamesToLocalIdMap() async {
+    final db = await database;
+    final maps = await db.query(
+      AppConstants.manifestTableName,
+      columns: ['file_name', 'local_id'],
+    );
+    final map = <String, String>{};
+    for (final row in maps) {
+      final name = row['file_name'] as String?;
+      final id = row['local_id'] as String?;
+      if (name != null && id != null) {
+        map[name] = id;
+      }
+    }
+    return map;
+  }
+
+  /// Removes duplicate records from the manifest, keeping the canonical MediaStore asset
+  /// and merging local file paths into the surviving record.
+  Future<int> deduplicateManifest([Database? targetDb]) async {
+    final db = targetDb ?? await database;
+    try {
+      // 1. For records with the same file_name where one is a disk_* scan and one is a MediaStore ID:
+      // Update the MediaStore record's local_file_path if it was null
+      await db.rawUpdate('''
+        UPDATE ${AppConstants.manifestTableName}
+        SET local_file_path = (
+          SELECT d.local_file_path FROM ${AppConstants.manifestTableName} d
+          WHERE d.local_id LIKE 'disk_%' 
+            AND d.file_name = ${AppConstants.manifestTableName}.file_name
+            AND d.local_file_path IS NOT NULL
+          LIMIT 1
+        )
+        WHERE local_id NOT LIKE 'disk_%'
+          AND (local_file_path IS NULL OR local_file_path = '')
+          AND file_name IN (
+            SELECT file_name FROM ${AppConstants.manifestTableName} WHERE local_id LIKE 'disk_%'
+          )
+      ''');
+
+      // 2. Delete the disk_* duplicates when a canonical MediaStore record exists for that file_name
+      final deletedCount = await db.rawDelete('''
+        DELETE FROM ${AppConstants.manifestTableName}
+        WHERE local_id LIKE 'disk_%'
+          AND file_name IN (
+            SELECT file_name FROM ${AppConstants.manifestTableName} WHERE local_id NOT LIKE 'disk_%'
+          )
+      ''');
+
+      // 3. For any remaining exact duplicates by local_file_path, keep only the lowest rowid
+      await db.rawDelete('''
+        DELETE FROM ${AppConstants.manifestTableName}
+        WHERE rowid NOT IN (
+          SELECT min(rowid) FROM ${AppConstants.manifestTableName} GROUP BY local_file_path
+        ) AND local_file_path IS NOT NULL AND local_file_path != ''
+      ''');
+
+      // 4. For any remaining exact duplicates by file_name, keep only the lowest rowid
+      await db.rawDelete('''
+        DELETE FROM ${AppConstants.manifestTableName}
+        WHERE rowid NOT IN (
+          SELECT min(rowid) FROM ${AppConstants.manifestTableName} GROUP BY file_name
+        )
+      ''');
+
+      if (deletedCount > 0) {
+        debugPrint('[DatabaseHelper] Purged $deletedCount duplicate media records from manifest');
+      }
+      return deletedCount;
+    } catch (e) {
+      debugPrint('[DatabaseHelper] Deduplication error: $e');
+      return 0;
+    }
   }
 
   Future<MediaItem?> getItemByPath(String path) async {

@@ -21,7 +21,7 @@ class CachedThumbnailImage extends StatefulWidget {
     required this.localId,
     this.filePath,
     this.isVideo = false,
-    this.size = 400,
+    this.size = 280,
     this.fit = BoxFit.cover,
     required this.placeholder,
   });
@@ -73,8 +73,25 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
     if (_isLoading) return;
     _isLoading = true;
     try {
-      final data = await MediaScannerService.instance
-          .getThumbnail(widget.localId, size: widget.size, quality: 80);
+      var data = await MediaScannerService.instance.getThumbnail(
+        widget.localId,
+        filePath: widget.filePath,
+        isVideo: widget.isVideo,
+        size: widget.size,
+        quality: 80,
+      );
+      if (data == null && widget.isVideo) {
+        // Quick retry if native decoder thread queue was momentarily busy
+        await Future.delayed(const Duration(milliseconds: 180));
+        if (!mounted) return;
+        data = await MediaScannerService.instance.getThumbnail(
+          widget.localId,
+          filePath: widget.filePath,
+          isVideo: widget.isVideo,
+          size: widget.size,
+          quality: 80,
+        );
+      }
       if (mounted) {
         setState(() {
           _bytes = data;
@@ -136,6 +153,18 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
 
     // 3. Error state
     if (_hasError) {
+      if (widget.isVideo) {
+        return Container(
+          color: c.surfaceElevated,
+          child: Center(
+            child: Icon(
+              Icons.play_circle_fill_rounded,
+              color: c.primary.withOpacity(0.4),
+              size: 28,
+            ),
+          ),
+        );
+      }
       return widget.placeholder;
     }
 

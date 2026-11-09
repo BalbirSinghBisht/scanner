@@ -16,6 +16,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.mediabackup.scanner/device_settings"
+    private val thumbnailExecutor = java.util.concurrent.Executors.newFixedThreadPool(2)
 
     companion object {
         private const val TAG = "MainActivity"
@@ -348,6 +349,261 @@ class MainActivity : FlutterActivity() {
                 "stopContinuousKeepAlive" -> {
                     MediaSyncWatchdog.stopContinuousKeepAlive()
                     result.success(true)
+                }
+                "trimVideo" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputPath = call.argument<String>("outputPath")
+                    val startMs = (call.argument<Number>("startMs"))?.toLong() ?: 0L
+                    val endMs = (call.argument<Number>("endMs"))?.toLong() ?: 0L
+                    val muteAudio = call.argument<Boolean>("muteAudio") ?: false
+
+                    if (inputPath == null || outputPath == null || endMs <= startMs) {
+                        result.error("INVALID_ARGS", "Invalid arguments for video trim", null)
+                    } else {
+                        // Run trimming in background thread to keep UI smooth
+                        Thread {
+                            try {
+                                val success = VideoTrimmerHelper.trim(
+                                    inputPath = inputPath,
+                                    outputPath = outputPath,
+                                    startMs = startMs,
+                                    endMs = endMs,
+                                    muteAudio = muteAudio
+                                )
+                                runOnUiThread {
+                                    if (success) {
+                                        // Notify Android media scanner so it is indexed
+                                        try {
+                                            android.media.MediaScannerConnection.scanFile(
+                                                context,
+                                                arrayOf(outputPath),
+                                                arrayOf("video/mp4"),
+                                                null
+                                            )
+                                        } catch (_: Exception) {}
+                                        result.success(outputPath)
+                                    } else {
+                                        result.error("TRIM_FAILED", "Video trimming failed", null)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("TRIM_EXCEPTION", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                }
+                "scanMediaFile" -> {
+                    val path = call.argument<String>("path")
+                    val mimeType = call.argument<String>("mimeType")
+                    if (path != null) {
+                        try {
+                            android.media.MediaScannerConnection.scanFile(
+                                context,
+                                arrayOf(path),
+                                if (mimeType != null) arrayOf(mimeType) else null
+                            ) { scannedPath, uri ->
+                                Log.d("MainActivity", "Scanned media file into MediaStore: $scannedPath -> $uri")
+                            }
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "extractVideoFrames" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val startMs = (call.argument<Number>("startMs"))?.toLong() ?: 0L
+                    val endMs = (call.argument<Number>("endMs"))?.toLong() ?: 0L
+                    val maxFrames = (call.argument<Number>("maxFrames"))?.toInt() ?: 12
+
+                    if (inputPath == null || endMs <= startMs) {
+                        result.error("INVALID_ARGS", "Invalid arguments for frame extraction", null)
+                    } else {
+                        Thread {
+                            try {
+                                val retriever = android.media.MediaMetadataRetriever()
+                                retriever.setDataSource(inputPath)
+                                val durationMs = Math.max(100L, endMs - startMs)
+                                val stepMs = Math.max(80L, durationMs / maxFrames)
+
+                                val frameByteList = ArrayList<ByteArray>()
+                                var t = startMs
+                                while (t <= endMs && frameByteList.size < maxFrames) {
+                                    val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                                        retriever.getScaledFrameAtTime(
+                                            t * 1000L,
+                                            android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                                            360,
+                                            360
+                                        )
+                                    } else {
+                                        retriever.getFrameAtTime(
+                                            t * 1000L,
+                                            android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                                        )
+                                    }
+                                    if (bitmap != null) {
+                                        val stream = java.io.ByteArrayOutputStream()
+                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, stream)
+                                        frameByteList.add(stream.toByteArray())
+                                        bitmap.recycle()
+                                    }
+                                    t += stepMs
+                                }
+                                retriever.release()
+                                runOnUiThread {
+                                    result.success(frameByteList)
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("EXTRACT_FAILED", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                }
+                "getVideoThumbnail" -> {
+                    val path = call.argument<String>("path")
+                    val width = (call.argument<Number>("width"))?.toInt() ?: 280
+                    val height = (call.argument<Number>("height"))?.toInt() ?: 280
+
+                    if (path == null) {
+                        result.error("INVALID_PATH", "Path is null", null)
+                    } else {
+                        thumbnailExecutor.execute {
+                            var bitmap: android.graphics.Bitmap? = null
+                            val file = java.io.File(path)
+
+                            // 1. Try modern Android Q+ ThumbnailUtils
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && file.exists()) {
+                                try {
+                                    bitmap = android.media.ThumbnailUtils.createVideoThumbnail(
+                                        file,
+                                        android.util.Size(width, height),
+                                        null
+                                    )
+                                } catch (_: Exception) {}
+                            }
+
+                            // 2. Hardware-accelerated MediaMetadataRetriever
+                            if (bitmap == null) {
+                                var retriever: android.media.MediaMetadataRetriever? = null
+                                var fis: java.io.FileInputStream? = null
+                                try {
+                                    retriever = android.media.MediaMetadataRetriever()
+                                    var dataSourceSet = false
+                                    try {
+                                        retriever.setDataSource(path)
+                                        dataSourceSet = true
+                                    } catch (_: Exception) {}
+
+                                    if (!dataSourceSet && file.exists()) {
+                                        try {
+                                            fis = java.io.FileInputStream(file)
+                                            retriever.setDataSource(fis.fd, 0, file.length())
+                                            dataSourceSet = true
+                                        } catch (_: Exception) {}
+                                    }
+
+                                    if (dataSourceSet) {
+                                        // Attempt A: scaled frame at first frame with OPTION_CLOSEST
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                                            try {
+                                                bitmap = retriever.getScaledFrameAtTime(
+                                                    0L,
+                                                    android.media.MediaMetadataRetriever.OPTION_CLOSEST,
+                                                    width,
+                                                    height
+                                                )
+                                            } catch (_: Exception) {}
+                                        }
+
+                                        // Attempt B: unscaled frame at first frame with OPTION_CLOSEST
+                                        if (bitmap == null) {
+                                            try {
+                                                bitmap = retriever.getFrameAtTime(
+                                                    0L,
+                                                    android.media.MediaMetadataRetriever.OPTION_CLOSEST
+                                                )
+                                            } catch (_: Exception) {}
+                                        }
+
+                                        // Attempt C: frame at -1L (auto-detect keyframe)
+                                        if (bitmap == null) {
+                                            try {
+                                                bitmap = retriever.getFrameAtTime(
+                                                    -1L,
+                                                    android.media.MediaMetadataRetriever.OPTION_CLOSEST
+                                                )
+                                            } catch (_: Exception) {}
+                                        }
+
+                                        // Attempt D: 1-second mark
+                                        if (bitmap == null) {
+                                            try {
+                                                bitmap = retriever.getFrameAtTime(
+                                                    1000000L,
+                                                    android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                                                )
+                                            } catch (_: Exception) {}
+                                        }
+
+                                        // Attempt E: parameterless
+                                        if (bitmap == null) {
+                                            try {
+                                                bitmap = retriever.frameAtTime
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                } catch (_: Exception) {
+                                } finally {
+                                    try { fis?.close() } catch (_: Exception) {}
+                                    try { retriever?.release() } catch (_: Exception) {}
+                                }
+                            }
+
+                            // 3. Fallback: legacy ThumbnailUtils
+                            if (bitmap == null && file.exists()) {
+                                try {
+                                    @Suppress("DEPRECATION")
+                                    bitmap = android.media.ThumbnailUtils.createVideoThumbnail(
+                                        path,
+                                        android.provider.MediaStore.Video.Thumbnails.MINI_KIND
+                                    )
+                                } catch (_: Exception) {}
+                            }
+
+                            // Downscale if large bitmap to save memory and avoid transfer lag
+                            if (bitmap != null) {
+                                try {
+                                    if (bitmap.width > width * 1.5 || bitmap.height > height * 1.5) {
+                                        val scale = Math.min(width.toFloat() / bitmap.width, height.toFloat() / bitmap.height)
+                                        val targetW = Math.max(1, (bitmap.width * scale).toInt())
+                                        val targetH = Math.max(1, (bitmap.height * scale).toInt())
+                                        val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+                                        if (scaled != bitmap) {
+                                            bitmap.recycle()
+                                            bitmap = scaled
+                                        }
+                                    }
+
+                                    val stream = java.io.ByteArrayOutputStream()
+                                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, stream)
+                                    val bytes = stream.toByteArray()
+                                    bitmap.recycle()
+                                    runOnUiThread { result.success(bytes) }
+                                } catch (e: Exception) {
+                                    runOnUiThread { result.success(null) }
+                                }
+                            } else {
+                                runOnUiThread { result.success(null) }
+                            }
+                        }
+                    }
                 }
                 else -> result.notImplemented()
             }

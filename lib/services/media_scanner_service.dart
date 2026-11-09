@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../core/constants/app_constants.dart';
 import '../core/errors/app_exceptions.dart';
@@ -237,6 +239,11 @@ class MediaScannerService {
         );
       }
     }
+
+    // Always ensure database manifest has 0 duplicates
+    try {
+      await _db.deduplicateManifest();
+    } catch (_) {}
 
     // Step 1: Resilient Multi-Type Album Discovery (never rely on synthetic "onlyAll: true" alone)
     List<AssetPathEntity> albums = [];
@@ -564,11 +571,45 @@ class MediaScannerService {
     }
   }
 
+  String? _vthumbDirPath;
+  Future<String> _getVthumbDirPath() async {
+    if (_vthumbDirPath != null) return _vthumbDirPath!;
+    final tmp = await getTemporaryDirectory();
+    final d = Directory(p.join(tmp.path, 'vthumbs'));
+    if (!d.existsSync()) {
+      await d.create(recursive: true);
+    }
+    _vthumbDirPath = d.path;
+    return _vthumbDirPath!;
+  }
+
+  /// Synchronously or asynchronously reads pre-extracted video thumbnail file from disk
+  Future<File?> getCachedVideoThumbnailFile(String assetId) async {
+    try {
+      final dirPath = await _getVthumbDirPath();
+      final file = File(p.join(dirPath, 'vthumb_${assetId.hashCode.abs()}.jpg'));
+      if (file.existsSync() && file.lengthSync() > 0) {
+        return file;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _saveVideoThumbnailToDisk(String assetId, Uint8List bytes) async {
+    try {
+      final dirPath = await _getVthumbDirPath();
+      final file = File(p.join(dirPath, 'vthumb_${assetId.hashCode.abs()}.jpg'));
+      await file.writeAsBytes(bytes, flush: false);
+    } catch (_) {}
+  }
+
   /// Helper to fetch crisp thumbnail bytes for fast UI display with memory cache
   Future<Uint8List?> getThumbnail(
     String assetId, {
-    int size = 500,
-    int quality = 90,
+    String? filePath,
+    bool isVideo = false,
+    int size = 280,
+    int quality = 85,
   }) async {
     final cacheKey = '${assetId}_$size';
     if (_thumbnailCache.containsKey(cacheKey)) {
@@ -578,63 +619,164 @@ class MediaScannerService {
       }
       _thumbnailCache.remove(cacheKey);
     }
-    try {
-      final asset = await AssetEntity.fromId(assetId);
-      if (asset != null) {
-        final data = await asset.thumbnailDataWithSize(
-          ThumbnailSize(size, size),
-          quality: quality,
+
+    // Resolve file path and whether it is a video
+    String? resolvedFilePath = filePath;
+    MediaItem? dbItem;
+
+    if (resolvedFilePath == null || resolvedFilePath.isEmpty) {
+      dbItem = await _db.getItemByLocalId(assetId);
+      resolvedFilePath = dbItem?.localFilePath;
+    }
+
+    final effectiveIsVideo = isVideo || (dbItem?.isVideo ?? false);
+
+    // ==========================================
+    // VIDEO THUMBNAIL PIPELINE
+    // ==========================================
+    if (effectiveIsVideo) {
+      // 1. Fast-path: Check persistent disk cache
+      final cachedDiskFile = await getCachedVideoThumbnailFile(assetId);
+      if (cachedDiskFile != null) {
+        try {
+          final diskBytes = await cachedDiskFile.readAsBytes();
+          if (diskBytes.isNotEmpty) {
+            _putInThumbnailCache(cacheKey, diskBytes);
+            _putInThumbnailCache(assetId, diskBytes);
+            return diskBytes;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Try native hardware-accelerated ThumbnailUtils & MediaMetadataRetriever FIRST.
+      // Now that the APK is installed with queued thumbnailExecutor and OPTION_CLOSEST,
+      // native decoder handles all file paths (including .nomedia and WhatsApp) with 0 Codec2 errors.
+      String? vPath = resolvedFilePath;
+      if (vPath == null || vPath.isEmpty) {
+        try {
+          if (!assetId.startsWith('disk_')) {
+            final asset = await AssetEntity.fromId(assetId);
+            final f = await asset?.file;
+            vPath = f?.path;
+          }
+        } catch (_) {}
+      }
+
+      if (vPath != null && vPath.isNotEmpty) {
+        final videoData = await DeviceSettingsHelper.getVideoThumbnail(
+          vPath,
+          width: 280,
+          height: 280,
         );
-        if (data != null && data.isNotEmpty) {
-          _putInThumbnailCache(cacheKey, data);
-          _putInThumbnailCache(assetId, data);
-          return data;
+        if (videoData != null && videoData.isNotEmpty) {
+          _saveVideoThumbnailToDisk(assetId, videoData);
+          _putInThumbnailCache(cacheKey, videoData);
+          _putInThumbnailCache(assetId, videoData);
+          return videoData;
         }
       }
-      final item = await _db.getItemByLocalId(assetId);
-      if (item?.localFilePath != null) {
-        if (item!.isVideo) {
-          // Never attempt to read raw video files into memory
-          return null;
-        }
-        final path = item.localFilePath!;
-        final f = File(path);
-        if (await f.exists()) {
-          ImmutableBuffer? buffer;
-          Codec? codec;
-          FrameInfo? frame;
-          try {
-            // Memory-mapped zero-copy file buffer via C++ OS mmap
-            buffer = await ImmutableBuffer.fromFilePath(path);
-            final descriptor = await ImageDescriptor.encoded(buffer);
-            // Maintain exact original aspect ratio without distortion or stretching
-            final double scale = (descriptor.width > descriptor.height)
-                ? size / descriptor.width
-                : size / descriptor.height;
-            final targetW = (descriptor.width * scale).round().clamp(1, size * 2);
-            final targetH = (descriptor.height * scale).round().clamp(1, size * 2);
-            codec = await descriptor.instantiateCodec(
-              targetWidth: targetW,
-              targetHeight: targetH,
+
+      // 3. Fallback for MediaStore videos: PhotoManager standard 200px thumbnail.
+      if (!assetId.startsWith('disk_')) {
+        try {
+          final asset = await AssetEntity.fromId(assetId);
+          if (asset != null) {
+            final data = await asset.thumbnailDataWithSize(
+              const ThumbnailSize.square(200),
+              quality: quality,
             );
-            frame = await codec.getNextFrame();
-            final byteData =
-                await frame.image.toByteData(format: ImageByteFormat.png);
-            if (byteData != null) {
-              final downsampled = byteData.buffer.asUint8List();
-              _putInThumbnailCache(cacheKey, downsampled);
-              _putInThumbnailCache(assetId, downsampled);
-              return downsampled;
+            if (data != null && data.isNotEmpty) {
+              _saveVideoThumbnailToDisk(assetId, data);
+              _putInThumbnailCache(cacheKey, data);
+              _putInThumbnailCache(assetId, data);
+              return data;
             }
-          } catch (_) {
-          } finally {
-            frame?.image.dispose();
-            codec?.dispose();
-            buffer?.dispose();
+          }
+        } catch (_) {}
+      }
+
+      // 4. Secondary fallback: AssetEntity default thumbnailData
+      if (!assetId.startsWith('disk_')) {
+        try {
+          final asset = await AssetEntity.fromId(assetId);
+          final data = await asset?.thumbnailData;
+          if (data != null && data.isNotEmpty) {
+            _saveVideoThumbnailToDisk(assetId, data);
+            _putInThumbnailCache(cacheKey, data);
+            _putInThumbnailCache(assetId, data);
+            return data;
+          }
+        } catch (_) {}
+      }
+
+      return null;
+    }
+
+    // ==========================================
+    // PHOTO / IMAGE THUMBNAIL PIPELINE
+    // ==========================================
+    // 1. Try PhotoManager AssetEntity
+    if (!assetId.startsWith('disk_')) {
+      try {
+        final asset = await AssetEntity.fromId(assetId);
+        if (asset != null) {
+          final data = await asset.thumbnailDataWithSize(
+            ThumbnailSize(size, size),
+            quality: quality,
+          );
+          if (data != null && data.isNotEmpty) {
+            _putInThumbnailCache(cacheKey, data);
+            _putInThumbnailCache(assetId, data);
+            return data;
           }
         }
+      } catch (_) {}
+    }
+
+    // 2. Direct memory-mapped downsampled decoding for disk photos
+    if (resolvedFilePath == null || resolvedFilePath.isEmpty) {
+      dbItem ??= await _db.getItemByLocalId(assetId);
+      resolvedFilePath = dbItem?.localFilePath;
+    }
+
+    if (resolvedFilePath != null && resolvedFilePath.isNotEmpty) {
+      final f = File(resolvedFilePath);
+      if (await f.exists()) {
+        ImmutableBuffer? buffer;
+        Codec? codec;
+        FrameInfo? frame;
+        try {
+          // Memory-mapped zero-copy file buffer via C++ OS mmap
+          buffer = await ImmutableBuffer.fromFilePath(resolvedFilePath);
+          final descriptor = await ImageDescriptor.encoded(buffer);
+          // Maintain exact original aspect ratio without distortion or stretching
+          final double scale = (descriptor.width > descriptor.height)
+              ? size / descriptor.width
+              : size / descriptor.height;
+          final targetW = (descriptor.width * scale).round().clamp(1, size * 2);
+          final targetH = (descriptor.height * scale).round().clamp(1, size * 2);
+          codec = await descriptor.instantiateCodec(
+            targetWidth: targetW,
+            targetHeight: targetH,
+          );
+          frame = await codec.getNextFrame();
+          final byteData =
+              await frame.image.toByteData(format: ImageByteFormat.png);
+          if (byteData != null) {
+            final downsampled = byteData.buffer.asUint8List();
+            _putInThumbnailCache(cacheKey, downsampled);
+            _putInThumbnailCache(assetId, downsampled);
+            return downsampled;
+          }
+        } catch (_) {
+        } finally {
+          frame?.image.dispose();
+          codec?.dispose();
+          buffer?.dispose();
+        }
       }
-    } catch (_) {}
+    }
+
     return null;
   }
 
@@ -858,6 +1000,7 @@ class MediaScannerService {
     // Fast O(1) lightweight set lookups instead of loading heavy objects into memory
     final existingPaths = await _db.getAllLocalFilePathsSet();
     final existingNameSizeKeys = await _db.getAllNameSizeKeysSet();
+    final existingFileNamesMap = await _db.getAllFileNamesToLocalIdMap();
 
     for (final dirPath in allDirsToScan) {
       if (isJunkOrThumbnail(null, dirPath)) {
@@ -891,12 +1034,19 @@ class MediaScannerService {
           final nameSizeKey = '${fileName}_${stat.size}';
 
           // Zero-duplication guarantee: check if file is already indexed in SQLite
-          if (existingNameSizeKeys.contains(nameSizeKey)) {
+          if (existingFileNamesMap.containsKey(fileName) ||
+              existingNameSizeKeys.contains(nameSizeKey) ||
+              existingPaths.contains(path)) {
+            final existingId = existingFileNamesMap[fileName];
+            if (existingId != null) {
+              await _db.updateLocalFilePath(existingId, path);
+            }
             continue;
           }
 
           existingPaths.add(path);
           existingNameSizeKeys.add(nameSizeKey);
+          existingFileNamesMap[fileName] = 'disk_${path.hashCode.abs()}';
           var folderName = dirPath.split(RegExp(r'[\\/]')).last;
           
           if (dirPath.contains('WhatsApp') && folderName.toLowerCase() == 'private') {
@@ -1060,14 +1210,8 @@ class MediaScannerService {
         if (item.localFilePath != null && item.localFilePath!.isNotEmpty) {
           final file = File(item.localFilePath!);
           if (!file.existsSync()) {
-            // File not found at recorded path; verify if it exists anywhere or via PhotoManager
-            final alt = await getMediaFile(item.localId);
-            if (alt == null || !await alt.exists()) {
-              toDelete.add(item.localId);
-              continue;
-            } else {
-              await _db.updateLocalFilePath(item.localId, alt.path);
-            }
+            toDelete.add(item.localId);
+            continue;
           } else {
             // File confirmed to exist on disk
             continue;

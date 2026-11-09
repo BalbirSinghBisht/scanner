@@ -337,4 +337,18 @@ class DeviceSettingsHelper {
       });
     } catch (_) {}
   }
+
+  /// Extracts hardware-accelerated video thumbnail bytes via native platform decoder
+  static Future<Uint8List?> getVideoThumbnail(String path, {int width = 360, int height = 360}) async {
+    try {
+      final res = await _channel.invokeMethod<Uint8List>('getVideoThumbnail', {
+        'path': path,
+        'width': width,
+        'height': height,
+      });
+      return res;
+    } catch (_) {
+      return null;
+    }
+  }
 }

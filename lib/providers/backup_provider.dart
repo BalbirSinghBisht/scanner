@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/backup_settings.dart';
@@ -166,9 +167,9 @@ class BackupProvider extends ChangeNotifier {
         scanSince: forceFullScan ? null : _lastScanTime,
       );
 
-      // Prune deleted items on full scan or periodically (every 6 hours) so background checks stay instant
+      // Prune deleted items on full scan or periodically (every 10 seconds) so external file deletions reflect immediately
       final now = DateTime.now();
-      if (forceFullScan || _lastPruneTime == null || now.difference(_lastPruneTime!).inHours >= 6) {
+      if (forceFullScan || _lastPruneTime == null || now.difference(_lastPruneTime!).inSeconds >= 10) {
         await _scanner.pruneDeletedItems();
         _lastPruneTime = now;
       }
@@ -222,6 +223,11 @@ class BackupProvider extends ChangeNotifier {
 
   /// Refreshes all cached lists and dashboard statistics from SQLite manifest (Read-Only)
   Future<void> refreshData() async {
+    // Purge any disk vs MediaStore duplicates in SQLite manifest
+    try {
+      await _db.deduplicateManifest();
+    } catch (_) {}
+
     _stats = await _db.computeDashboardStats(
       isPartialAccess: _scanner.isPartialAccess,
       currentUploadStatus: _sync.isSyncing
@@ -231,7 +237,40 @@ class BackupProvider extends ChangeNotifier {
     );
 
     final rawItems = await _db.getAllItems(limit: 500);
-    _mediaItems = rawItems.where((it) => !it.isLockedFolder).toList();
+    
+    // Strict zero-duplication & file existence guarantee
+    final seen = <String>{};
+    final uniqueItems = <MediaItem>[];
+    final missingIds = <String>[];
+
+    for (final it in rawItems) {
+      if (it.isLockedFolder) continue;
+
+      // Active file existence check: if recorded on disk, verify file actually exists
+      if (it.localFilePath != null && it.localFilePath!.isNotEmpty) {
+        if (!File(it.localFilePath!).existsSync()) {
+          missingIds.add(it.localId);
+          continue;
+        }
+      }
+
+      final key = (it.localFilePath != null && it.localFilePath!.isNotEmpty)
+          ? it.localFilePath!
+          : it.fileName;
+      if (seen.add(key)) {
+        uniqueItems.add(it);
+      }
+    }
+    _mediaItems = uniqueItems;
+
+    // Asynchronously delete missing items from manifest & thumbnail cache
+    if (missingIds.isNotEmpty) {
+      _db.deleteMediaItems(missingIds);
+      for (final id in missingIds) {
+        _scanner.invalidateCache(id);
+      }
+    }
+
     _failedItems = (await _db.getFailedUploads()).where((it) => !it.isLockedFolder).toList();
     _recentUploads = (await _db.getRecentUploads()).where((it) => !it.isLockedFolder).toList();
 
@@ -246,6 +285,24 @@ class BackupProvider extends ChangeNotifier {
         .toList();
 
     notifyListeners();
+  }
+
+  /// Actively synchronizes the in-memory and database state with the filesystem:
+  /// - Prunes files deleted by external apps or file managers
+  /// - Refreshes UI immediately so deleted tiles vanish
+  /// - Scans for any newly added files
+  Future<void> syncWithFileSystem() async {
+    try {
+      await _scanner.pruneDeletedItems();
+      _lastPruneTime = DateTime.now();
+      await refreshData();
+      if (!_isScanning && !_sync.isSyncing) {
+        await startScan(forceFullScan: false);
+      }
+    } catch (e) {
+      debugPrint('[BackupProvider] syncWithFileSystem error: $e');
+      await refreshData();
+    }
   }
 
   /// Deletes a media item from the device storage and immediately removes it from the UI

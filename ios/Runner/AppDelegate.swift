@@ -245,6 +245,142 @@ class SilentAudioPlayer: NSObject, AVAudioPlayerDelegate {
         } else {
           result(FlutterError(code: "FILES_NOT_FOUND", message: "No valid files found to share", details: nil))
         }
+      case "trimVideo":
+        guard let args = call.arguments as? [String: Any],
+              let inputPath = args["inputPath"] as? String,
+              let outputPath = args["outputPath"] as? String,
+              let startMs = args["startMs"] as? Double,
+              let endMs = args["endMs"] as? Double else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Arguments missing for video trim", details: nil))
+          return
+        }
+        let muteAudio = (args["muteAudio"] as? Bool) ?? false
+        let inputUrl = URL(fileURLWithPath: inputPath)
+        let outputUrl = URL(fileURLWithPath: outputPath)
+
+        // Remove existing output file if exists
+        try? FileManager.default.removeItem(at: outputUrl)
+
+        let asset = AVAsset(url: inputUrl)
+        let exportSession: AVAssetExportSession?
+        let timeRange = CMTimeRange(start: CMTime(seconds: startMs / 1000.0, preferredTimescale: 600),
+                                    duration: CMTime(seconds: max(0.1, (endMs - startMs) / 1000.0), preferredTimescale: 600))
+
+        if muteAudio {
+          let composition = AVMutableComposition()
+          if let videoTrack = asset.tracks(withMediaType: .video).first,
+             let compVideoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            do {
+              try compVideoTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
+              compVideoTrack.preferredTransform = videoTrack.preferredTransform
+              exportSession = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality)
+            } catch {
+              result(FlutterError(code: "EXPORT_FAILED", message: "Composition failed: \(error)", details: nil))
+              return
+            }
+          } else {
+            result(FlutterError(code: "NO_VIDEO_TRACK", message: "Could not find video track", details: nil))
+            return
+          }
+        } else {
+          exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough)
+          exportSession?.timeRange = timeRange
+        }
+
+        guard let session = exportSession else {
+          result(FlutterError(code: "SESSION_FAILED", message: "Could not create export session", details: nil))
+          return
+        }
+
+        session.outputURL = outputUrl
+        session.outputFileType = .mp4
+        session.exportAsynchronously {
+          DispatchQueue.main.async {
+            switch session.status {
+            case .completed:
+              result(outputPath)
+            case .failed, .cancelled:
+              result(FlutterError(code: "EXPORT_ERROR", message: session.error?.localizedDescription ?? "Export failed", details: nil))
+            default:
+              result(FlutterError(code: "EXPORT_UNKNOWN", message: "Status: \(session.status.rawValue)", details: nil))
+            }
+          }
+        }
+      case "scanMediaFile":
+        result(true)
+      case "extractVideoFrames":
+        guard let args = call.arguments as? [String: Any],
+              let inputPath = args["inputPath"] as? String,
+              let startMs = args["startMs"] as? Double,
+              let endMs = args["endMs"] as? Double else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Arguments missing for frame extraction", details: nil))
+          return
+        }
+        let maxFrames = (args["maxFrames"] as? Int) ?? 12
+        let inputUrl = URL(fileURLWithPath: inputPath)
+        let asset = AVAsset(url: inputUrl)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 360, height: 360)
+
+        let duration = max(0.1, (endMs - startMs) / 1000.0)
+        let step = duration / Double(maxFrames)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+          var frames: [FlutterStandardTypedData] = []
+          for i in 0..<maxFrames {
+            let t = (startMs / 1000.0) + (Double(i) * step)
+            let cmTime = CMTime(seconds: t, preferredTimescale: 600)
+            if let cgImage = try? generator.copyCGImage(at: cmTime, actualTime: nil) {
+              let uiImage = UIImage(cgImage: cgImage)
+              if let data = uiImage.jpegData(compressionQuality: 0.75) {
+                frames.append(FlutterStandardTypedData(bytes: data))
+              }
+            }
+          }
+          DispatchQueue.main.async {
+            result(frames)
+          }
+        }
+      case "getVideoThumbnail":
+        guard let args = call.arguments as? [String: Any],
+              let path = args["path"] as? String else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Path is missing", details: nil))
+          return
+        }
+        let width = (args["width"] as? Double) ?? 360.0
+        let height = (args["height"] as? Double) ?? 360.0
+        let fileUrl = URL(fileURLWithPath: path)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+          let asset = AVAsset(url: fileUrl)
+          let generator = AVAssetImageGenerator(asset: asset)
+          generator.appliesPreferredTrackTransform = true
+          generator.maximumSize = CGSize(width: width, height: height)
+
+          let cmTime = CMTime(seconds: 0.1, preferredTimescale: 600)
+          if let cgImage = try? generator.copyCGImage(at: cmTime, actualTime: nil) {
+            let uiImage = UIImage(cgImage: cgImage)
+            if let data = uiImage.jpegData(compressionQuality: 0.8) {
+              DispatchQueue.main.async {
+                result(FlutterStandardTypedData(bytes: data))
+              }
+              return
+            }
+          }
+          if let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) {
+            let uiImage = UIImage(cgImage: cgImage)
+            if let data = uiImage.jpegData(compressionQuality: 0.8) {
+              DispatchQueue.main.async {
+                result(FlutterStandardTypedData(bytes: data))
+              }
+              return
+            }
+          }
+          DispatchQueue.main.async {
+            result(nil)
+          }
+        }
       default:
         result(FlutterMethodNotImplemented)
       }

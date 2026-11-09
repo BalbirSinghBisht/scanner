@@ -13,11 +13,14 @@ import '../../services/background_sync_manager.dart';
 import '../../services/device_settings_helper.dart';
 import '../../services/favorites_service.dart';
 import '../../services/media_scanner_service.dart';
+import '../../services/memories_service.dart';
 import '../widgets/haikei_background.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
+import '../widgets/memories_showcase.dart';
 import '../widgets/three_d_carousel.dart';
 import '../widgets/unrestricted_background_sheet.dart';
+import 'collage_maker_screen.dart';
 import 'media_preview_screen.dart';
 
 enum SortMode {
@@ -120,8 +123,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       _checkBackgroundOptimizationStatus();
       if (mounted) {
         final backup = context.read<BackupProvider>();
-        if (!backup.isScanning && MediaScannerService.instance.isPermissionGranted) {
-          backup.startScan(forceFullScan: false);
+        if (MediaScannerService.instance.isPermissionGranted) {
+          backup.syncWithFileSystem();
         }
       }
     }
@@ -313,6 +316,23 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         }
       }
     });
+  }
+
+  void _openCollageFromSelection(List<MediaItem> allItems) async {
+    final selectedItems =
+        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    if (selectedItems.length < 2) return;
+
+    final result = await Navigator.of(context).push<MediaItem>(
+      CupertinoPageRoute(
+        builder: (_) => CollageMakerScreen(items: selectedItems),
+      ),
+    );
+
+    if (result != null && mounted) {
+      _exitSelectionMode();
+      context.read<BackupProvider>().startScan(forceFullScan: false);
+    }
   }
 
   Future<void> _batchShareSelected(List<MediaItem> allItems) async {
@@ -1226,15 +1246,25 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     }
 
     final dateGroups = _groupByDate(filtered);
+    final memories = (_openedFolder == null &&
+            _activeFilter == MediaFilter.all &&
+            _searchQuery.isEmpty &&
+            _currentTabIndex == 0)
+        ? MemoriesService.instance.findMemories(rawItems)
+        : <MemoryGroup>[];
 
     return RefreshIndicator(
       color: c.primary,
       backgroundColor: c.surfaceElevated,
-      onRefresh: () => backup.startScan(forceFullScan: true),
+      onRefresh: () => backup.syncWithFileSystem(),
       child: CustomScrollView(
         cacheExtent: 250,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
+          if (memories.isNotEmpty)
+            SliverToBoxAdapter(
+              child: MemoriesShowcase(memories: memories),
+            ),
           for (final entry in dateGroups.entries) ...[
             // Date Section Header
             SliverToBoxAdapter(
@@ -1409,7 +1439,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     return RefreshIndicator(
       color: c.primary,
       backgroundColor: c.surfaceElevated,
-      onRefresh: () => backup.startScan(forceFullScan: true),
+      onRefresh: () => backup.syncWithFileSystem(),
       child: CustomScrollView(
         cacheExtent: 250,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -1632,7 +1662,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     return RefreshIndicator(
       color: c.primary,
       backgroundColor: c.surfaceElevated,
-      onRefresh: () => backup.startScan(forceFullScan: true),
+      onRefresh: () => backup.syncWithFileSystem(),
       child: GridView.builder(
         cacheExtent: 250,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -1925,6 +1955,24 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   ],
                 ),
               ),
+              if (_selectedIds.length >= 2 && _selectedIds.length <= 6)
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  minSize: 0,
+                  onPressed: () => _openCollageFromSelection(allItems),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.dashboard_customize_rounded, color: c.primary, size: 22),
+                      const SizedBox(height: 3),
+                      Text('Collage',
+                          style: TextStyle(
+                              color: c.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
               CupertinoButton(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 minSize: 0,
@@ -1956,7 +2004,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     return RefreshIndicator(
       color: c.primary,
       backgroundColor: c.surfaceElevated,
-      onRefresh: () => backup.startScan(forceFullScan: false),
+      onRefresh: () => backup.syncWithFileSystem(),
       child: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
