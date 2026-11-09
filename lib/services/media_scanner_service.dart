@@ -224,6 +224,7 @@ class MediaScannerService {
     bool forceFullScan = false,
     DateTime? scanSince,
     bool isBackground = false,
+    Future<void> Function()? onBatchPersisted,
   }) async {
     if (!isBackground) {
       final perm = await requestPermission();
@@ -240,40 +241,40 @@ class MediaScannerService {
       }
     }
 
-    // Always ensure database manifest has 0 duplicates
-    try {
-      await _db.deduplicateManifest();
-    } catch (_) {}
-
-    // Step 1: Resilient Multi-Type Album Discovery (never rely on synthetic "onlyAll: true" alone)
+    // Step 1: Resilient Multi-Type Album Discovery with retry for MediaStore propagation
     List<AssetPathEntity> albums = [];
     try {
-      albums = await PhotoManager.getAssetPathList(
-        type: RequestType.common, // Images and videos
-        hasAll: true,
-        onlyAll: false,
-      );
-
-      if (albums.isEmpty) {
+      for (int retry = 0; retry < 3 && albums.isEmpty; retry++) {
+        if (retry > 0) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
         albums = await PhotoManager.getAssetPathList(
-          type: RequestType.all,
+          type: RequestType.common, // Images and videos
           hasAll: true,
           onlyAll: false,
         );
-      }
 
-      if (albums.isEmpty) {
-        final img = await PhotoManager.getAssetPathList(
-          type: RequestType.image,
-          hasAll: true,
-          onlyAll: false,
-        );
-        final vid = await PhotoManager.getAssetPathList(
-          type: RequestType.video,
-          hasAll: true,
-          onlyAll: false,
-        );
-        albums = [...img, ...vid];
+        if (albums.isEmpty) {
+          albums = await PhotoManager.getAssetPathList(
+            type: RequestType.all,
+            hasAll: true,
+            onlyAll: false,
+          );
+        }
+
+        if (albums.isEmpty) {
+          final img = await PhotoManager.getAssetPathList(
+            type: RequestType.image,
+            hasAll: true,
+            onlyAll: false,
+          );
+          final vid = await PhotoManager.getAssetPathList(
+            type: RequestType.video,
+            hasAll: true,
+            onlyAll: false,
+          );
+          albums = [...img, ...vid];
+        }
       }
     } catch (e) {
       debugPrint('PhotoManager getAssetPathList error: $e');
@@ -479,6 +480,11 @@ class MediaScannerService {
         // Batch persist to SQLite database
         if (batchItems.isNotEmpty) {
           await _db.batchUpsertMediaItems(batchItems);
+          if (onBatchPersisted != null) {
+            try {
+              await onBatchPersisted();
+            } catch (_) {}
+          }
         }
 
         _scanProgressController.add(ScanProgressReport(
@@ -625,8 +631,10 @@ class MediaScannerService {
     MediaItem? dbItem;
 
     if (resolvedFilePath == null || resolvedFilePath.isEmpty) {
-      dbItem = await _db.getItemByLocalId(assetId);
-      resolvedFilePath = dbItem?.localFilePath;
+      try {
+        dbItem = await _db.getItemByLocalId(assetId);
+        resolvedFilePath = dbItem?.localFilePath;
+      } catch (_) {}
     }
 
     final effectiveIsVideo = isVideo || (dbItem?.isVideo ?? false);
@@ -1221,32 +1229,13 @@ class MediaScannerService {
         // C. PhotoManager assets
         if (albums.isNotEmpty) {
           if (!validAssetIds.contains(item.localId)) {
-            // Asset is not in any active album
-            final f = await getMediaFile(item.localId);
-            if (f == null || !await f.exists()) {
-              toDelete.add(item.localId);
-            }
-          } else {
-            // In validAssetIds, but verify underlying file still exists (MediaStore can be stale)
+            // Asset is not in any active album, verify if actually deleted
             try {
               final asset = await AssetEntity.fromId(item.localId);
-              if (asset == null) {
+              if (asset == null || !await asset.exists) {
                 toDelete.add(item.localId);
-              } else {
-                final exists = await asset.exists;
-                if (!exists) {
-                  toDelete.add(item.localId);
-                } else {
-                  final f = await asset.originFile ?? await asset.file;
-                  if (f == null || !await f.exists()) {
-                    toDelete.add(item.localId);
-                  } else {
-                    await _db.updateLocalFilePath(item.localId, f.path);
-                  }
-                }
               }
             } catch (_) {
-              // PhotoManager throws PlatformException when underlying file was deleted
               toDelete.add(item.localId);
             }
           }

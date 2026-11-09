@@ -123,9 +123,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       _checkBackgroundOptimizationStatus();
       if (mounted) {
         final backup = context.read<BackupProvider>();
-        if (MediaScannerService.instance.isPermissionGranted) {
-          backup.syncWithFileSystem();
-        }
+        MediaScannerService.instance.requestPermission().then((_) {
+          if (mounted && MediaScannerService.instance.isPermissionGranted) {
+            backup.syncWithFileSystem();
+          }
+        });
       }
     }
   }
@@ -134,28 +136,25 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     await MediaScannerService.instance.requestAllAppPermissions();
     if (!mounted) return;
 
+    final backup = context.read<BackupProvider>();
+    if (MediaScannerService.instance.isPermissionGranted) {
+      backup.startScan(forceFullScan: backup.mediaItems.isEmpty);
+    }
+
     try {
       await BackgroundSyncManager.instance.initialize();
     } catch (_) {}
     if (!mounted) return;
 
-    // Check device background permissions and show guide if any are missing
+    // Check device background permissions and show guide non-blocking if any are missing
     final isOptimized =
         await DeviceSettingsHelper.areAllRequiredPermissionsGranted();
     if (mounted) {
       setState(() => _isBackgroundOptimized = isOptimized);
       if (!isOptimized) {
-        await UnrestrictedBackgroundSheet.show(context, onSettingsChanged: () {
+        UnrestrictedBackgroundSheet.show(context, onSettingsChanged: () {
           _checkBackgroundOptimizationStatus();
         });
-      }
-    }
-
-    // Now start indexing only after permission setup is complete or dismissed
-    if (mounted) {
-      final backup = context.read<BackupProvider>();
-      if (!backup.isScanning && MediaScannerService.instance.isPermissionGranted) {
-        backup.startScan(forceFullScan: false);
       }
     }
   }
@@ -2032,21 +2031,19 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         ),
                       ),
                       child: Icon(
-                        backup.isScanning
-                            ? CupertinoIcons.photo_on_rectangle
-                            : (!hasPerm
-                                ? CupertinoIcons.lock
-                                : CupertinoIcons.photo_on_rectangle),
+                        !hasPerm
+                            ? CupertinoIcons.lock
+                            : CupertinoIcons.photo_on_rectangle,
                         size: 50,
-                        color: backup.isScanning ? c.primary : c.textTertiary,
+                        color: (hasPerm && backup.isScanning) ? c.primary : c.textTertiary,
                       ),
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      backup.isScanning
-                          ? 'Loading Photos...'
-                          : (!hasPerm
-                              ? 'Media Permission Required'
+                      !hasPerm
+                          ? 'Media Permission Required'
+                          : (backup.isScanning
+                              ? 'Loading Photos...'
                               : 'No Photos or Videos'),
                       style: TextStyle(
                         fontSize: 18,
@@ -2057,10 +2054,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      backup.isScanning
-                          ? 'Organizing your photo library'
-                          : (!hasPerm
-                              ? 'Please grant photo and video access to view your library.'
+                      !hasPerm
+                          ? 'Please grant photo and video access to view your library.'
+                          : (backup.isScanning
+                              ? 'Organizing your photo library'
                               : 'Photos and videos you take will appear here.'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -2068,16 +2065,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         color: c.textSecondary,
                       ),
                     ),
-                    if (!backup.isScanning) ...[
+                    if (!hasPerm) ...[
                       const SizedBox(height: 24),
-                      if (!hasPerm) ...[
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            await MediaScannerService.instance.requestPermission();
-                            await backup.startScan(forceFullScan: true);
-                          },
-                          icon: const Icon(Icons.security, size: 18),
-                          label: const Text('Grant Media Permission'),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          await MediaScannerService.instance.requestPermission();
+                          await backup.startScan(forceFullScan: true);
+                        },
+                        icon: const Icon(Icons.security, size: 18),
+                        label: const Text('Grant Media Permission'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: c.primary,
                             foregroundColor: Colors.white,
@@ -2121,9 +2117,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         ),
                       ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
             ),
           ),
         ),

@@ -9,13 +9,27 @@ import '../models/dashboard_stats.dart';
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+  static Completer<Database>? _dbOpenCompleter;
 
   DatabaseHelper._init();
 
   Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDB(AppConstants.databaseName);
-    return _database!;
+    if (_database != null && _database!.isOpen) return _database!;
+    if (_dbOpenCompleter != null) return _dbOpenCompleter!.future;
+
+    final completer = Completer<Database>();
+    completer.future.then<void>((_) {}, onError: (_) {});
+    _dbOpenCompleter = completer;
+    try {
+      final db = await _initDB(AppConstants.databaseName);
+      _database = db;
+      completer.complete(db);
+      return db;
+    } catch (e) {
+      _dbOpenCompleter = null;
+      completer.completeError(e);
+      rethrow;
+    }
   }
 
   Future<Database> _initDB(String filePath) async {
@@ -25,9 +39,22 @@ class DatabaseHelper {
     final db = await openDatabase(
       path,
       version: AppConstants.databaseVersion,
+      onConfigure: (db) async {
+        try {
+          await db.execute('PRAGMA journal_mode = WAL');
+          await db.execute('PRAGMA busy_timeout = 5000');
+          await db.execute('PRAGMA synchronous = NORMAL');
+        } catch (_) {}
+      },
       onCreate: _createDB,
       onUpgrade: _onUpgradeDB,
     );
+
+    // Automatically ensure indexes exist for fast scans and deduplication
+    try {
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_file_name ON ${AppConstants.manifestTableName} (file_name)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_local_file_path ON ${AppConstants.manifestTableName} (local_file_path)');
+    } catch (_) {}
 
     // Automatically purge any indexed items originating from .thumbnail / .thumbnails folders
     try {
@@ -101,6 +128,12 @@ class DatabaseHelper {
     );
     await db.execute(
       'CREATE INDEX idx_folder_name ON ${AppConstants.manifestTableName} (folder_name)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_file_name ON ${AppConstants.manifestTableName} (file_name)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_local_file_path ON ${AppConstants.manifestTableName} (local_file_path)',
     );
   }
 
@@ -368,14 +401,6 @@ class DatabaseHelper {
         ) AND local_file_path IS NOT NULL AND local_file_path != ''
       ''');
 
-      // 4. For any remaining exact duplicates by file_name, keep only the lowest rowid
-      await db.rawDelete('''
-        DELETE FROM ${AppConstants.manifestTableName}
-        WHERE rowid NOT IN (
-          SELECT min(rowid) FROM ${AppConstants.manifestTableName} GROUP BY file_name
-        )
-      ''');
-
       if (deletedCount > 0) {
         debugPrint('[DatabaseHelper] Purged $deletedCount duplicate media records from manifest');
       }
@@ -515,75 +540,79 @@ class DatabaseHelper {
     return maps.map((m) => MediaItem.fromMap(m)).toList();
   }
 
-  /// Atomically claims a single pending item by transitioning its state to UPLOADING in a transaction.
+  /// Atomically claims a single pending item by transitioning its state to UPLOADING.
   /// Prioritizes newest media first (created_at DESC) so recently taken photos sync immediately while older items wait in queue.
-  /// Prevents race conditions between multiple isolates (e.g. background service and foreground app).
+  /// Uses atomic conditional update to prevent race conditions without deadlocking SQLite connection.
   Future<MediaItem?> claimNextPendingUpload({
     bool includePhotos = true,
     bool includeVideos = true,
     int? maxVideoSizeBytes,
   }) async {
     final db = await database;
-    return await db.transaction<MediaItem?>((txn) async {
-      final conditions = <String>[];
-      final args = <dynamic>[
-        UploadState.READY_TO_UPLOAD.name,
-        UploadState.RETRY_PENDING.name,
-      ];
+    final conditions = <String>[];
+    final args = <dynamic>[
+      UploadState.READY_TO_UPLOAD.name,
+      UploadState.RETRY_PENDING.name,
+    ];
 
-      conditions.add('(upload_state = ? OR upload_state = ?)');
+    conditions.add('(upload_state = ? OR upload_state = ?)');
 
-      if (!includePhotos && !includeVideos) {
-        return null;
-      } else if (includePhotos && !includeVideos) {
-        conditions.add('media_type = ?');
-        args.add(AppMediaType.image.name);
-      } else if (!includePhotos && includeVideos) {
-        conditions.add('media_type = ?');
-        args.add(AppMediaType.video.name);
-      }
+    if (!includePhotos && !includeVideos) {
+      return null;
+    } else if (includePhotos && !includeVideos) {
+      conditions.add('media_type = ?');
+      args.add(AppMediaType.image.name);
+    } else if (!includePhotos && includeVideos) {
+      conditions.add('media_type = ?');
+      args.add(AppMediaType.video.name);
+    }
 
-      if (maxVideoSizeBytes != null && maxVideoSizeBytes > 0) {
-        conditions.add(
-          '(media_type = ? OR (media_type = ? AND file_size <= ?))',
-        );
-        args.add(AppMediaType.image.name);
-        args.add(AppMediaType.video.name);
-        args.add(maxVideoSizeBytes);
-      }
-
-      final whereClause = conditions.join(' AND ');
-
-      final maps = await txn.query(
-        AppConstants.manifestTableName,
-        where: whereClause,
-        whereArgs: args,
-        orderBy: 'created_at DESC',
-        limit: 1,
+    if (maxVideoSizeBytes != null && maxVideoSizeBytes > 0) {
+      conditions.add(
+        '(media_type = ? OR (media_type = ? AND file_size <= ?))',
       );
+      args.add(AppMediaType.image.name);
+      args.add(AppMediaType.video.name);
+      args.add(maxVideoSizeBytes);
+    }
 
-      if (maps.isEmpty) {
-        return null;
-      }
+    final whereClause = conditions.join(' AND ');
 
-      final item = MediaItem.fromMap(maps.first);
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final maps = await db.query(
+      AppConstants.manifestTableName,
+      where: whereClause,
+      whereArgs: args,
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
 
-      await txn.update(
-        AppConstants.manifestTableName,
-        {
-          'upload_state': UploadState.UPLOADING.name,
-          'last_attempt_at': nowMs,
-        },
-        where: 'local_id = ?',
-        whereArgs: [item.localId],
-      );
+    if (maps.isEmpty) {
+      return null;
+    }
 
-      return item.copyWith(
-        uploadState: UploadState.UPLOADING,
-        lastAttemptAt: DateTime.fromMillisecondsSinceEpoch(nowMs),
-      );
-    });
+    final item = MediaItem.fromMap(maps.first);
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    // Atomically transition to UPLOADING only if still READY or RETRY
+    final updatedRows = await db.update(
+      AppConstants.manifestTableName,
+      {
+        'upload_state': UploadState.UPLOADING.name,
+        'last_attempt_at': nowMs,
+      },
+      where: 'local_id = ? AND (upload_state = ? OR upload_state = ?)',
+      whereArgs: [item.localId, UploadState.READY_TO_UPLOAD.name, UploadState.RETRY_PENDING.name],
+    );
+
+    if (updatedRows == 0) {
+      // Race condition handled: another isolate claimed it in the interim
+      return null;
+    }
+
+    return item.copyWith(
+      uploadState: UploadState.UPLOADING,
+      lastAttemptAt: DateTime.fromMillisecondsSinceEpoch(nowMs),
+    );
   }
 
   Future<List<MediaItem>> getFailedUploads({int limit = 100}) async {

@@ -85,6 +85,8 @@ class BackupProvider extends ChangeNotifier {
         // Auto-start upload as soon as files are in the dashboard
         await _autoStartUpload();
         notifyListeners();
+      } else if (_mediaItems.isEmpty && report.scannedItems > 0) {
+        await refreshData();
       }
     });
 
@@ -162,14 +164,20 @@ class BackupProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final shouldForce = forceFullScan || _mediaItems.isEmpty;
       await _scanner.scanMedia(
-        forceFullScan: forceFullScan,
-        scanSince: forceFullScan ? null : _lastScanTime,
+        forceFullScan: shouldForce,
+        scanSince: shouldForce ? null : _lastScanTime,
+        onBatchPersisted: () async {
+          if (_mediaItems.isEmpty) {
+            await refreshData();
+          }
+        },
       );
 
       // Prune deleted items on full scan or periodically (every 10 seconds) so external file deletions reflect immediately
       final now = DateTime.now();
-      if (forceFullScan || _lastPruneTime == null || now.difference(_lastPruneTime!).inSeconds >= 10) {
+      if (shouldForce || _lastPruneTime == null || now.difference(_lastPruneTime!).inSeconds >= 10) {
         await _scanner.pruneDeletedItems();
         _lastPruneTime = now;
       }
@@ -246,8 +254,8 @@ class BackupProvider extends ChangeNotifier {
     for (final it in rawItems) {
       if (it.isLockedFolder) continue;
 
-      // Active file existence check: if recorded on disk, verify file actually exists
-      if (it.localFilePath != null && it.localFilePath!.isNotEmpty) {
+      // Active file existence check: ONLY for direct disk scan items (disk_...)
+      if (it.localId.startsWith('disk_') && it.localFilePath != null && it.localFilePath!.isNotEmpty) {
         if (!File(it.localFilePath!).existsSync()) {
           missingIds.add(it.localId);
           continue;
@@ -263,7 +271,7 @@ class BackupProvider extends ChangeNotifier {
     }
     _mediaItems = uniqueItems;
 
-    // Asynchronously delete missing items from manifest & thumbnail cache
+    // Asynchronously delete missing disk items from manifest & thumbnail cache
     if (missingIds.isNotEmpty) {
       _db.deleteMediaItems(missingIds);
       for (final id in missingIds) {

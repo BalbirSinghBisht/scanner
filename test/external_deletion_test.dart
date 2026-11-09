@@ -20,7 +20,7 @@ void main() {
     // Filter logic as used in BackupProvider.refreshData()
     final items = [
       MediaItem(
-        localId: '1',
+        localId: 'disk_1',
         fileName: 'surviving.jpg',
         mediaType: AppMediaType.image,
         mimeType: 'image/jpeg',
@@ -29,7 +29,7 @@ void main() {
         localFilePath: survivingFile.path,
       ),
       MediaItem(
-        localId: '2',
+        localId: 'disk_2',
         fileName: 'deleted.jpg',
         mediaType: AppMediaType.image,
         mimeType: 'image/jpeg',
@@ -43,7 +43,7 @@ void main() {
     final missingIds = <String>[];
 
     for (final it in items) {
-      if (it.localFilePath != null && it.localFilePath!.isNotEmpty) {
+      if (it.localId.startsWith('disk_') && it.localFilePath != null && it.localFilePath!.isNotEmpty) {
         if (!File(it.localFilePath!).existsSync()) {
           missingIds.add(it.localId);
           continue;
@@ -53,8 +53,8 @@ void main() {
     }
 
     expect(uniqueItems.length, 1);
-    expect(uniqueItems.first.localId, '1');
-    expect(missingIds, ['2']);
+    expect(uniqueItems.first.localId, 'disk_1');
+    expect(missingIds, ['disk_2']);
 
     tempDir.deleteSync(recursive: true);
   });

@@ -75,18 +75,6 @@ bool _hasPendingNewMediaTrigger = false;
 Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
   if (_isBackgroundCycleRunning) {
     _hasPendingNewMediaTrigger = true;
-    // Fast opportunistic scan so newly captured photo/video is in DB immediately
-    try {
-      await MediaScannerService.instance.scanDirectDirectories();
-      final lastScan = await SettingsRepository.instance.getLastScanTime();
-      await MediaScannerService.instance.scanMedia(
-        forceFullScan: false,
-        scanSince: lastScan,
-        isBackground: true,
-      );
-      await SettingsRepository.instance.saveLastScanTime(DateTime.now());
-      debugPrint('[BackgroundSync] Immediate scan captured new media while upload running.');
-    } catch (_) {}
     return;
   }
   _isBackgroundCycleRunning = true;
