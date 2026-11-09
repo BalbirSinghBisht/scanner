@@ -238,7 +238,7 @@ class _UnrestrictedBackgroundSheetState
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Enable permissions so gallery and deletion work smoothly',
+                            'Follow the steps below to enable required permissions',
                             style: TextStyle(
                               color: c.textSecondary,
                               fontSize: 12,
@@ -289,8 +289,8 @@ class _UnrestrictedBackgroundSheetState
                           _isLoading
                               ? 'Checking device permissions...'
                               : (_isAllConfigured
-                                  ? 'Fully Configured: All permissions are active. Media will sync and delete seamlessly.'
-                                  : 'Configuration Needed: Please enable the required permissions below to proceed.'),
+                                  ? '✓ All permissions completed.'
+                                  : 'Complete the steps below for each permission:'),
                           style: TextStyle(
                             color: _isAllConfigured
                                 ? (isDark
@@ -317,8 +317,8 @@ class _UnrestrictedBackgroundSheetState
                   icon: CupertinoIcons.folder_badge_plus,
                   title: 'All Files Access (Delete & Move)',
                   subtitle: _isAllFilesGranted
-                      ? 'Full file management access is granted. Photos and videos can be permanently deleted and moved.'
-                      : 'Required to permanently delete and modify photos/videos from Camera, WhatsApp, and downloads on Android 11+.',
+                      ? '✓ Completed'
+                      : '1. Tap "Allow All Files Access" below\n2. Turn ON "Allow access to manage all files"',
                   isGranted: _isAllFilesGranted,
                   actionText: 'Allow All Files Access',
                   onAction: _requestAllFilesAccess,
@@ -333,8 +333,8 @@ class _UnrestrictedBackgroundSheetState
                   icon: CupertinoIcons.photo_on_rectangle,
                   title: 'Photos & Videos Access',
                   subtitle: _isMediaGranted
-                      ? 'Media library read permission is active.'
-                      : 'Required to read, index, and organize your media.',
+                      ? '✓ Completed'
+                      : '1. Tap "Grant Media Access" below\n2. Select "Allow all" or "Allow" in the popup',
                   isGranted: _isMediaGranted,
                   actionText: 'Grant Media Access',
                   onAction: _requestMediaAccess,
@@ -349,8 +349,8 @@ class _UnrestrictedBackgroundSheetState
                   icon: CupertinoIcons.bolt_fill,
                   title: 'Unrestricted Battery',
                   subtitle: _isUnrestricted
-                      ? 'Battery optimization is disabled. Gallery can run continuously in the background.'
-                      : 'Allows background sync to run continuously without being paused or put to sleep by the operating system.',
+                      ? '✓ Completed'
+                      : '1. Tap "Allow Unrestricted Run" below\n2. Tap "Allow" (or select "Unrestricted")',
                   isGranted: _isUnrestricted,
                   actionText: 'Allow Unrestricted Run',
                   onAction: _requestUnrestrictedBattery,
@@ -370,8 +370,9 @@ class _UnrestrictedBackgroundSheetState
                     context: context,
                     icon: CupertinoIcons.bell_fill,
                     title: 'Background Notifications',
-                    subtitle:
-                        'Allows persistent background services so Android keeps sync active without killing the process.',
+                    subtitle: _isNotificationGranted
+                        ? '✓ Completed'
+                        : '1. Tap "Enable Notifications" below\n2. Tap "Allow" in the popup',
                     isGranted: _isNotificationGranted,
                     actionText: 'Enable Notifications',
                     onAction: _requestNotification,
@@ -423,7 +424,7 @@ class _UnrestrictedBackgroundSheetState
                         Text(
                           _isAllConfigured
                               ? 'Continue to Gallery'
-                              : 'Enable All Permissions to Continue ($_remainingPermissionsCount remaining)',
+                              : 'Complete Steps to Continue ($_remainingPermissionsCount remaining)',
                           style: TextStyle(
                             color: _isAllConfigured
                                 ? Colors.white
@@ -528,9 +529,10 @@ class _UnrestrictedBackgroundSheetState
           Text(
             subtitle,
             style: TextStyle(
-              color: c.textSecondary,
+              color: isGranted ? const Color(0xFF81C784) : c.textSecondary,
               fontSize: 12.5,
-              height: 1.35,
+              height: 1.4,
+              fontWeight: isGranted ? FontWeight.w500 : FontWeight.w400,
             ),
           ),
           if (!isGranted) ...[
@@ -647,12 +649,13 @@ class _UnrestrictedBackgroundSheetState
           const SizedBox(height: 10),
           Text(
             isGranted
-                ? 'Autostart is enabled. Background sync will run reliably.'
-                : 'Allows automatic background backup to start and resume reliably.',
+                ? '✓ Completed'
+                : '1. Tap "Enable Autostart" below\n2. Find "Gallery" in the list\n3. Turn the switch ON',
             style: TextStyle(
-              color: c.textSecondary,
+              color: isGranted ? const Color(0xFF81C784) : c.textSecondary,
               fontSize: 12.5,
-              height: 1.35,
+              height: 1.4,
+              fontWeight: isGranted ? FontWeight.w500 : FontWeight.w400,
             ),
           ),
           if (!isGranted) ...[
