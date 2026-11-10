@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/theme/app_theme.dart';
@@ -198,7 +199,18 @@ class _MemoriesStoryScreenState extends State<MemoriesStoryScreen>
     final favService = FavoritesService.instance;
     final isFav = favService.isFavorite(_currentItem.localId);
 
-    return Scaffold(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF000000),
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Color(0xFF000000),
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarDividerColor: Color(0xFF000000),
+        systemNavigationBarContrastEnforced: false,
+        systemStatusBarContrastEnforced: false,
+      ),
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
         onVerticalDragUpdate: (details) {
@@ -307,14 +319,10 @@ class _MemoriesStoryScreenState extends State<MemoriesStoryScreen>
                             padding: EdgeInsets.zero,
                             minSize: 0,
                             onPressed: () => Navigator.of(context).pop(),
-                            child: Container(
-                              padding: const EdgeInsets.all(7),
-                              decoration: BoxDecoration(
-                                color: Colors.white24,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white30, width: 0.5),
-                              ),
-                              child: const Icon(CupertinoIcons.xmark, color: Colors.white, size: 18),
+                            child: Icon(
+                              CupertinoIcons.xmark_circle_fill,
+                              color: Colors.white.withOpacity(0.7),
+                              size: 28,
                             ),
                           ),
                         ],
@@ -380,6 +388,7 @@ class _MemoriesStoryScreenState extends State<MemoriesStoryScreen>
           ),
         ),
       ),
+    ),
     );
   }
 

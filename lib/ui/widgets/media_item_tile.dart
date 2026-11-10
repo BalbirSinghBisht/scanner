@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
@@ -7,9 +6,10 @@ import '../../services/favorites_service.dart';
 import '../screens/media_preview_screen.dart';
 import 'cached_thumbnail_image.dart';
 
-/// Liquidmorphism Media Grid Tile:
-/// Clean edge-to-edge layout with organic spring dynamics, dynamic selection
-/// ripple, frosted liquid glass badges, and specular rim highlights.
+/// Apple Photos Grid Item Tile:
+/// Authentic iOS Photos item presentation with edge-to-edge precision,
+/// native Apple selection checkmarks, subtle interactive scale physics,
+/// video duration pill badges, and favorite indicators.
 class MediaItemTile extends StatefulWidget {
   final MediaItem item;
   final VoidCallback? onTap;
@@ -39,10 +39,10 @@ class _MediaItemTileState extends State<MediaItemTile>
     final c = AppTheme.colors(context);
     final isFavorite = FavoritesService.instance.isFavorite(widget.item.localId);
 
-    // Target scale when pressed or selected
+    // Apple subtle interactive scale
     final double targetScale = widget.isSelected
-        ? 0.92
-        : (_isPressed ? 0.95 : 1.0);
+        ? 0.94
+        : (_isPressed ? 0.97 : 1.0);
 
     return Listener(
       onPointerDown: (_) => setState(() => _isPressed = true),
@@ -66,30 +66,24 @@ class _MediaItemTileState extends State<MediaItemTile>
         behavior: HitTestBehavior.opaque,
         child: AnimatedScale(
           scale: targetScale,
-          duration: const Duration(milliseconds: 220),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           child: Container(
             decoration: BoxDecoration(
-              color: c.surface,
-              borderRadius: BorderRadius.circular(10),
+              color: c.surfaceElevated,
+              borderRadius: BorderRadius.circular(widget.isSelected ? 8 : 4),
               border: widget.isSelected
-                  ? Border.all(color: c.primary, width: 2.4)
-                  : Border.all(color: c.glassBorderSubtle, width: 0.5),
+                  ? Border.all(color: c.primary, width: 2.5)
+                  : null,
               boxShadow: widget.isSelected
                   ? [
                       BoxShadow(
-                        color: c.primary.withOpacity(0.45),
-                        blurRadius: 12,
-                        offset: const Offset(0, 3),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(c.isDark ? 0.16 : 0.04),
-                        blurRadius: 6,
+                        color: c.primary.withOpacity(0.35),
+                        blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
-                    ],
+                    ]
+                  : null,
             ),
             clipBehavior: Clip.antiAlias,
             child: Stack(
@@ -108,58 +102,61 @@ class _MediaItemTileState extends State<MediaItemTile>
                   ),
                 ),
 
-                // Top Specular Glass Sheen
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 1.2,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.white.withOpacity(0.40),
-                          Colors.white.withOpacity(0.10),
-                          Colors.transparent,
-                        ],
+                // Subtle Bottom Gradient Vignette for text readability
+                if (widget.item.mediaType == AppMediaType.video || isFavorite)
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 36,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Color(0x80000000),
+                            Colors.transparent,
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                // Selection Checkmark & Liquid Ring (Top-Right)
+                // Apple Photos Selection Circle (Top-Right)
                 if (widget.isSelectionMode)
                   Positioned(
                     top: 6,
                     right: 6,
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
+                      duration: const Duration(milliseconds: 180),
                       curve: Curves.easeOutCubic,
-                      width: 24,
-                      height: 24,
+                      width: 22,
+                      height: 22,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: widget.isSelected
                             ? c.primary
-                            : Colors.black.withOpacity(0.42),
+                            : const Color(0x33000000),
                         border: Border.all(
                           color: Colors.white,
-                          width: 1.6,
+                          width: widget.isSelected ? 1.5 : 1.5,
                         ),
-                        boxShadow: [
+                        boxShadow: const [
                           BoxShadow(
-                            color: widget.isSelected
-                                ? c.primary.withOpacity(0.50)
-                                : Colors.black.withOpacity(0.35),
-                            blurRadius: widget.isSelected ? 8 : 4,
+                            color: Color(0x33000000),
+                            blurRadius: 3,
+                            offset: Offset(0, 1),
                           ),
                         ],
                       ),
                       child: widget.isSelected
-                          ? const Icon(
-                              Icons.check,
-                              size: 15,
-                              color: Colors.white,
+                          ? const Center(
+                              child: Icon(
+                                CupertinoIcons.checkmark,
+                                size: 13,
+                                color: Colors.white,
+                              ),
                             )
                           : null,
                     ),
@@ -167,83 +164,64 @@ class _MediaItemTileState extends State<MediaItemTile>
 
                 // Subtle Favorite Heart (Bottom-Left)
                 if (isFavorite && !widget.isSelectionMode)
-                  Positioned(
-                    bottom: 6,
+                  const Positioned(
+                    bottom: 5,
                     left: 6,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          padding: const EdgeInsets.all(4.0),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.48),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.24),
-                              width: 0.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: c.accentRose.withOpacity(0.3),
-                                blurRadius: 6,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            CupertinoIcons.heart_fill,
-                            size: 11,
-                            color: Colors.white,
-                          ),
+                    child: Icon(
+                      CupertinoIcons.heart_fill,
+                      size: 13,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          color: Color(0x80000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
                         ),
-                      ),
+                      ],
                     ),
                   ),
 
-                // Video Duration Frosted Liquid Pill (Bottom-Right)
+                // Video Duration Badge (Bottom-Right)
                 if (widget.item.mediaType == AppMediaType.video)
                   Positioned(
-                    bottom: 6,
+                    bottom: 5,
                     right: 6,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.58),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.24),
-                              width: 0.5,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          CupertinoIcons.play_fill,
+                          size: 9,
+                          color: Colors.white,
+                          shadows: [
+                            Shadow(
+                              color: Color(0x99000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 1),
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                CupertinoIcons.play_fill,
-                                size: 8,
-                                color: Colors.white,
-                              ),
-                              if (widget.item.durationSeconds != null &&
-                                  widget.item.durationSeconds! > 0) ...[
-                                const SizedBox(width: 3.5),
-                                Text(
-                                  widget.item.formattedDuration,
-                                  style: const TextStyle(
-                                    fontSize: 9.5,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: -0.1,
-                                  ),
+                          ],
+                        ),
+                        if (widget.item.durationSeconds != null &&
+                            widget.item.durationSeconds! > 0) ...[
+                          const SizedBox(width: 3),
+                          Text(
+                            widget.item.formattedDuration,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.2,
+                              shadows: [
+                                Shadow(
+                                  color: Color(0x99000000),
+                                  blurRadius: 4,
+                                  offset: Offset(0, 1),
                                 ),
                               ],
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
+                        ],
+                      ],
                     ),
                   ),
               ],

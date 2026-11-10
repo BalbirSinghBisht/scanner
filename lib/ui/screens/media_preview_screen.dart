@@ -84,14 +84,17 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
         widget.initialIndex.clamp(0, _items.isEmpty ? 0 : _items.length - 1);
     _pageController = PageController(initialPage: _currentIndex);
 
-    // Initial system UI styling with transparent navigation
+    // Initial system UI styling with solid dark navigation
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
+      statusBarColor: Color(0xFF000000),
       statusBarIconBrightness: Brightness.light,
       statusBarBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarColor: Color(0xFF000000),
       systemNavigationBarIconBrightness: Brightness.light,
-      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarDividerColor: Color(0xFF000000),
+      systemNavigationBarContrastEnforced: false,
+      systemStatusBarContrastEnforced: false,
     ));
 
     _zoomAnimController = AnimationController(
@@ -121,7 +124,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 
   @override
   void dispose() {
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     _dismissAnimController.dispose();
     _videoController?.dispose();
     _pageController.dispose();
@@ -196,7 +199,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 
   void _animateAndDismiss() {
     if (!mounted) return;
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     _videoController?.pause();
     final screenHeight = MediaQuery.of(context).size.height;
     _dismissAnimation = Tween<double>(
@@ -243,7 +246,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 
     if (nextState) {
       // Re-enable system UI overlays when controls appear
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
     } else {
       // Enter true immersive full screen: hides mobile status bar & back bar completely
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -478,21 +481,21 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       builder: (ctx) => ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
           child: Container(
             decoration: BoxDecoration(
-              color: c.surfaceGlassFloating,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              color: c.isDark ? const Color(0xE61C1C1E) : const Color(0xF2FFFFFF),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
               border: Border.all(
-                color: c.glassBorder,
-                width: 0.6,
+                color: c.glassBorderSubtle,
+                width: 0.5,
               ),
             ),
             padding: EdgeInsets.only(
-              top: 12,
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(context).padding.bottom + 20,
+              top: 10,
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.of(context).padding.bottom + 16,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -500,7 +503,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               children: [
                 Center(
                   child: Container(
-                    width: 38,
+                    width: 36,
                     height: 5,
                     decoration: BoxDecoration(
                       color: c.textTertiary.withOpacity(0.4),
@@ -518,7 +521,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                     color: c.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -0.3,
+                    letterSpacing: -0.4,
                   ),
                 ),
                 CupertinoButton(
@@ -538,12 +541,12 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             ),
             const SizedBox(height: 14),
 
-            // 3D Grid of Stat Cards
+            // Apple Grouped Info Cards
             Row(
               children: [
                 Expanded(
                   child: _buildDetailCard(
-                    Icons.aspect_ratio_rounded,
+                    CupertinoIcons.viewfinder,
                     'Resolution',
                     item.formattedDimensions.isNotEmpty
                         ? item.formattedDimensions
@@ -554,7 +557,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                 const SizedBox(width: 10),
                 Expanded(
                   child: _buildDetailCard(
-                    Icons.data_usage_rounded,
+                    CupertinoIcons.chart_pie,
                     'File Size',
                     item.formattedSize,
                     c,
@@ -567,7 +570,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               children: [
                 Expanded(
                   child: _buildDetailCard(
-                    Icons.folder_outlined,
+                    CupertinoIcons.folder,
                     'Album',
                     item.displayFolderName,
                     c,
@@ -576,7 +579,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                 const SizedBox(width: 10),
                 Expanded(
                   child: _buildDetailCard(
-                    Icons.extension_outlined,
+                    CupertinoIcons.doc,
                     'Format',
                     item.mimeType.split('/').last.toUpperCase(),
                     c,
@@ -586,10 +589,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             ),
             const SizedBox(height: 14),
 
-            _buildDetailRow(Icons.description_outlined, 'File Name', item.fileName, c),
-            _buildDetailRow(Icons.calendar_today_outlined, 'Date Taken', df.format(item.createdAt), c),
+            _buildDetailRow(CupertinoIcons.doc_text, 'File Name', item.fileName, c),
+            _buildDetailRow(CupertinoIcons.calendar, 'Date Taken', df.format(item.createdAt), c),
             if (item.localFilePath != null)
-              _buildDetailRow(Icons.sd_storage_outlined, 'Storage Path', item.localFilePath!, c),
+              _buildDetailRow(CupertinoIcons.device_phone_portrait, 'Storage Path', item.localFilePath!, c),
             const SizedBox(height: 8),
           ],
         ),
@@ -603,9 +606,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        color: c.surfaceGlass,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.glassBorder, width: 0.6),
+        color: c.isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.glassBorderSubtle, width: 0.5),
       ),
       child: Row(
         children: [
@@ -705,14 +708,25 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     final contentScale = (1.0 - dragProgress * 0.14).clamp(0.86, 1.0);
     final controlsOpacity = _showControls ? (1.0 - dragProgress * 2.5).clamp(0.0, 1.0) : 0.0;
 
-    return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, result) {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      },
-      child: Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Listener(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF000000),
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Color(0xFF000000),
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarDividerColor: Color(0xFF000000),
+        systemNavigationBarContrastEnforced: false,
+        systemStatusBarContrastEnforced: false,
+      ),
+      child: PopScope(
+        canPop: true,
+        onPopInvokedWithResult: (didPop, result) {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
+        },
+        child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Listener(
         onPointerDown: _onPointerDown,
         onPointerMove: _onPointerMove,
         onPointerUp: _onPointerUp,
@@ -1032,10 +1046,22 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               ),
             ),
           ),
+          // Solid Phone Navigation Bar Base (Pure Black)
+          if (MediaQuery.of(context).padding.bottom > 0)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: MediaQuery.of(context).padding.bottom,
+              child: const ColoredBox(
+                color: Color(0xFF000000),
+              ),
+            ),
         ],
       ),
     ),
     ),
+  ),
   );
   }
 
@@ -1078,32 +1104,32 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                         : 16 / 9,
                     child: VideoPlayer(_videoController!),
                   ),
-            // 3D Frosted Play/Pause Center Button
+            // Apple Photos Frosted Play Center Button
             if (!_videoController!.value.isPlaying)
               GestureDetector(
                 onTap: () {
                   _videoController!.play();
                   setState(() {});
                 },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.55),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
-                      width: 1.5,
+                child: ClipOval(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.45),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.25),
+                          width: 1.0,
+                        ),
+                      ),
+                      padding: const EdgeInsets.all(18),
+                      child: const Icon(
+                        CupertinoIcons.play_fill,
+                        color: Colors.white,
+                        size: 38,
+                      ),
                     ),
-                    boxShadow: AppTheme.depthShadow(
-                      depth: 12,
-                      glowColor: AppTheme.primaryAccent,
-                      glowOpacity: 0.3,
-                    ),
-                  ),
-                  padding: const EdgeInsets.all(16),
-                  child: const Icon(
-                    Icons.play_arrow_rounded,
-                    color: AppTheme.primaryAccent,
-                    size: 48,
                   ),
                 ),
               ),

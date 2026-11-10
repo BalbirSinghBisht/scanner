@@ -6,6 +6,9 @@ import '../../services/memories_service.dart';
 import '../screens/memories_story_screen.dart';
 import 'cached_thumbnail_image.dart';
 
+/// Apple Photos Memories & "On This Day" Showcase:
+/// Presents Apple Photos story cards with authentic iOS typography,
+/// delicate gradient scrims, year badges, and smooth interactive scale physics.
 class MemoriesShowcase extends StatelessWidget {
   final List<MemoryGroup> memories;
 
@@ -26,51 +29,34 @@ class MemoriesShowcase extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Section Header
+        // Apple Photos Section Header
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [c.primary, c.accent],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  CupertinoIcons.sparkles,
-                  color: Colors.white,
-                  size: 14,
+              Text(
+                'Memories',
+                style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.4,
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                'On This Day',
-                style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  color: c.primary.withOpacity(0.15),
+                  color: c.primary.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: c.primary.withOpacity(0.3), width: 0.5),
                 ),
                 child: Text(
-                  'Throwback',
+                  'On This Day',
                   style: TextStyle(
-                    color: c.primaryLight,
-                    fontSize: 10,
+                    color: c.primary,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
+                    letterSpacing: -0.1,
                   ),
                 ),
               ),
@@ -78,11 +64,11 @@ class MemoriesShowcase extends StatelessWidget {
           ),
         ),
 
-        // Horizontal Story Cards
+        // Horizontal Apple Memories Cards
         SizedBox(
-          height: 165,
+          height: 170,
           child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
             itemCount: memories.length,
@@ -105,7 +91,7 @@ class MemoriesShowcase extends StatelessWidget {
             },
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
       ],
     );
   }
@@ -138,33 +124,26 @@ class _MemoryCardState extends State<_MemoryCard> {
       onTapCancel: () => setState(() => _isPressed = false),
       onTap: widget.onTap,
       child: AnimatedScale(
-        scale: _isPressed ? 0.94 : 1.0,
+        scale: _isPressed ? 0.95 : 1.0,
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOutCubic,
         child: Container(
-          width: 116,
-          height: 165,
+          width: 120,
+          height: 170,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                c.primary.withOpacity(0.4),
-                c.accent.withOpacity(0.2),
-              ],
-            ),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: c.primary.withOpacity(0.2),
+                color: c.isDark
+                    ? const Color(0x66000000)
+                    : const Color(0x1A000000),
                 blurRadius: 10,
-                offset: const Offset(0, 4),
+                offset: const Offset(0, 3),
               ),
             ],
           ),
-          padding: const EdgeInsets.all(2), // Outer glowing gradient border
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -173,29 +152,29 @@ class _MemoryCardState extends State<_MemoryCard> {
                   localId: cover.localId,
                   filePath: cover.localFilePath,
                   isVideo: cover.mediaType.name == 'video',
-                  size: 320,
+                  size: 360,
                   fit: BoxFit.cover,
                   placeholder: Container(
                     color: c.surfaceElevated,
                     child: Center(
-                      child: Icon(Icons.image, color: c.textTertiary, size: 28),
+                      child: Icon(CupertinoIcons.photo, color: c.textTertiary, size: 28),
                     ),
                   ),
                 ),
 
-                // Scrim Gradient for Legibility
+                // Apple Scrim Gradient for Legibility
                 Container(
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black54,
+                        Color(0x59000000),
                         Colors.transparent,
                         Colors.transparent,
-                        Colors.black87,
+                        Color(0xCC000000),
                       ],
-                      stops: [0.0, 0.3, 0.55, 1.0],
+                      stops: [0.0, 0.25, 0.50, 1.0],
                     ),
                   ),
                 ),
@@ -205,12 +184,12 @@ class _MemoryCardState extends State<_MemoryCard> {
                   top: 8,
                   left: 8,
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                        color: Colors.black.withOpacity(0.45),
+                        color: Colors.black.withOpacity(0.40),
                         child: Text(
                           widget.memory.yearsAgo == 1
                               ? '1Y AGO'
@@ -218,8 +197,8 @@ class _MemoryCardState extends State<_MemoryCard> {
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
                           ),
                         ),
                       ),
@@ -229,8 +208,8 @@ class _MemoryCardState extends State<_MemoryCard> {
 
                 // Bottom Titles
                 Positioned(
-                  left: 8,
-                  right: 8,
+                  left: 10,
+                  right: 10,
                   bottom: 10,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,20 +221,20 @@ class _MemoryCardState extends State<_MemoryCard> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: -0.2,
                           shadows: [
-                            Shadow(color: Colors.black87, blurRadius: 4),
+                            Shadow(color: Color(0x99000000), blurRadius: 4),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
                       Text(
-                        '${widget.memory.items.length} moments',
+                        '${widget.memory.items.length} items',
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.75),
-                          fontSize: 10,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.w500,
                         ),
                       ),

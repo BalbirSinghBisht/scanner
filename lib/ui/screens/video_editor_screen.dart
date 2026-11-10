@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
@@ -225,33 +227,50 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
 
+    const systemOverlay = SystemUiOverlayStyle(
+      statusBarColor: Color(0xFF000000),
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Color(0xFF000000),
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarDividerColor: Color(0xFF000000),
+      systemNavigationBarContrastEnforced: false,
+      systemStatusBarContrastEnforced: false,
+    );
+
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: c.bg,
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: c.primary),
-              const SizedBox(height: 16),
-              Text('Loading video...', style: TextStyle(color: c.textSecondary)),
-            ],
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: systemOverlay,
+        child: Scaffold(
+          backgroundColor: c.bg,
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: c.primary),
+                const SizedBox(height: 16),
+                Text('Loading video...', style: TextStyle(color: c.textSecondary)),
+              ],
+            ),
           ),
         ),
       );
     }
 
     if (_errorMessage != null || _controller == null) {
-      return Scaffold(
-        backgroundColor: c.bg,
-        appBar: AppBar(backgroundColor: c.bg, elevation: 0),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              _errorMessage ?? 'Unknown error',
-              style: TextStyle(color: c.accentRose, fontSize: 16),
-              textAlign: TextAlign.center,
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: systemOverlay,
+        child: Scaffold(
+          backgroundColor: c.bg,
+          appBar: AppBar(backgroundColor: c.bg, elevation: 0),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                _errorMessage ?? 'Unknown error',
+                style: TextStyle(color: c.accentRose, fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
         ),
@@ -261,7 +280,9 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
     final isPlaying = _controller!.value.isPlaying;
     final trimmedDurationMs = math.max(0, _endTrimMs - _startTrimMs);
 
-    return Scaffold(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: systemOverlay,
+      child: Scaffold(
       backgroundColor: c.bg,
       body: SafeArea(
         child: Column(
@@ -303,17 +324,22 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                     child: AnimatedOpacity(
                       opacity: isPlaying ? 0.0 : 1.0,
                       duration: const Duration(milliseconds: 200),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.55),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white24, width: 1),
-                        ),
-                        child: Icon(
-                          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 48,
+                      child: ClipOval(
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                          child: Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.45),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white24, width: 1),
+                            ),
+                            child: Icon(
+                              isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -327,14 +353,15 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
   Widget _buildTopBar(AppThemeColors c) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: c.surfaceGlass,
+        color: Colors.black.withOpacity(0.85),
         border: Border(bottom: BorderSide(color: c.glassBorderSubtle, width: 0.5)),
       ),
       child: Row(
@@ -344,21 +371,13 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             padding: EdgeInsets.zero,
             minSize: 0,
             onPressed: () => Navigator.of(context).pop(),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: c.isDark ? Colors.white10 : Colors.black12,
-                shape: BoxShape.circle,
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
               ),
-              child: Icon(CupertinoIcons.xmark, color: c.textPrimary, size: 18),
-            ),
-          ),
-          Text(
-            'Trim & Edit Video',
-            style: TextStyle(
-              color: c.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
             ),
           ),
           Row(
@@ -369,40 +388,39 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                 minSize: 0,
                 onPressed: _isExporting ? null : _exportAsGif,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: c.surfaceGlassFloating,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: c.glassBorder, width: 0.5),
+                    color: Colors.white12,
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Text(
+                  child: const Text(
                     'GIF',
                     style: TextStyle(
-                      color: c.primary,
+                      color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 4),
-              ElevatedButton(
+              const SizedBox(width: 8),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minSize: 0,
                 onPressed: _isExporting ? null : _exportTrimmedVideo,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: c.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  elevation: 0,
-                ),
                 child: _isExporting
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        child: CircularProgressIndicator(color: AppTheme.appleYellow, strokeWidth: 2),
                       )
                     : const Text(
-                        'Export',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        'Done',
+                        style: TextStyle(
+                          color: AppTheme.appleYellow,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
               ),
             ],
@@ -429,9 +447,9 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Trimmed Length: ${_formatDuration(trimmedDurationMs)}',
-                style: TextStyle(
-                  color: c.primary,
+                'Trimmed: ${_formatDuration(trimmedDurationMs)}',
+                style: const TextStyle(
+                  color: AppTheme.appleYellow,
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                 ),
@@ -444,23 +462,24 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
           ),
           const SizedBox(height: 10),
 
-          // Visual Timeline Trimmer with RangeSlider
+          // Visual Timeline Trimmer with RangeSlider (Apple Yellow framed)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: c.surfaceGlassFloating,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: c.glassBorder, width: 0.5),
+              color: Colors.black.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.appleYellow.withOpacity(0.6), width: 1.5),
             ),
             child: Column(
               children: [
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     rangeThumbShape: const RoundRangeSliderThumbShape(enabledThumbRadius: 9),
-                    activeTrackColor: c.primary,
-                    inactiveTrackColor: Colors.white12,
+                    activeTrackColor: AppTheme.appleYellow,
+                    inactiveTrackColor: Colors.white24,
+                    thumbColor: AppTheme.appleYellow,
                     trackHeight: 6,
-                    overlayColor: c.primary.withOpacity(0.2),
+                    overlayColor: AppTheme.appleYellow.withOpacity(0.2),
                   ),
                   child: RangeSlider(
                     values: RangeValues(

@@ -1,9 +1,9 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
@@ -777,26 +777,45 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
 
+    const systemOverlay = SystemUiOverlayStyle(
+      statusBarColor: Color(0xFF000000),
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Color(0xFF000000),
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarDividerColor: Color(0xFF000000),
+      systemNavigationBarContrastEnforced: false,
+      systemStatusBarContrastEnforced: false,
+    );
+
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: c.bg,
-        body: Center(
-          child: CircularProgressIndicator(color: c.primary),
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: systemOverlay,
+        child: Scaffold(
+          backgroundColor: c.bg,
+          body: Center(
+            child: CircularProgressIndicator(color: c.primary),
+          ),
         ),
       );
     }
 
     if (_imageBytes == null) {
-      return Scaffold(
-        backgroundColor: c.bg,
-        appBar: AppBar(backgroundColor: c.bg, elevation: 0),
-        body: Center(
-          child: Text('Failed to load image', style: TextStyle(color: c.textSecondary)),
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: systemOverlay,
+        child: Scaffold(
+          backgroundColor: c.bg,
+          appBar: AppBar(backgroundColor: c.bg, elevation: 0),
+          body: Center(
+            child: Text('Failed to load image', style: TextStyle(color: c.textSecondary)),
+          ),
         ),
       );
     }
 
-    return Scaffold(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: systemOverlay,
+      child: Scaffold(
       backgroundColor: c.bg,
       body: SafeArea(
         child: Column(
@@ -822,14 +841,15 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
   Widget _buildTopBar(AppThemeColors c) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: c.surfaceGlass,
+        color: Colors.black.withOpacity(0.85),
         border: Border(bottom: BorderSide(color: c.glassBorderSubtle, width: 0.5)),
       ),
       child: Row(
@@ -839,55 +859,42 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
             padding: EdgeInsets.zero,
             minSize: 0,
             onPressed: () => Navigator.of(context).pop(),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: c.isDark ? Colors.white10 : Colors.black12,
-                shape: BoxShape.circle,
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
               ),
-              child: Icon(CupertinoIcons.xmark, color: c.textPrimary, size: 18),
             ),
           ),
-          Text(
-            'Edit Photo',
-            style: TextStyle(
-              color: c.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+          CupertinoButton(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            minSize: 0,
+            onPressed: _resetAdjustments,
+            child: Text(
+              'Reset',
+              style: TextStyle(color: c.textSecondary, fontSize: 14, fontWeight: FontWeight.w500),
             ),
           ),
-          Row(
-            children: [
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                minSize: 0,
-                onPressed: _resetAdjustments,
-                child: Text(
-                  'Reset',
-                  style: TextStyle(color: c.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
-                ),
-              ),
-              const SizedBox(width: 4),
-              ElevatedButton(
-                onPressed: _isSaving ? null : _saveEditedImage,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: c.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  elevation: 0,
-                ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                      )
-                    : const Text(
-                        'Save',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-              ),
-            ],
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            minSize: 0,
+            onPressed: _isSaving ? null : _saveEditedImage,
+            child: _isSaving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(color: AppTheme.appleYellow, strokeWidth: 2),
+                  )
+                : const Text(
+                    'Done',
+                    style: TextStyle(
+                      color: AppTheme.appleYellow,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
           ),
         ],
       ),
@@ -1391,17 +1398,17 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: c.surfaceGlass,
+        color: Colors.black.withOpacity(0.85),
         border: Border(top: BorderSide(color: c.glassBorderSubtle, width: 0.5)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildTabItem(PhotoEditorTab.adjust, Icons.tune_rounded, 'Adjust', c),
-          _buildTabItem(PhotoEditorTab.filter, Icons.auto_awesome_rounded, 'Filters', c),
-          _buildTabItem(PhotoEditorTab.crop, Icons.crop_rotate_rounded, 'Crop', c),
-          _buildTabItem(PhotoEditorTab.draw, Icons.brush_rounded, 'Draw', c),
-          _buildTabItem(PhotoEditorTab.text, Icons.text_fields_rounded, 'Text', c),
+          _buildTabItem(PhotoEditorTab.adjust, CupertinoIcons.slider_horizontal_3, 'Adjust', c),
+          _buildTabItem(PhotoEditorTab.filter, CupertinoIcons.circle_grid_hex, 'Filters', c),
+          _buildTabItem(PhotoEditorTab.crop, CupertinoIcons.crop_rotate, 'Crop', c),
+          _buildTabItem(PhotoEditorTab.draw, CupertinoIcons.pencil, 'Markup', c),
+          _buildTabItem(PhotoEditorTab.text, CupertinoIcons.textformat, 'Text', c),
         ],
       ),
     );
@@ -1418,16 +1425,17 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
         children: [
           Icon(
             icon,
-            color: isSelected ? c.primary : c.textTertiary,
+            color: isSelected ? AppTheme.appleYellow : Colors.white54,
             size: 22,
           ),
           const SizedBox(height: 3),
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? c.primary : c.textTertiary,
-              fontSize: 10,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? AppTheme.appleYellow : Colors.white54,
+              fontSize: 10.5,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              letterSpacing: -0.1,
             ),
           ),
         ],

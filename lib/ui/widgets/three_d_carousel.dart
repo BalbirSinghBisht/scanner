@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -9,11 +8,9 @@ import '../../models/media_item.dart';
 import '../screens/media_preview_screen.dart';
 import 'cached_thumbnail_image.dart';
 
-/// Liquidmorphism 3D Featured Showcase Carousel:
-/// Features dynamic 3D perspective rotation, floating fluid buoyancy,
-/// aspect-ratio intelligent presentation (completely shows full photo & video
-/// content without awkward cropping whether matching tray ratio or not),
-/// animated liquid glass shimmer pills, and liquid morphing page dots.
+/// Apple Photos Featured Showcase Carousel:
+/// Authentic iOS presentation with squircle curvature, aspect-ratio intelligent presentation,
+/// Apple editorial typography, subtle ambient shadows, and native paging indicators.
 class ThreeDShowcaseCarousel extends StatefulWidget {
   final List<MediaItem> items;
   final VoidCallback? onDismiss;
@@ -33,7 +30,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
   late PageController _pageController;
   double _currentPage = 0.0;
 
-  // Floating buoyancy oscillation
+  // Subtle floating oscillation
   late AnimationController _buoyancyController;
 
   // Auto-advance timer (pauses when touching)
@@ -44,7 +41,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
   void initState() {
     super.initState();
     _pageController = PageController(
-      viewportFraction: 0.82,
+      viewportFraction: 0.86,
       initialPage: 0,
     );
 
@@ -73,8 +70,8 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
         final nextPage = ((_pageController.page ?? 0).round() + 1) % featuredCount;
         _pageController.animateToPage(
           nextPage,
-          duration: const Duration(milliseconds: 700),
-          curve: AppTheme.liquidSpring,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
         );
       }
     });
@@ -98,45 +95,27 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section Header with Liquid Glow Sparkle
+        // Apple Photos Section Header
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [c.primary, c.secondary],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: c.primary.withOpacity(0.35),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      CupertinoIcons.sparkles,
-                      size: 13,
-                      color: Colors.white,
-                    ),
+                  Icon(
+                    CupertinoIcons.sparkles,
+                    size: 16,
+                    color: c.primary,
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'Featured Photos & Videos',
+                    'Featured',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 20,
                       fontWeight: FontWeight.w700,
                       color: c.textPrimary,
-                      letterSpacing: -0.3,
+                      letterSpacing: -0.4,
                     ),
                   ),
                 ],
@@ -151,7 +130,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                     style: TextStyle(
                       fontSize: 14,
                       color: c.primary,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ),
@@ -159,7 +138,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
           ),
         ),
 
-        // 3D Carousel Cards with Perspective Rotation & Buoyancy
+        // Apple Carousel Cards
         Listener(
           onPointerDown: (_) {
             _isUserTouching = true;
@@ -171,32 +150,22 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
             _isUserTouching = false;
           },
           child: SizedBox(
-            height: 228,
+            height: 220,
             child: PageView.builder(
               controller: _pageController,
               itemCount: featuredItems.length,
               physics: const BouncingScrollPhysics(),
               itemBuilder: (context, index) {
                 final item = featuredItems[index];
-                final diff = index - _currentPage;
 
-                final scale = (1.0 - (diff.abs() * 0.08)).clamp(0.85, 1.0);
-                final opacity = (1.0 - (diff.abs() * 0.28)).clamp(0.40, 1.0);
-                final rotateY = (diff * -0.12).clamp(-0.35, 0.35);
+                final pageOffset = (_currentPage - index);
+                final absOffset = pageOffset.abs().clamp(0.0, 1.0);
 
-                // Floating liquid buoyancy oscillation
-                final buoyancyOffset = 3.0 * math.sin((_buoyancyController.value * 2 * math.pi) + (index * 0.8));
+                final scale = 1.0 - (absOffset * 0.05);
+                final opacity = (1.0 - (absOffset * 0.20)).clamp(0.0, 1.0);
 
-                // 3D perspective matrix
-                final transform = Matrix4.identity()
-                  ..setEntry(3, 2, 0.0012)
-                  ..translate(0.0, buoyancyOffset)
-                  ..rotateY(rotateY)
-                  ..scale(scale);
-
-                return Transform(
-                  transform: transform,
-                  alignment: FractionalOffset.center,
+                return Transform.scale(
+                  scale: scale,
                   child: Opacity(
                     opacity: opacity,
                     child: CupertinoButton(
@@ -219,24 +188,21 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                         );
                       },
                       child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                         decoration: BoxDecoration(
-                          color: c.surface,
-                          borderRadius: BorderRadius.circular(26),
+                          color: c.surfaceElevated,
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: c.glassBorderSpecular,
-                            width: 0.8,
+                            color: c.glassBorderSubtle,
+                            width: 0.5,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(c.isDark ? 0.48 : 0.16),
-                              blurRadius: 22,
-                              offset: const Offset(0, 9),
-                            ),
-                            BoxShadow(
-                              color: c.primary.withOpacity(c.isDark ? 0.18 : 0.10),
-                              blurRadius: 18,
-                              offset: const Offset(0, 3),
+                              color: c.isDark
+                                  ? const Color(0x66000000)
+                                  : const Color(0x14000000),
+                              blurRadius: 14,
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
@@ -244,33 +210,10 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            // ───────────────────────────────────────────────
-                            // INTELLIGENT ASPECT-RATIO MEDIA PRESENTATION:
-                            // Layer 1: Ambient Blurred Liquid Background (fills entire card)
-                            // Layer 2: Complete Uncropped Sharp Media in exact ratio
-                            // ───────────────────────────────────────────────
+                            // Aspect-ratio intelligent media display
                             _buildMediaDisplay(item, c),
 
-                            // Top Specular Glass Sheen
-                            Positioned(
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              height: 1.5,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.white.withOpacity(0.55),
-                                      Colors.white.withOpacity(0.18),
-                                      Colors.transparent,
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            // Bottom Contrast Gradient for readable typography
+                            // Apple Vignette gradient for text contrast
                             Positioned.fill(
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
@@ -278,42 +221,38 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                                     begin: Alignment.topCenter,
                                     end: Alignment.bottomCenter,
                                     colors: [
-                                      Colors.black.withOpacity(0.08),
                                       Colors.transparent,
-                                      Colors.black.withOpacity(0.35),
-                                      Colors.black.withOpacity(0.85),
+                                      Colors.transparent,
+                                      Colors.black.withOpacity(0.30),
+                                      Colors.black.withOpacity(0.75),
                                     ],
-                                    stops: const [0.0, 0.40, 0.70, 1.0],
+                                    stops: const [0.0, 0.45, 0.70, 1.0],
                                   ),
                                 ),
                               ),
                             ),
 
-                            // Video Indicator Frosted Glass Badge with Duration
+                            // Video Indicator Badge with Duration
                             if (item.mediaType == AppMediaType.video)
                               Positioned(
                                 top: 12,
                                 right: 12,
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(10),
                                   child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.55),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: Colors.white.withOpacity(0.28),
-                                          width: 0.6,
-                                        ),
+                                        color: Colors.black.withOpacity(0.45),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           const Icon(
                                             CupertinoIcons.play_fill,
-                                            size: 10,
+                                            size: 9,
                                             color: Colors.white,
                                           ),
                                           if (item.durationSeconds != null && item.durationSeconds! > 0) ...[
@@ -334,87 +273,43 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                                 ),
                               ),
 
-                            // Ratio tag indicator if vertical/panoramic
-                            if (_isVerticalMedia(item))
-                              Positioned(
-                                top: 12,
-                                left: 12,
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.45),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color: Colors.white.withOpacity(0.20),
-                                          width: 0.5,
-                                        ),
-                                      ),
-                                      child: const Text(
-                                        'PORTRAIT',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 8.5,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
+                            // Bottom Title & Date in Apple Photos style
+                            Positioned(
+                              left: 14,
+                              right: 14,
+                              bottom: 12,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    DateFormat('MMMM d').format(item.createdAt).toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white.withOpacity(0.75),
+                                      letterSpacing: 0.6,
                                     ),
                                   ),
-                                ),
-                              ),
-
-                            // Bottom Title & Date in 3D Frosted Liquid Glass Pill
-                            Positioned(
-                              left: 12,
-                              right: 12,
-                              bottom: 12,
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(18),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.48),
-                                      borderRadius: BorderRadius.circular(18),
-                                      border: Border.all(
-                                        color: Colors.white.withOpacity(0.22),
-                                        width: 0.6,
-                                      ),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          DateFormat('MMMM d').format(item.createdAt).toUpperCase(),
-                                          style: TextStyle(
-                                            fontSize: 9.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.white.withOpacity(0.85),
-                                            letterSpacing: 0.8,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 1.5),
-                                        Text(
-                                          item.displayFolderName,
-                                          style: const TextStyle(
-                                            fontSize: 14.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.white,
-                                            letterSpacing: -0.3,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    item.displayFolderName,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                      letterSpacing: -0.3,
+                                      shadows: [
+                                        Shadow(
+                                          color: Color(0x80000000),
+                                          blurRadius: 4,
                                         ),
                                       ],
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
+                                ],
                               ),
                             ),
                           ],
@@ -428,9 +323,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
           ),
         ),
 
-        // ───────────────────────────────────────────────
-        // LIQUID MORPHING PAGE DOTS
-        // ───────────────────────────────────────────────
+        // Apple Photos Page Indicator Dots
         if (featuredItems.length > 1)
           Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 4),
@@ -439,15 +332,11 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
               children: List.generate(featuredItems.length, (i) {
                 final pageDiff = (i - _currentPage).abs();
                 final isCurrent = pageDiff < 0.5;
-                // Morph width smoothly from circle (6px) to liquid pill (22px)
-                final dotWidth = isCurrent
-                    ? uiLerp(22.0, 6.0, (pageDiff * 2).clamp(0.0, 1.0))
-                    : 6.0;
 
                 return Container(
                   margin: const EdgeInsets.symmetric(horizontal: 3),
-                  height: 5.5,
-                  width: dotWidth,
+                  height: 6,
+                  width: isCurrent ? 18 : 6,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(3),
                     color: isCurrent
@@ -462,31 +351,13 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
     );
   }
 
-  /// Linear interpolation helper
-  double uiLerp(double a, double b, double t) => a + (b - a) * t;
-
-  bool _isVerticalMedia(MediaItem item) {
-    if (item.width != null && item.height != null && item.height! > 0) {
-      return (item.height! / item.width!) > 1.25;
-    }
-    return false;
-  }
-
-  /// Builds adaptive media display:
-  /// For items whose aspect ratio differs from the tray card (e.g. vertical videos,
-  /// 9:16 stories, square photos, panoramic shots), it renders:
-  /// 1. An ambient blurred backdrop that fills the card edge-to-edge.
-  /// 2. An uncropped, crisp foreground photo/video with BoxFit.contain so 100% of the
-  ///    content is completely and accurately shown without being cropped off!
   Widget _buildMediaDisplay(MediaItem item, AppThemeColors c) {
     final hasKnownDimensions = item.width != null && item.height != null && item.width! > 0 && item.height! > 0;
-    // Typical carousel card ratio is ~ 310 / 215 ≈ 1.44 (landscape)
     final bool isMatchingLandscape = hasKnownDimensions &&
         (item.width! / item.height!) >= 1.25 &&
         (item.width! / item.height!) <= 1.70;
 
     if (isMatchingLandscape) {
-      // Matches tray aspect ratio: fill cleanly
       return CachedThumbnailImage(
         localId: item.localId,
         size: 700,
@@ -495,16 +366,13 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
       );
     }
 
-    // Different ratio (vertical portrait, square, panorama, etc.):
-    // Display full media uncropped with ambient blurred backdrop!
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Layer 1: Ambient Blurred Liquid Canvas
         ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Transform.scale(
-            scale: 1.25, // Scale up slightly to eliminate edge blur fade
+            scale: 1.2,
             child: CachedThumbnailImage(
               localId: item.localId,
               size: 400,
@@ -513,35 +381,19 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
             ),
           ),
         ),
-
-        // Translucent liquid tint overlay
         ColoredBox(
-          color: Colors.black.withOpacity(0.32),
+          color: Colors.black.withOpacity(0.25),
         ),
-
-        // Layer 2: Complete Sharp Media Display (BoxFit.contain preserves 100% full content)
         Center(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 48), // Padding so it floats cleanly above the bottom pill
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 44),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.40),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: CachedThumbnailImage(
-                  localId: item.localId,
-                  size: 750,
-                  fit: BoxFit.contain, // COMPLETELY SHOWS ENTIRE PHOTO / VIDEO!
-                  placeholder: _buildPlaceholder(c),
-                ),
+              borderRadius: BorderRadius.circular(12),
+              child: CachedThumbnailImage(
+                localId: item.localId,
+                size: 750,
+                fit: BoxFit.contain,
+                placeholder: _buildPlaceholder(c),
               ),
             ),
           ),

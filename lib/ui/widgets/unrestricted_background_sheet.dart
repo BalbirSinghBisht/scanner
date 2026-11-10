@@ -157,7 +157,6 @@ class _UnrestrictedBackgroundSheetState
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PopScope(
       canPop: _isAllConfigured,
@@ -208,7 +207,7 @@ class _UnrestrictedBackgroundSheetState
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: _isAllConfigured
-                            ? const Color(0xFF2E7D32).withOpacity(0.18)
+                            ? c.accentGreen.withOpacity(0.18)
                             : c.primary.withOpacity(0.18),
                         shape: BoxShape.circle,
                       ),
@@ -217,7 +216,7 @@ class _UnrestrictedBackgroundSheetState
                             ? CupertinoIcons.checkmark_seal_fill
                             : CupertinoIcons.sparkles,
                         color: _isAllConfigured
-                            ? const Color(0xFF2E7D32)
+                            ? c.accentGreen
                             : c.primary,
                         size: 24,
                       ),
@@ -262,14 +261,14 @@ class _UnrestrictedBackgroundSheetState
                   ),
                   decoration: BoxDecoration(
                     color: _isAllConfigured
-                        ? const Color(0xFF142417)
-                        : const Color(0xFF26190B),
-                    borderRadius: BorderRadius.circular(16),
+                        ? c.accentGreen.withOpacity(0.12)
+                        : c.accentAmber.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: _isAllConfigured
-                          ? const Color(0xFF2E7D32).withOpacity(0.5)
-                          : Colors.orange.withOpacity(0.5),
-                      width: 0.8,
+                          ? c.accentGreen.withOpacity(0.4)
+                          : c.accentAmber.withOpacity(0.4),
+                      width: 0.6,
                     ),
                   ),
                   child: Row(
@@ -279,8 +278,8 @@ class _UnrestrictedBackgroundSheetState
                             ? CupertinoIcons.checkmark_seal_fill
                             : CupertinoIcons.exclamationmark_triangle_fill,
                         color: _isAllConfigured
-                            ? const Color(0xFF2E7D32)
-                            : Colors.orangeAccent,
+                            ? c.accentGreen
+                            : c.accentAmber,
                         size: 20,
                       ),
                       const SizedBox(width: 10),
@@ -293,12 +292,8 @@ class _UnrestrictedBackgroundSheetState
                                   : 'Complete the steps below for each permission:'),
                           style: TextStyle(
                             color: _isAllConfigured
-                                ? (isDark
-                                    ? const Color(0xFF81C784)
-                                    : const Color(0xFF1B5E20))
-                                : (isDark
-                                    ? Colors.orange[200]
-                                    : Colors.orange[900]),
+                                ? c.accentGreen
+                                : c.accentAmber,
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,
                             height: 1.3,
@@ -392,16 +387,16 @@ class _UnrestrictedBackgroundSheetState
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     decoration: BoxDecoration(
                       color: _isAllConfigured
-                          ? const Color(0xFF2E7D32)
+                          ? c.accentGreen
                           : c.surfaceElevated,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                       border: _isAllConfigured
                           ? null
-                          : Border.all(color: c.glassBorder, width: 0.8),
+                          : Border.all(color: c.glassBorderSubtle, width: 0.5),
                       boxShadow: _isAllConfigured
                           ? [
                               BoxShadow(
-                                color: const Color(0xFF2E7D32).withOpacity(0.35),
+                                color: c.accentGreen.withOpacity(0.35),
                                 blurRadius: 10,
                                 offset: const Offset(0, 3),
                               ),
@@ -461,14 +456,14 @@ class _UnrestrictedBackgroundSheetState
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: isGranted
-            ? const Color(0xFF131F17)
+            ? c.accentGreen.withOpacity(0.08)
             : c.surfaceElevated,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isGranted
-              ? const Color(0xFF2E7D32).withOpacity(0.4)
+              ? c.accentGreen.withOpacity(0.35)
               : c.glassBorderSubtle,
-          width: 0.8,
+          width: 0.6,
         ),
       ),
       child: Column(
@@ -480,13 +475,13 @@ class _UnrestrictedBackgroundSheetState
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: isGranted
-                      ? const Color(0xFF2E7D32).withOpacity(0.18)
-                      : c.primary.withOpacity(0.15),
+                      ? c.accentGreen.withOpacity(0.18)
+                      : c.primary.withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   icon,
-                  color: isGranted ? const Color(0xFF2E7D32) : c.primary,
+                  color: isGranted ? c.accentGreen : c.primary,
                   size: 20,
                 ),
               ),
@@ -508,8 +503,8 @@ class _UnrestrictedBackgroundSheetState
                       isGranted ? 'Enabled & Active' : 'Action Required',
                       style: TextStyle(
                         color: isGranted
-                            ? const Color(0xFF2E7D32)
-                            : Colors.orangeAccent,
+                            ? c.accentGreen
+                            : c.accentAmber,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -518,9 +513,9 @@ class _UnrestrictedBackgroundSheetState
                 ),
               ),
               if (isGranted)
-                const Icon(
+                Icon(
                   CupertinoIcons.checkmark_circle_fill,
-                  color: Color(0xFF2E7D32),
+                  color: c.accentGreen,
                   size: 22,
                 ),
             ],

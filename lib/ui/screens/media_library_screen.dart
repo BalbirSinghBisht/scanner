@@ -77,6 +77,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   @override
   void initState() {
     super.initState();
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: SystemUiOverlay.values,
+    );
     WidgetsBinding.instance.addObserver(this);
     _loadFeaturedPreference();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -382,43 +386,21 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       context: context,
       builder: (ctx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: AlertDialog(
-          backgroundColor: c.surfaceGlass,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: c.glassBorder, width: 0.8),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.delete_sweep_rounded, color: c.accentRose, size: 24),
-              const SizedBox(width: 10),
-              Text(
-                'Delete ${selectedItems.length} items?',
-                style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            'Are you sure you want to delete these ${selectedItems.length} files permanently from your device storage?',
-            style: TextStyle(color: c.textSecondary, fontSize: 14),
+        child: CupertinoAlertDialog(
+          title: Text('Delete ${selectedItems.length} items?'),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Text(
+              'Are you sure you want to delete these ${selectedItems.length} files permanently from your device storage?',
+            ),
           ),
           actions: [
-            TextButton(
+            CupertinoDialogAction(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text('Cancel', style: TextStyle(color: c.textSecondary)),
+              child: const Text('Cancel'),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: c.accentRose,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
-              ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
               onPressed: () => Navigator.of(ctx).pop(true),
               child: const Text('Delete Permanently'),
             ),
@@ -466,20 +448,19 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
           child: Container(
             decoration: BoxDecoration(
-              color: c.surfaceGlassFloating,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(28)),
-              border: Border.all(color: c.glassBorder, width: 0.6),
+              color: c.isDark ? const Color(0xE61C1C1E) : const Color(0xF2FFFFFF),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              border: Border.all(color: c.glassBorderSubtle, width: 0.5),
             ),
             padding: EdgeInsets.only(
-              top: 14,
-              left: 20,
-              right: 20,
+              top: 10,
+              left: 16,
+              right: 16,
               bottom: MediaQuery.of(context).padding.bottom + 16,
             ),
             child: Column(
@@ -488,7 +469,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               children: [
                 Center(
                   child: Container(
-                    width: 38,
+                    width: 36,
                     height: 5,
                     decoration: BoxDecoration(
                       color: c.textTertiary.withOpacity(0.4),
@@ -497,13 +478,16 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'Sort Gallery',
-                  style: TextStyle(
-                    color: c.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.3,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    'Sort Photos',
+                    style: TextStyle(
+                      color: c.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.4,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -531,19 +515,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         setState(() => _sortMode = mode);
         Navigator.pop(context);
       },
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? c.primary.withOpacity(c.isDark ? 0.20 : 0.12)
+              ? c.primary.withOpacity(c.isDark ? 0.18 : 0.10)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: isSelected
-              ? Border.all(
-                  color: c.primary.withOpacity(0.4), width: 0.6)
-              : Border.all(color: Colors.transparent, width: 0.6),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
@@ -577,11 +557,18 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final systemUiOverlay = SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
+      statusBarColor:
+          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
       statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-      systemNavigationBarColor: Colors.transparent,
+      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor:
+          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
       systemNavigationBarIconBrightness:
           isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarDividerColor:
+          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      systemNavigationBarContrastEnforced: false,
+      systemStatusBarContrastEnforced: false,
     );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -653,71 +640,79 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             },
             child: Scaffold(
               backgroundColor: c.bg,
-              body: Stack(
-                children: [
-                  // Haikei-inspired Animated Organic Fluid Background
-                  const Positioned.fill(
-                    child: HaikeiBackground(),
-                  ),
+              body: Builder(
+                builder: (context) {
+                  final bottomInset = MediaQuery.of(context).padding.bottom;
+                  return Stack(
+                    children: [
+                      // Haikei-inspired Animated Organic Fluid Background
+                      const Positioned.fill(
+                        child: HaikeiBackground(),
+                      ),
 
-                  // Main Content View
-                  SafeArea(
-                    bottom: false,
-                    child: Column(
-                      children: [
-                        // Top Frosted Glass App Bar / Selection Header
-                        _buildTopBar(
-                            backup, currentMediaPool, groupedFolders, favService, c),
+                      // Main Content View bounded strictly above the system navigation bar
+                      Positioned.fill(
+                        bottom: bottomInset,
+                        child: SafeArea(
+                          bottom: false,
+                          child: Column(
+                            children: [
+                              // Top Frosted Glass App Bar / Selection Header
+                              _buildTopBar(
+                                  backup, currentMediaPool, groupedFolders, favService, c),
 
-                        // Fixed 2px scanning progress indicator
-                        SizedBox(
-                          height: 2,
-                          child: backup.isScanning && backup.mediaItems.isNotEmpty
-                              ? LinearProgressIndicator(
-                                  minHeight: 2,
-                                  backgroundColor: Colors.transparent,
-                                  color: c.primary,
-                                )
-                              : const SizedBox.shrink(),
-                        ),
+                              // Animated Search Bar
+                              if (_isSearchOpen) _buildSearchBar(c),
 
-                        // Animated Search Bar
-                        if (_isSearchOpen) _buildSearchBar(c),
+                              // Motion Primitives Category Filter Strip
+                              if (_openedFolder != null || _currentTabIndex != 1)
+                                _buildCategoryPillStrip(favService, c),
 
-                        // Motion Primitives Category Filter Strip
-                        if (_openedFolder != null || _currentTabIndex != 1)
-                          _buildCategoryPillStrip(favService, c),
+                              // Background Optimization Banner (if permissions missing)
+                              if (!_isBackgroundOptimized)
+                                _buildBackgroundOptimizationBanner(c),
 
-                        // Background Optimization Banner (if permissions missing)
-                        if (!_isBackgroundOptimized)
-                          _buildBackgroundOptimizationBanner(c),
-
-                        // Main Content Body
-                        Expanded(
-                          child: _buildCurrentTabContent(
-                            backup,
-                            groupedFolders,
-                            sortedFolderNames,
-                            currentMediaPool,
-                            c,
+                              // Main Content Body
+                              Expanded(
+                                child: _buildCurrentTabContent(
+                                  backup,
+                                  groupedFolders,
+                                  sortedFolderNames,
+                                  currentMediaPool,
+                                  c,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
 
-                  // Motion Primitives Floating Rounded Bottom Navigation / Batch Bar
-                  Positioned(
-                    left: 20,
-                    right: 20,
-                    bottom: MediaQuery.of(context).padding.bottom > 0
-                        ? MediaQuery.of(context).padding.bottom + 4
-                        : 16,
-                    child: _isSelectionMode
-                        ? _buildBatchActionBar(currentMediaPool, c)
-                        : _buildFloatingBottomNav(c),
-                  ),
-                ],
+                      // Motion Primitives Floating Rounded Bottom Navigation / Batch Bar
+                      Positioned(
+                        left: 20,
+                        right: 20,
+                        bottom: bottomInset + 8,
+                        child: _isSelectionMode
+                            ? _buildBatchActionBar(currentMediaPool, c)
+                            : _buildFloatingBottomNav(c),
+                      ),
+
+                      // Solid Background Bar for Phone Navigation Bar (Back, Home, Menu)
+                      if (bottomInset > 0)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: bottomInset,
+                          child: ColoredBox(
+                            color: isDark
+                                ? const Color(0xFF000000)
+                                : const Color(0xFFFFFFFF),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
           );
@@ -826,7 +821,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 const SizedBox(width: 8),
               ],
 
-              // Title in Bold Realtime Colors Typography
+              // Title in Bold Apple Typography
               Expanded(
                 child: Text(
                   titleText,
@@ -841,7 +836,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 ),
               ),
 
-              // Search Button with 3D Glass Pill
+              // Search Button
               CupertinoButton(
                 padding: const EdgeInsets.all(5),
                 minSize: 0,
@@ -860,10 +855,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     color: _isSearchOpen
                         ? c.primary.withOpacity(0.18)
                         : (c.isDark
-                            ? Colors.white.withOpacity(0.06)
+                            ? Colors.white.withOpacity(0.08)
                             : Colors.black.withOpacity(0.04)),
                     shape: BoxShape.circle,
-                    border: Border.all(color: c.glassBorder, width: 0.6),
                   ),
                   child: Icon(
                     _isSearchOpen
@@ -891,10 +885,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: c.isDark
-                          ? Colors.white.withOpacity(0.06)
+                          ? Colors.white.withOpacity(0.08)
                           : Colors.black.withOpacity(0.04),
                       shape: BoxShape.circle,
-                      border: Border.all(color: c.glassBorder, width: 0.6),
                     ),
                     child: Icon(
                       _gridColumns == 2
@@ -917,10 +910,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: c.isDark
-                        ? Colors.white.withOpacity(0.06)
+                        ? Colors.white.withOpacity(0.08)
                         : Colors.black.withOpacity(0.04),
                     shape: BoxShape.circle,
-                    border: Border.all(color: c.glassBorder, width: 0.6),
                   ),
                   child: Icon(
                     CupertinoIcons.arrow_up_arrow_down,
@@ -930,32 +922,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 ),
               ),
 
-              // Select Button Pill
+              // Select Button (Apple Photos standard text button)
               CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 minSize: 0,
                 onPressed: () {
                   setState(() => _isSelectionMode = true);
                 },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: c.primary.withOpacity(c.isDark ? 0.16 : 0.10),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: c.primary.withOpacity(0.35),
-                      width: 0.6,
-                    ),
-                  ),
-                  child: Text(
-                    'Select',
-                    style: TextStyle(
-                      color: c.primary,
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                    ),
+                child: Text(
+                  'Select',
+                  style: TextStyle(
+                    color: c.primary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: -0.2,
                   ),
                 ),
               ),
@@ -966,21 +946,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  /// Liquidmorphic Animated Search Bar
+  /// Apple Photos Animated Search Bar
   Widget _buildSearchBar(AppThemeColors c) {
     return AnimatedContainer(
       duration: AppTheme.motionFast,
       curve: Curves.easeOutCubic,
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: AppTheme.liquidInputDecoration(
-        context: context,
-        borderRadius: 18,
-        isFocused: _searchQuery.isNotEmpty,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: c.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFE5E5EA),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         children: [
-          Icon(CupertinoIcons.search, color: c.textSecondary, size: 18),
+          Icon(CupertinoIcons.search, color: c.textSecondary, size: 17),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -1008,7 +987,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 setState(() => _searchQuery = '');
               },
               child: Icon(CupertinoIcons.clear_circled_solid,
-                  color: c.textSecondary, size: 18),
+                  color: c.textSecondary, size: 17),
             ),
         ],
       ),
@@ -1017,21 +996,21 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   Widget _buildBackgroundOptimizationBanner(AppThemeColors c) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(14),
+        color: c.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.orange.withOpacity(0.35),
-          width: 0.8,
+          color: c.glassBorderSubtle,
+          width: 0.5,
         ),
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             CupertinoIcons.sparkles,
-            color: Colors.orangeAccent,
+            color: c.accentAmber,
             size: 18,
           ),
           const SizedBox(width: 10),
@@ -1058,7 +1037,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: c.primary,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
                 'Setup',
@@ -1075,12 +1054,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  /// Motion Primitives Category Filter Strip with Dynamic Realtime Colors
+  /// Apple Photos Segmented Category Filter Strip
   Widget _buildCategoryPillStrip(FavoritesService favService, AppThemeColors c) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
         children: [
           _buildFilterChip('All', CupertinoIcons.square_grid_2x2,
@@ -1112,44 +1091,27 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         setState(() => _activeFilter = filter);
       },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
+        duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
         margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? c.primary : c.surfaceGlass,
-          gradient: isSelected
-              ? LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    c.primaryLight,
-                    c.primary,
-                  ],
-                )
-              : null,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: isSelected
-                ? c.glassBorderSpecular
-                : c.glassBorder,
-            width: 0.7,
-          ),
+          color: isSelected
+              ? c.primary
+              : (c.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFE5E5EA)),
+          borderRadius: BorderRadius.circular(20),
+          border: isSelected
+              ? Border.all(color: Colors.transparent, width: 0.5)
+              : Border.all(color: c.glassBorderSubtle, width: 0.5),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: c.primary.withOpacity(0.40),
-                    blurRadius: 12,
-                    offset: const Offset(0, 3),
+                    color: c.primary.withOpacity(0.30),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
                 ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(c.isDark ? 0.20 : 0.04),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1408,6 +1370,24 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               letterSpacing: -0.2,
             ),
           ),
+          if (backup.isScanning) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CupertinoActivityIndicator(radius: 6, color: c.textSecondary),
+                const SizedBox(width: 6),
+                Text(
+                  'Updating Library...',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 105), // Room for floating bottom nav
         ],
       ),
@@ -1724,96 +1704,29 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: AppTheme.floatingNavbarDecoration(context: context),
-          child: Stack(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              // Specular top light rim
-              Positioned(
-                top: 0,
-                left: 16,
-                right: 16,
-                height: 1.5,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.transparent,
-                        Colors.white.withOpacity(c.isDark ? 0.35 : 0.60),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
+              _buildAppleTabItem(
+                0,
+                'Library',
+                CupertinoIcons.photo_on_rectangle,
+                CupertinoIcons.photo_fill_on_rectangle_fill,
+                c,
               ),
-
-              // Sliding Spring Pill Indicator
-              Positioned.fill(
-                child: AnimatedAlign(
-                  duration: AppTheme.motionSpring,
-                  curve: AppTheme.liquidSpring,
-                  alignment: _openedFolder != null
-                      ? const Alignment(-3.0, 0.0)
-                      : (_currentTabIndex == 0
-                          ? const Alignment(-1.0, 0.0)
-                          : (_currentTabIndex == 1
-                              ? const Alignment(0.0, 0.0)
-                              : const Alignment(1.0, 0.0))),
-                  child: FractionallySizedBox(
-                    widthFactor: 1 / 3,
-                    heightFactor: 1.0,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: c.isDark
-                              ? Colors.white.withOpacity(0.14)
-                              : c.primary.withOpacity(0.14),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: c.isDark
-                                ? Colors.white.withOpacity(0.18)
-                                : c.primary.withOpacity(0.25),
-                            width: 0.6,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: c.primary.withOpacity(c.isDark ? 0.20 : 0.12),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              _buildAppleTabItem(
+                1,
+                'Albums',
+                CupertinoIcons.rectangle_stack,
+                CupertinoIcons.rectangle_stack_fill,
+                c,
               ),
-
-              // Tab Items
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildAppleTabItem(
-                    0,
-                    'Library',
-                    CupertinoIcons.photo_on_rectangle,
-                    CupertinoIcons.photo_fill_on_rectangle_fill,
-                    c,
-                  ),
-                  _buildAppleTabItem(
-                    1,
-                    'Albums',
-                    CupertinoIcons.rectangle_stack,
-                    CupertinoIcons.rectangle_stack_fill,
-                    c,
-                  ),
-                  _buildAppleTabItem(
-                    2,
-                    'Favorites',
-                    CupertinoIcons.heart,
-                    CupertinoIcons.heart_fill,
-                    c,
-                  ),
-                ],
+              _buildAppleTabItem(
+                2,
+                'Favorites',
+                CupertinoIcons.heart,
+                CupertinoIcons.heart_fill,
+                c,
               ),
             ],
           ),
@@ -1843,22 +1756,17 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           });
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  AnimatedScale(
-                    scale: isSelected ? 1.08 : 1.0,
-                    duration: AppTheme.motionFast,
-                    curve: AppTheme.springCurve,
-                    child: Icon(
-                      isSelected ? selectedIcon : unselectedIcon,
-                      size: 22,
-                      color: isSelected ? c.primary : c.textSecondary,
-                    ),
+                  Icon(
+                    isSelected ? selectedIcon : unselectedIcon,
+                    size: 22,
+                    color: isSelected ? c.primary : c.textSecondary,
                   ),
                   if (index == 2 && favCount > 0 && !isSelected)
                     Positioned(
@@ -1870,12 +1778,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         decoration: BoxDecoration(
                           color: c.accentRose,
                           borderRadius: BorderRadius.circular(10),
-                          boxShadow: [
-                            BoxShadow(
-                              color: c.accentRose.withOpacity(0.4),
-                              blurRadius: 4,
-                            ),
-                          ],
                         ),
                         child: Text(
                           '$favCount',
@@ -1894,7 +1796,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 label,
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   color: isSelected ? c.primary : c.textSecondary,
                   letterSpacing: -0.1,
                 ),
@@ -1906,14 +1808,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  /// 3D Translucent Floating Batch Action Bar
+  /// Apple Photos Translucent Floating Batch Action Bar
   Widget _buildBatchActionBar(List<MediaItem> allItems, AppThemeColors c) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(34),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: AppTheme.floatingNavbarDecoration(context: context),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -1928,11 +1830,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     Icon(CupertinoIcons.share, color: c.primary, size: 22),
                     const SizedBox(height: 3),
                     Text(
-                      'Share (${_selectedIds.length})',
+                      'Share',
                       style: TextStyle(
-                          color: c.primary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500),
+                        color: c.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
@@ -1946,11 +1849,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   children: [
                     Icon(CupertinoIcons.heart, color: c.primary, size: 22),
                     const SizedBox(height: 3),
-                    Text('Favorite',
-                        style: TextStyle(
-                            color: c.primary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500)),
+                    Text(
+                      'Favorite',
+                      style: TextStyle(
+                        color: c.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1964,11 +1870,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     children: [
                       Icon(Icons.dashboard_customize_rounded, color: c.primary, size: 22),
                       const SizedBox(height: 3),
-                      Text('Collage',
-                          style: TextStyle(
-                              color: c.primary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500)),
+                      Text(
+                        'Collage',
+                        style: TextStyle(
+                          color: c.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1982,11 +1891,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     Icon(CupertinoIcons.trash, color: c.accentRose, size: 22),
                     const SizedBox(height: 3),
                     Text(
-                      'Delete (${_selectedIds.length})',
+                      'Delete',
                       style: TextStyle(
-                          color: c.accentRose,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500),
+                        color: c.accentRose,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
@@ -2011,34 +1921,26 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(24),
+                      width: 72,
+                      height: 72,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: c.surfaceGlass,
-                        border: Border.all(
-                          color: c.glassBorder,
-                          width: 0.8,
-                        ),
-                        boxShadow: AppTheme.depthShadow(
-                          depth: 14,
-                          glowColor: c.primary,
-                          glowOpacity: 0.18,
-                        ),
+                        color: c.surfaceElevated,
                       ),
                       child: Icon(
                         !hasPerm
                             ? CupertinoIcons.lock
                             : CupertinoIcons.photo_on_rectangle,
-                        size: 50,
-                        color: (hasPerm && backup.isScanning) ? c.primary : c.textTertiary,
+                        size: 36,
+                        color: (hasPerm && backup.isScanning) ? c.primary : c.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
                     Text(
                       !hasPerm
                           ? 'Media Permission Required'
@@ -2046,13 +1948,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                               ? 'Loading Photos...'
                               : 'No Photos or Videos'),
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 20,
                         color: c.textPrimary,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
+                        letterSpacing: -0.4,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       !hasPerm
                           ? 'Please grant photo and video access to view your library.'
@@ -2061,64 +1963,55 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                               : 'Photos and videos you take will appear here.'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 13.5,
+                        fontSize: 14,
                         color: c.textSecondary,
+                        height: 1.3,
                       ),
                     ),
                     if (!hasPerm) ...[
                       const SizedBox(height: 24),
-                      ElevatedButton.icon(
+                      CupertinoButton.filled(
                         onPressed: () async {
                           await MediaScannerService.instance.requestPermission();
                           await backup.startScan(forceFullScan: true);
                         },
-                        icon: const Icon(Icons.security, size: 18),
-                        label: const Text('Grant Media Permission'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: c.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 26,
-                              vertical: 14,
-                            ),
-                            elevation: 0,
-                          ),
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Text(
+                          'Grant Media Permission',
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                         ),
-                        const SizedBox(height: 12),
-                        TextButton.icon(
-                          onPressed: () =>
-                              MediaScannerService.instance.openSettings(),
-                          icon: Icon(Icons.settings,
-                              size: 16, color: c.textSecondary),
-                          label: Text('Open App Settings',
-                              style: TextStyle(color: c.textSecondary)),
+                      ),
+                      const SizedBox(height: 12),
+                      CupertinoButton(
+                        onPressed: () =>
+                            MediaScannerService.instance.openSettings(),
+                        child: Text(
+                          'Open App Settings',
+                          style: TextStyle(color: c.primary, fontSize: 15),
                         ),
-                      ] else ...[
-                        ElevatedButton.icon(
-                          onPressed: () =>
-                              backup.startScan(forceFullScan: false),
-                          icon: const Icon(Icons.refresh_rounded, size: 18),
-                          label: const Text('Scan Device Media'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: c.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 20),
+                      CupertinoButton.filled(
+                        onPressed: () =>
+                            backup.startScan(forceFullScan: false),
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(CupertinoIcons.arrow_clockwise, size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              'Scan Device Media',
+                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                             ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 26,
-                              vertical: 14,
-                            ),
-                            elevation: 0,
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ],
-                  ),
+                  ],
                 ),
+              ),
             ),
           ),
         ),

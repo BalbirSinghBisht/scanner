@@ -23,8 +23,11 @@ void main() async {
   PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024; // 50 MB
   PaintingBinding.instance.imageCache.maximumSize = 200;
 
-  // System Chrome configuration for seamless edge-to-edge transparent bars
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  // System Chrome configuration for solid system navigation and status bars
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.manual,
+    overlays: SystemUiOverlay.values,
+  );
 
   runApp(
     MultiProvider(

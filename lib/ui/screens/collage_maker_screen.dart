@@ -1,8 +1,8 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
 import '../../services/media_editor_service.dart';
@@ -126,8 +126,26 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
+    final systemUiOverlay = SystemUiOverlayStyle(
+      statusBarColor:
+          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor:
+          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      systemNavigationBarIconBrightness:
+          isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarDividerColor:
+          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      systemNavigationBarContrastEnforced: false,
+      systemStatusBarContrastEnforced: false,
+    );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: systemUiOverlay,
+      child: Scaffold(
       backgroundColor: c.bg,
       body: SafeArea(
         child: Column(
@@ -152,14 +170,15 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
   Widget _buildTopBar(AppThemeColors c) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: c.surfaceGlass,
+        color: c.isDark ? Colors.black.withOpacity(0.85) : Colors.white.withOpacity(0.95),
         border: Border(bottom: BorderSide(color: c.glassBorderSubtle, width: 0.5)),
       ),
       child: Row(
@@ -169,40 +188,41 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
             padding: EdgeInsets.zero,
             minSize: 0,
             onPressed: () => Navigator.of(context).pop(),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: c.isDark ? Colors.white10 : Colors.black12,
-                shape: BoxShape.circle,
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: AppTheme.appleBlue,
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
               ),
-              child: Icon(CupertinoIcons.xmark, color: c.textPrimary, size: 18),
             ),
           ),
           Text(
-            'Create Collage (${_selectedItems.length})',
+            'Collage (${_selectedItems.length})',
             style: TextStyle(
               color: c.textPrimary,
               fontSize: 16,
               fontWeight: FontWeight.w600,
+              letterSpacing: -0.3,
             ),
           ),
-          ElevatedButton(
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            minSize: 0,
             onPressed: _isSaving ? null : _saveCollage,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: c.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              elevation: 0,
-            ),
             child: _isSaving
                 ? const SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    child: CircularProgressIndicator(color: AppTheme.appleBlue, strokeWidth: 2),
                   )
                 : const Text(
                     'Save',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    style: TextStyle(
+                      color: AppTheme.appleBlue,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
           ),
         ],
