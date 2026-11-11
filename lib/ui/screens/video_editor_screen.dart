@@ -50,6 +50,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
   }
 
   Future<void> _initVideo() async {
+    VideoPlayerController? controller;
     try {
       final file = await MediaScannerService.instance.getMediaFile(widget.item.localId);
       if (file == null || !await file.exists()) {
@@ -63,7 +64,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
       }
 
       _videoFile = file;
-      final controller = VideoPlayerController.file(file);
+      controller = VideoPlayerController.file(file);
       await controller.initialize();
 
       _totalDurationMs = controller.value.duration.inMilliseconds;
@@ -77,8 +78,11 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
           _controller = controller;
           _isLoading = false;
         });
+      } else {
+        await controller.dispose();
       }
     } catch (e) {
+      await controller?.dispose();
       if (mounted) {
         setState(() {
           _isLoading = false;

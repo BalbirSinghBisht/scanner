@@ -305,23 +305,28 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       file ??= await MediaScannerService.instance.getMediaFile(item.localId);
 
       if (file != null && mounted) {
+        VideoPlayerController? controller;
         try {
-          final controller = VideoPlayerController.file(file);
+          controller = VideoPlayerController.file(file);
           await controller.initialize();
-          controller.setLooping(true);
-          controller.addListener(() {
-            if (mounted) setState(() {});
-          });
 
-          if (mounted) {
+          if (mounted && _currentIndex == index) {
+            controller.setLooping(true);
+            controller.addListener(() {
+              if (mounted) setState(() {});
+            });
             setState(() {
               _videoController = controller;
               _activeVideoIndex = index;
               _isVideoInitialized = true;
             });
+          } else {
+            // Screen was closed or user swiped to another page during initialization
+            await controller.dispose();
           }
         } catch (e) {
           debugPrint('Error loading video: $e');
+          await controller?.dispose();
         }
       }
     }

@@ -249,7 +249,13 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
     final picture = recorder.endRecording();
     final croppedUiImage = await picture.toImage(targetW, targetH);
     final byteData = await croppedUiImage.toByteData(format: ui.ImageByteFormat.png);
-    return byteData!.buffer.asUint8List();
+    picture.dispose();
+    image.dispose();
+    croppedUiImage.dispose();
+    if (byteData == null) {
+      throw Exception('Failed to encode cropped image to PNG');
+    }
+    return byteData.buffer.asUint8List();
   }
 
   Future<void> _applyCrop() async {

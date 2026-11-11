@@ -259,7 +259,7 @@ class MediaItem {
 
   factory MediaItem.fromMap(Map<String, dynamic> map) {
     return MediaItem(
-      localId: map['local_id'] as String,
+      localId: (map['local_id'] ?? '').toString(),
       fileName: map['file_name'] as String? ?? 'media_file',
       mediaType: AppMediaType.values.firstWhere(
         (e) => e.name == map['media_type'],
