@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'core/security/security_overrides.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/backup_provider.dart';
@@ -11,6 +12,9 @@ import 'ui/screens/media_library_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Enforce VAPT network security hardening & mute release logs
+  applyVaptHardening();
 
   // Initialize persistent background sync service & native watchdog
   try {

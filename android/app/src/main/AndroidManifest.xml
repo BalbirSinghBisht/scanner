@@ -31,7 +31,9 @@
         android:name=".MainApplication"
         android:icon="@mipmap/ic_launcher"
         android:largeHeap="true"
-        android:requestLegacyExternalStorage="true">
+        android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config">
         <!-- Flutter Background Service for persistent sync and auto-start on boot -->
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"

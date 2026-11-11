@@ -30,6 +30,13 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 
+	<!-- Enforce strict TLS / HTTPS and disallow cleartext / proxy interception for VAPT -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+	</dict>
+
 	<!-- Media Library Usage Descriptions -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app requires access to your photo library to browse and organize photos and videos.</string>

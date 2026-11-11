@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../core/security/security_overrides.dart';
 import 'auth_service.dart';
 import 'backup_sync_service.dart';
 import 'media_scanner_service.dart';
@@ -16,6 +17,7 @@ ServiceInstance? _activeBackgroundServiceInstance;
 @pragma('vm:entry-point')
 void onStartBackgroundService(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  applyVaptHardening();
   _activeBackgroundServiceInstance = service;
 
   if (service is AndroidServiceInstance) {
@@ -148,6 +150,7 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
 @pragma('vm:entry-point')
 Future<bool> onIosBackground(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  applyVaptHardening();
   _activeBackgroundServiceInstance = service;
   try {
     await _runBackgroundSyncCycle(service);
