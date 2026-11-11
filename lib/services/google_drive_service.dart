@@ -54,6 +54,13 @@ class GoogleDriveService {
   final Map<String, String> _folderCache = {};
   Completer<void>? _folderLock;
 
+  // In-memory cache of remote file names to Drive IDs populated during reconciliation
+  Map<String, String>? _cachedRemoteFilesByName;
+
+  void clearRemoteFilesCache() {
+    _cachedRemoteFilesByName = null;
+  }
+
   drive.DriveApi? _driveApi;
 
   Future<drive.DriveApi> _getDriveApi() async {
@@ -217,6 +224,15 @@ class GoogleDriveService {
     String? contentHash,
     String? localId,
   }) async {
+    // 0. Instant O(1) in-memory cache lookup from remote summary (0 network latency!)
+    if (_cachedRemoteFilesByName != null) {
+      final cachedId = _cachedRemoteFilesByName![fileName];
+      if (cachedId != null) {
+        return cachedId;
+      }
+      return null;
+    }
+
     try {
       final api = await _getDriveApi();
       final escapedName = fileName.replaceAll("'", "\\'");
@@ -233,11 +249,14 @@ class GoogleDriveService {
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
         corpora: 'allDrives',
+        pageSize: 1,
         $fields: 'files(id, name, size)',
       );
 
       if (fileList.files != null && fileList.files!.isNotEmpty) {
-        return fileList.files!.first.id;
+        final id = fileList.files!.first.id;
+        if (id != null) _cachedRemoteFilesByName?[fileName] = id;
+        return id;
       }
 
       // 2. Search by localId in appProperties
@@ -252,10 +271,13 @@ class GoogleDriveService {
             supportsAllDrives: true,
             includeItemsFromAllDrives: true,
             corpora: 'allDrives',
+            pageSize: 1,
             $fields: 'files(id, name)',
           );
           if (localIdList.files != null && localIdList.files!.isNotEmpty) {
-            return localIdList.files!.first.id;
+            final id = localIdList.files!.first.id;
+            if (id != null) _cachedRemoteFilesByName?[fileName] = id;
+            return id;
           }
         } catch (_) {}
       }
@@ -272,34 +294,15 @@ class GoogleDriveService {
             supportsAllDrives: true,
             includeItemsFromAllDrives: true,
             corpora: 'allDrives',
+            pageSize: 1,
             $fields: 'files(id, name)',
           );
           if (hashList.files != null && hashList.files!.isNotEmpty) {
-            return hashList.files!.first.id;
+            final id = hashList.files!.first.id;
+            if (id != null) _cachedRemoteFilesByName?[fileName] = id;
+            return id;
           }
         } catch (_) {}
-      }
-
-      // 4. Global match by fileName and matching fileSize across active files on Drive
-      final globalQuery =
-          "name = '$escapedName' and "
-          "mimeType != 'application/vnd.google-apps.folder' and "
-          "trashed = false";
-      final globalList = await api.files.list(
-        q: globalQuery,
-        spaces: 'drive',
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true,
-        corpora: 'allDrives',
-        $fields: 'files(id, name, size)',
-      );
-      if (globalList.files != null) {
-        for (final f in globalList.files!) {
-          final size = int.tryParse(f.size ?? '');
-          if (size != null && size == fileSize) {
-            return f.id;
-          }
-        }
       }
     } catch (_) {}
     return null;
@@ -338,6 +341,7 @@ class GoogleDriveService {
         }
         pageToken = list.nextPageToken;
       } while (pageToken != null && pageToken.isNotEmpty);
+      _cachedRemoteFilesByName = filesByName;
     } catch (e) {
       debugPrint('Error fetching remote drive files summary: $e');
     }
@@ -425,6 +429,10 @@ class GoogleDriveService {
 
         if (result.id == null || result.id!.isEmpty) {
           throw BackupException('Google Drive returned empty file ID on creation');
+        }
+
+        if (result.id != null) {
+          _cachedRemoteFilesByName?[item.fileName] = result.id!;
         }
 
         return result;
