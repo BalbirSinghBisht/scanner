@@ -61,6 +61,17 @@ class DeviceStateService {
     }
   }
 
+  /// Returns true if device is currently connected via Wi-Fi or Ethernet
+  Future<bool> isWifiConnection() async {
+    try {
+      final connectivityResult = await _connectivity.checkConnectivity();
+      return connectivityResult.contains(ConnectivityResult.wifi) ||
+          connectivityResult.contains(ConnectivityResult.ethernet);
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Checks if current network connection meets backup criteria (supports both Wi-Fi and mobile data)
   Future<bool> isNetworkPermitted(BackupSettings settings) async {
     if (settings.localOnlyMode) return true;

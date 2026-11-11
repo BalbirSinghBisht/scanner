@@ -69,6 +69,8 @@ class BackupSyncService {
 
   MediaItem? _currentUploadingItem;
   MediaItem? get currentUploadingItem => _currentUploadingItem;
+  final Set<String> _activeUploadingIds = {};
+  bool _isLargeUploadInFlight = false;
 
   void pause() {
     _isPaused = true;
@@ -222,51 +224,20 @@ class BackupSyncService {
         }
       }
 
-      // 4. Process pending queue one-by-one atomically
-      while (_isSyncing && !_isPaused) {
-        // Keep lock alive while active
-        await prefs.setInt(_lockKey, DateTime.now().millisecondsSinceEpoch);
+      // 4. Process pending queue concurrently with adaptive multi-worker pool
+      final isWifi = await _device.isWifiConnection();
+      final concurrency = isWifi
+          ? AppConstants.maxConcurrentUploadsWifi
+          : AppConstants.maxConcurrentUploadsMobile;
 
-        // Verify network & retry every 15s if internet/wifi is off without pausing the background service
-        final networkOk = await _waitForNetwork(settings, prefs);
-        if (!networkOk) {
-          debugPrint('Sync exited: User paused while waiting for network.');
-          break;
-        }
+      debugPrint('Starting parallel backup with $concurrency worker(s) (Wi-Fi: $isWifi)...');
 
-        final batteryOk = await _device.isBatteryPermitted(settings);
-        if (!batteryOk) {
-          debugPrint('Sync paused: Battery constraints not met.');
-          break;
-        }
+      final workers = List.generate(
+        concurrency,
+        (index) => _runUploadWorker(index, settings, prefs),
+      );
 
-        // Atomically claim the single next pending upload in an SQLite transaction
-        final item = await _db.claimNextPendingUpload(
-          includePhotos: settings.backupPhotos,
-          includeVideos: settings.backupVideos,
-          maxVideoSizeBytes: settings.maxVideoSizeBytes,
-        );
-
-        if (item == null) {
-          debugPrint('Sync complete: No more pending items in queue.');
-          break;
-        }
-
-        // Check video size limit
-        if (item.mediaType == AppMediaType.video &&
-            settings.maxVideoSizeBytes != null &&
-            item.fileSize > settings.maxVideoSizeBytes!) {
-          await _db.updateUploadState(
-            item.localId,
-            UploadState.SKIPPED,
-            errorMessage:
-                'Exceeds maximum video size limit of ${settings.maxVideoSizeBytes} bytes',
-          );
-          continue;
-        }
-
-        await _processSingleUpload(item, settings);
-      }
+      await Future.wait(workers);
     } catch (e) {
       debugPrint('Error during backup sync: $e');
     } finally {
@@ -275,12 +246,81 @@ class BackupSyncService {
       _isWaitingForNetwork = false;
       _inProcessSyncLock = false;
       _currentUploadingItem = null;
+      _activeUploadingIds.clear();
+      _isLargeUploadInFlight = false;
       _progressController.add(null);
+    }
+  }
+
+  Future<void> _runUploadWorker(
+    int workerId,
+    BackupSettings settings,
+    SharedPreferences prefs,
+  ) async {
+    while (_isSyncing && !_isPaused) {
+      // Keep lock alive while active
+      await prefs.setInt(_lockKey, DateTime.now().millisecondsSinceEpoch);
+
+      // Verify network & retry every 15s if internet/wifi is off without pausing the background service
+      final networkOk = await _waitForNetwork(settings, prefs);
+      if (!networkOk) {
+        debugPrint('[Worker $workerId] Sync exited: User paused while waiting for network.');
+        break;
+      }
+
+      final batteryOk = await _device.isBatteryPermitted(settings);
+      if (!batteryOk) {
+        debugPrint('[Worker $workerId] Sync paused: Battery constraints not met.');
+        break;
+      }
+
+      // Atomically claim the single next pending upload in an SQLite transaction
+      final item = await _db.claimNextPendingUpload(
+        includePhotos: settings.backupPhotos,
+        includeVideos: settings.backupVideos,
+        maxVideoSizeBytes: settings.maxVideoSizeBytes,
+      );
+
+      if (item == null) {
+        debugPrint('[Worker $workerId] No more pending items in queue.');
+        break;
+      }
+
+      // Check video size limit
+      if (item.mediaType == AppMediaType.video &&
+          settings.maxVideoSizeBytes != null &&
+          item.fileSize > settings.maxVideoSizeBytes!) {
+        await _db.updateUploadState(
+          item.localId,
+          UploadState.SKIPPED,
+          errorMessage:
+              'Exceeds maximum video size limit of ${settings.maxVideoSizeBytes} bytes',
+        );
+        continue;
+      }
+
+      // Heavy file guard (>50MB): serialize with other large files to protect mobile RAM and CPU
+      final isLargeFile = item.fileSize > AppConstants.defaultLargeFileThresholdBytes;
+      if (isLargeFile) {
+        while (_isLargeUploadInFlight && _isSyncing && !_isPaused) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+        _isLargeUploadInFlight = true;
+      }
+
+      try {
+        await _processSingleUpload(item, settings);
+      } finally {
+        if (isLargeFile) {
+          _isLargeUploadInFlight = false;
+        }
+      }
     }
   }
 
   Future<void> _processSingleUpload(MediaItem item, BackupSettings settings) async {
     _currentUploadingItem = item;
+    _activeUploadingIds.add(item.localId);
 
     // Transition state to UPLOADING
     await _db.updateUploadState(
@@ -359,6 +399,13 @@ class BackupSyncService {
             uploadedAt: DateTime.now(),
             errorMessage: 'Verified duplicate of ${duplicateUploaded.fileName}',
           );
+          _progressController.add(UploadProgressEvent(
+            item: item,
+            bytesSent: item.fileSize,
+            totalBytes: item.fileSize,
+            progress: 1.0,
+            statusMessage: 'Verified duplicate of ${duplicateUploaded.fileName}',
+          ));
           return;
         }
       }
@@ -374,6 +421,13 @@ class BackupSyncService {
           uploadedAt: DateTime.now(),
           errorMessage: 'Local-only test upload verified',
         );
+        _progressController.add(UploadProgressEvent(
+          item: item,
+          bytesSent: item.fileSize,
+          totalBytes: item.fileSize,
+          progress: 1.0,
+          statusMessage: 'Local-only backup verified',
+        ));
         return;
       }
 
@@ -489,6 +543,11 @@ class BackupSyncService {
         // Pause sync immediately so other files don't fail unnecessarily
         _isSyncing = false;
       }
+    } finally {
+      _activeUploadingIds.remove(item.localId);
+      if (_activeUploadingIds.isEmpty) {
+        _currentUploadingItem = null;
+      }
     }
   }
 
@@ -504,5 +563,7 @@ class BackupSyncService {
   void stop() {
     _isSyncing = false;
     _currentUploadingItem = null;
+    _activeUploadingIds.clear();
+    _isLargeUploadInFlight = false;
   }
 }

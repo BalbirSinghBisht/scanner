@@ -16,7 +16,9 @@ class AppConstants {
 
   // Scan & Upload Batch Sizes
   static const int scanPageSize = 100;
-  static const int maxConcurrentUploads = 1; // Sequential & resilient for mobile stability
+  static const int maxConcurrentUploads = 3; // Parallel uploads for high throughput
+  static const int maxConcurrentUploadsWifi = 3; // 3 concurrent uploads on Wi-Fi
+  static const int maxConcurrentUploadsMobile = 1; // 1 upload on mobile data to conserve bandwidth
   static const int defaultLargeFileThresholdBytes = 50 * 1024 * 1024; // 50 MB
   static const int maxRetryAttempts = 5;
 

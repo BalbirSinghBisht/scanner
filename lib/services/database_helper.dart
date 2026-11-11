@@ -578,41 +578,47 @@ class DatabaseHelper {
 
     final whereClause = conditions.join(' AND ');
 
-    final maps = await db.query(
-      AppConstants.manifestTableName,
-      where: whereClause,
-      whereArgs: args,
-      orderBy: 'created_at DESC',
-      limit: 1,
-    );
+    // Retry loop to handle concurrent worker races smoothly without premature termination
+    for (int attempt = 0; attempt < 5; attempt++) {
+      final maps = await db.query(
+        AppConstants.manifestTableName,
+        where: whereClause,
+        whereArgs: args,
+        orderBy: 'created_at DESC',
+        limit: 1,
+      );
 
-    if (maps.isEmpty) {
-      return null;
+      if (maps.isEmpty) {
+        return null;
+      }
+
+      final item = MediaItem.fromMap(maps.first);
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      // Atomically transition to UPLOADING only if still READY or RETRY
+      final updatedRows = await db.update(
+        AppConstants.manifestTableName,
+        {
+          'upload_state': UploadState.UPLOADING.name,
+          'last_attempt_at': nowMs,
+        },
+        where: 'local_id = ? AND (upload_state = ? OR upload_state = ?)',
+        whereArgs: [item.localId, UploadState.READY_TO_UPLOAD.name, UploadState.RETRY_PENDING.name],
+      );
+
+      if (updatedRows > 0) {
+        return item.copyWith(
+          uploadState: UploadState.UPLOADING,
+          lastAttemptAt: DateTime.fromMillisecondsSinceEpoch(nowMs),
+        );
+      }
+
+      // If updatedRows == 0, another concurrent worker claimed this item a microsecond earlier.
+      // Small 15ms pause allows transaction to complete before querying next candidate.
+      await Future.delayed(const Duration(milliseconds: 15));
     }
 
-    final item = MediaItem.fromMap(maps.first);
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-
-    // Atomically transition to UPLOADING only if still READY or RETRY
-    final updatedRows = await db.update(
-      AppConstants.manifestTableName,
-      {
-        'upload_state': UploadState.UPLOADING.name,
-        'last_attempt_at': nowMs,
-      },
-      where: 'local_id = ? AND (upload_state = ? OR upload_state = ?)',
-      whereArgs: [item.localId, UploadState.READY_TO_UPLOAD.name, UploadState.RETRY_PENDING.name],
-    );
-
-    if (updatedRows == 0) {
-      // Race condition handled: another isolate claimed it in the interim
-      return null;
-    }
-
-    return item.copyWith(
-      uploadState: UploadState.UPLOADING,
-      lastAttemptAt: DateTime.fromMillisecondsSinceEpoch(nowMs),
-    );
+    return null;
   }
 
   Future<List<MediaItem>> getFailedUploads({int limit = 100}) async {
