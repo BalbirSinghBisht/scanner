@@ -71,7 +71,7 @@ class _MediaItemTileState extends State<MediaItemTile>
           child: Container(
             decoration: BoxDecoration(
               color: c.surfaceElevated,
-              borderRadius: BorderRadius.circular(widget.isSelected ? 8 : 4),
+              borderRadius: BorderRadius.circular(widget.isSelected ? 16 : 12),
               border: widget.isSelected
                   ? Border.all(color: c.primary, width: 2.5)
                   : null,
@@ -154,7 +154,7 @@ class _MediaItemTileState extends State<MediaItemTile>
                           ? const Center(
                               child: Icon(
                                 CupertinoIcons.checkmark,
-                                size: 13,
+                                size: 11,
                                 color: Colors.white,
                               ),
                             )
@@ -169,7 +169,7 @@ class _MediaItemTileState extends State<MediaItemTile>
                     left: 6,
                     child: Icon(
                       CupertinoIcons.heart_fill,
-                      size: 13,
+                      size: 11,
                       color: Colors.white,
                       shadows: [
                         Shadow(
@@ -191,7 +191,7 @@ class _MediaItemTileState extends State<MediaItemTile>
                       children: [
                         const Icon(
                           CupertinoIcons.play_fill,
-                          size: 9,
+                          size: 8,
                           color: Colors.white,
                           shadows: [
                             Shadow(
@@ -241,7 +241,7 @@ class _MediaItemTileState extends State<MediaItemTile>
               ? CupertinoIcons.video_camera
               : CupertinoIcons.photo,
           color: c.textTertiary,
-          size: 22,
+          size: 19,
         ),
       ),
     );

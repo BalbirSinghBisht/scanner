@@ -458,7 +458,7 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: isSelected ? c.primary : c.surfaceGlassFloating,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                       child: Text(
                         ratio.label,
@@ -486,13 +486,13 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: c.surfaceGlassFloating,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: c.glassBorder, width: 0.5),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.dashboard_customize_rounded, color: c.primary, size: 16),
+                      Icon(Icons.dashboard_customize_outlined, color: c.primary, size: 15),
                       const SizedBox(width: 4),
                       Text('Layout', style: TextStyle(color: c.primary, fontSize: 11)),
                     ],
@@ -506,7 +506,7 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
           // Spacing & Corner Radius Sliders
           Row(
             children: [
-              Icon(Icons.border_all_rounded, color: c.textTertiary, size: 18),
+              Icon(Icons.border_all_outlined, color: c.textTertiary, size: 16),
               const SizedBox(width: 6),
               Text('Gap', style: TextStyle(color: c.textSecondary, fontSize: 11)),
               Expanded(
@@ -526,7 +526,7 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              Icon(Icons.rounded_corner_rounded, color: c.textTertiary, size: 18),
+              Icon(Icons.rounded_corner_outlined, color: c.textTertiary, size: 16),
               const SizedBox(width: 6),
               Text('Radius', style: TextStyle(color: c.textSecondary, fontSize: 11)),
               Expanded(

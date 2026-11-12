@@ -345,7 +345,7 @@ class AppTheme {
   /// Apple Photos Card Decoration
   static BoxDecoration glassCardDecoration({
     BuildContext? context,
-    double borderRadius = 16.0,
+    double borderRadius = 20.0,
     Color? backgroundColor,
     Color? borderColor,
     double borderWidth = 0.5,
@@ -373,7 +373,7 @@ class AppTheme {
   /// Shimmer decoration
   static BoxDecoration liquidShimmerDecoration({
     BuildContext? context,
-    double borderRadius = 16.0,
+    double borderRadius = 20.0,
     double phase = 0.0,
   }) {
     final c = context != null ? colors(context) : darkColors;
@@ -426,7 +426,7 @@ class AppTheme {
   /// Apple Search Bar Input Decoration
   static BoxDecoration liquidInputDecoration({
     BuildContext? context,
-    double borderRadius = 12.0,
+    double borderRadius = 16.0,
     double pulsePhase = 0.0,
     bool isFocused = false,
   }) {
@@ -464,6 +464,11 @@ class AppTheme {
         onSurface: c.textPrimary,
       ),
       textTheme: textTheme,
+      iconTheme: IconThemeData(
+        color: c.textPrimary,
+        size: 21,
+        weight: 300,
+      ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: CupertinoPageTransitionsBuilder(),
@@ -475,7 +480,7 @@ class AppTheme {
         backgroundColor: c.bg,
         elevation: 0,
         centerTitle: false,
-        iconTheme: IconThemeData(color: c.primary),
+        iconTheme: IconThemeData(color: c.primary, size: 20, weight: 300),
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Color(0xFF000000),
           statusBarIconBrightness: Brightness.light,
@@ -497,7 +502,7 @@ class AppTheme {
         color: c.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           side: BorderSide(color: c.glassBorderSubtle, width: 0.5),
         ),
       ),
@@ -508,7 +513,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
           ),
           textStyle: const TextStyle(
             fontWeight: FontWeight.w600,
@@ -543,6 +548,11 @@ class AppTheme {
         onSurface: c.textPrimary,
       ),
       textTheme: textTheme,
+      iconTheme: IconThemeData(
+        color: c.textPrimary,
+        size: 21,
+        weight: 300,
+      ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: CupertinoPageTransitionsBuilder(),
@@ -554,7 +564,7 @@ class AppTheme {
         backgroundColor: c.bg,
         elevation: 0,
         centerTitle: false,
-        iconTheme: IconThemeData(color: c.primary),
+        iconTheme: IconThemeData(color: c.primary, size: 20, weight: 300),
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Color(0xFFFFFFFF),
           statusBarIconBrightness: Brightness.dark,
@@ -576,7 +586,7 @@ class AppTheme {
         color: c.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           side: BorderSide(color: c.glassBorderSubtle, width: 0.5),
         ),
       ),
@@ -587,7 +597,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
           ),
           textStyle: const TextStyle(
             fontWeight: FontWeight.w600,

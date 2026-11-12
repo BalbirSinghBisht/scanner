@@ -415,7 +415,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           ),
           title: Row(
             children: [
-              Icon(Icons.delete_forever_rounded, color: c.accentRose, size: 24),
+              Icon(Icons.delete_forever_outlined, color: c.accentRose, size: 21),
               const SizedBox(width: 10),
               Text('Delete File?', style: TextStyle(color: c.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
             ],
@@ -433,7 +433,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
               style: ElevatedButton.styleFrom(
                 backgroundColor: c.accentRose,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
               onPressed: () => Navigator.of(ctx).pop(true),
@@ -612,7 +612,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
         color: c.isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: c.glassBorderSubtle, width: 0.5),
       ),
       child: Row(
@@ -621,9 +621,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: c.primary.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, size: 16, color: c.primary),
+            child: Icon(icon, size: 14, color: c.primary),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -834,7 +834,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                               shape: BoxShape.circle,
                               border: Border.all(color: c.glassBorder, width: 0.5),
                             ),
-                            child: Icon(CupertinoIcons.chevron_back, color: c.primary, size: 20),
+                            child: Icon(CupertinoIcons.chevron_back, color: c.primary, size: 18),
                           ),
                         ),
                         Expanded(
@@ -881,9 +881,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                   border: Border.all(color: c.glassBorder, width: 0.5),
                                 ),
                                 child: Icon(
-                                  _isCoverMode ? Icons.fit_screen_rounded : Icons.fullscreen_rounded,
+                                  _isCoverMode ? Icons.fit_screen_outlined : Icons.fullscreen_outlined,
                                   color: c.primary,
-                                  size: 20,
+                                  size: 18,
                                 ),
                               ),
                             ),
@@ -899,7 +899,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                   shape: BoxShape.circle,
                                   border: Border.all(color: c.glassBorder, width: 0.5),
                                 ),
-                                child: Icon(CupertinoIcons.pencil, color: c.primary, size: 20),
+                                child: Icon(CupertinoIcons.pencil, color: c.primary, size: 18),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -914,7 +914,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                   shape: BoxShape.circle,
                                   border: Border.all(color: c.glassBorder, width: 0.5),
                                 ),
-                                child: Icon(CupertinoIcons.info_circle, color: c.primary, size: 20),
+                                child: Icon(CupertinoIcons.info_circle, color: c.primary, size: 18),
                               ),
                             ),
                           ],
@@ -1004,7 +1004,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
                                 onPressed: _shareCurrentItem,
-                                child: Icon(CupertinoIcons.share, color: c.primary, size: 24),
+                                child: Icon(CupertinoIcons.share, color: c.primary, size: 20),
                               ),
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),
@@ -1016,7 +1016,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 child: Icon(
                                   isFavorite ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
                                   color: isFavorite ? c.accentRose : c.primary,
-                                  size: 24,
+                                  size: 20,
                                 ),
                               ),
                               CupertinoButton(
@@ -1026,20 +1026,20 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 child: Icon(
                                   CupertinoIcons.slider_horizontal_3,
                                   color: c.primary,
-                                  size: 24,
+                                  size: 20,
                                 ),
                               ),
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
                                 onPressed: _showItemDetailsBottomSheet,
-                                child: Icon(CupertinoIcons.info, color: c.primary, size: 24),
+                                child: Icon(CupertinoIcons.info, color: c.primary, size: 20),
                               ),
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
                                 onPressed: _confirmAndDeleteCurrentItem,
-                                child: Icon(CupertinoIcons.trash, color: c.accentRose, size: 24),
+                                child: Icon(CupertinoIcons.trash, color: c.accentRose, size: 20),
                               ),
                             ],
                           ),
@@ -1132,7 +1132,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                       child: const Icon(
                         CupertinoIcons.play_fill,
                         color: Colors.white,
-                        size: 38,
+                        size: 32,
                       ),
                     ),
                   ),
@@ -1253,13 +1253,13 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             const SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.arrow_back, size: 16),
+              icon: const Icon(Icons.arrow_back, size: 15),
               label: const Text('Back to Gallery'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.darkCardBorder,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(16)),
               ),
             ),
           ],

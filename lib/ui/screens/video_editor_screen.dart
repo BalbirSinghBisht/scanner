@@ -303,7 +303,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                     child: AspectRatio(
                       aspectRatio: _controller!.value.aspectRatio,
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(20),
                         child: VideoPlayer(_controller!),
                       ),
                     ),
@@ -341,7 +341,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                             child: Icon(
                               isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
                               color: Colors.white,
-                              size: 40,
+                              size: 34,
                             ),
                           ),
                         ),
@@ -395,7 +395,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     color: Colors.white12,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(18),
                   ),
                   child: const Text(
                     'GIF',
@@ -471,7 +471,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppTheme.appleYellow.withOpacity(0.6), width: 1.5),
             ),
             child: Column(
@@ -539,7 +539,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: _muteAudio ? c.accentRose.withOpacity(0.2) : c.surfaceGlassFloating,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: _muteAudio ? c.accentRose : c.glassBorder,
                       width: 1,
@@ -549,9 +549,9 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _muteAudio ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                        _muteAudio ? Icons.volume_off_outlined : Icons.volume_up_outlined,
                         color: _muteAudio ? c.accentRose : c.textPrimary,
-                        size: 18,
+                        size: 16,
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -577,7 +577,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   });
                 },
                 color: c.surfaceElevated,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 itemBuilder: (ctx) => [
                   const PopupMenuItem(value: 0.5, child: Text('0.5x Speed')),
                   const PopupMenuItem(value: 1.0, child: Text('1.0x (Normal)')),
@@ -588,7 +588,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: _playbackSpeed != 1.0 ? c.primary.withOpacity(0.2) : c.surfaceGlassFloating,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: _playbackSpeed != 1.0 ? c.primary : c.glassBorder,
                       width: 1,
@@ -597,7 +597,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.speed_rounded, color: c.textPrimary, size: 18),
+                      Icon(Icons.speed_outlined, color: c.textPrimary, size: 16),
                       const SizedBox(width: 6),
                       Text(
                         '${_playbackSpeed}x',
@@ -619,7 +619,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: _isLoopingTrim ? c.primary.withOpacity(0.2) : c.surfaceGlassFloating,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: _isLoopingTrim ? c.primary : c.glassBorder,
                       width: 1,
@@ -629,9 +629,9 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.repeat_rounded,
+                        Icons.repeat_outlined,
                         color: _isLoopingTrim ? c.primary : c.textTertiary,
-                        size: 18,
+                        size: 16,
                       ),
                       const SizedBox(width: 6),
                       Text(

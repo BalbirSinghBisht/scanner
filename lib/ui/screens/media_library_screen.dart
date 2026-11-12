@@ -448,13 +448,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
           child: Container(
             decoration: BoxDecoration(
               color: c.isDark ? const Color(0xE61C1C1E) : const Color(0xF2FFFFFF),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               border: Border.all(color: c.glassBorderSubtle, width: 0.5),
             ),
             padding: EdgeInsets.only(
@@ -515,7 +515,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         setState(() => _sortMode = mode);
         Navigator.pop(context);
       },
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 2),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -523,12 +523,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           color: isSelected
               ? c.primary.withOpacity(c.isDark ? 0.18 : 0.10)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           children: [
             Icon(icon,
-                size: 20,
+                size: 17,
                 color: isSelected ? c.primary : c.textSecondary),
             const SizedBox(width: 12),
             Text(
@@ -542,7 +542,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             ),
             const Spacer(),
             if (isSelected)
-              Icon(CupertinoIcons.checkmark, color: c.primary, size: 18),
+              Icon(CupertinoIcons.checkmark, color: c.primary, size: 15),
           ],
         ),
       ),
@@ -812,7 +812,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(CupertinoIcons.chevron_back,
-                          color: c.primary, size: 26),
+                          color: c.primary, size: 21),
                       Text('Albums',
                           style: TextStyle(color: c.primary, fontSize: 16)),
                     ],
@@ -864,7 +864,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         ? CupertinoIcons.clear
                         : CupertinoIcons.search,
                     color: _isSearchOpen ? c.primary : c.textSecondary,
-                    size: 19,
+                    size: 17,
                   ),
                 ),
               ),
@@ -896,7 +896,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                               ? CupertinoIcons.rectangle_grid_3x2
                               : CupertinoIcons.circle_grid_hex),
                       color: c.primary,
-                      size: 19,
+                      size: 17,
                     ),
                   ),
                 ),
@@ -917,7 +917,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   child: Icon(
                     CupertinoIcons.arrow_up_arrow_down,
                     color: c.primary,
-                    size: 18,
+                    size: 16,
                   ),
                 ),
               ),
@@ -955,11 +955,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: c.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFE5E5EA),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
-          Icon(CupertinoIcons.search, color: c.textSecondary, size: 17),
+          Icon(CupertinoIcons.search, color: c.textSecondary, size: 15),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -987,7 +987,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 setState(() => _searchQuery = '');
               },
               child: Icon(CupertinoIcons.clear_circled_solid,
-                  color: c.textSecondary, size: 17),
+                  color: c.textSecondary, size: 15),
             ),
         ],
       ),
@@ -1000,7 +1000,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: c.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: c.glassBorderSubtle,
           width: 0.5,
@@ -1011,7 +1011,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           Icon(
             CupertinoIcons.sparkles,
             color: c.accentAmber,
-            size: 18,
+            size: 15,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -1037,7 +1037,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: c.primary,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: const Text(
                 'Setup',
@@ -1446,13 +1446,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                 child: InkWell(
                   onTap: () => _toggleFeaturedMoments(true),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(20),
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: c.surfaceGlass,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: c.glassBorder,
                         width: 0.6,
@@ -1765,7 +1765,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 children: [
                   Icon(
                     isSelected ? selectedIcon : unselectedIcon,
-                    size: 22,
+                    size: 20,
                     color: isSelected ? c.primary : c.textSecondary,
                   ),
                   if (index == 2 && favCount > 0 && !isSelected)
@@ -1827,7 +1827,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(CupertinoIcons.share, color: c.primary, size: 22),
+                    Icon(CupertinoIcons.share, color: c.primary, size: 19),
                     const SizedBox(height: 3),
                     Text(
                       'Share',
@@ -1847,7 +1847,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(CupertinoIcons.heart, color: c.primary, size: 22),
+                    Icon(CupertinoIcons.heart, color: c.primary, size: 19),
                     const SizedBox(height: 3),
                     Text(
                       'Favorite',
@@ -1868,7 +1868,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.dashboard_customize_rounded, color: c.primary, size: 22),
+                      Icon(Icons.dashboard_customize_outlined, color: c.primary, size: 19),
                       const SizedBox(height: 3),
                       Text(
                         'Collage',
@@ -1888,7 +1888,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(CupertinoIcons.trash, color: c.accentRose, size: 22),
+                    Icon(CupertinoIcons.trash, color: c.accentRose, size: 19),
                     const SizedBox(height: 3),
                     Text(
                       'Delete',
@@ -1975,7 +1975,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           await MediaScannerService.instance.requestPermission();
                           await backup.startScan(forceFullScan: true);
                         },
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(18),
                         child: const Text(
                           'Grant Media Permission',
                           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
@@ -1995,11 +1995,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       CupertinoButton.filled(
                         onPressed: () =>
                             backup.startScan(forceFullScan: false),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(18),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(CupertinoIcons.arrow_clockwise, size: 16),
+                            Icon(CupertinoIcons.arrow_clockwise, size: 14),
                             SizedBox(width: 6),
                             Text(
                               'Scan Device Media',

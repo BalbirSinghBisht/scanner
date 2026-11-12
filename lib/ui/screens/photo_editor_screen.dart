@@ -761,7 +761,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: c.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
               onPressed: () {
                 setState(() {
@@ -1011,7 +1011,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: Colors.black45,
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(color: Colors.white30, width: 0.5),
                                 ),
                                 child: Text(
@@ -1103,17 +1103,17 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
                 Row(
                   children: [
                     IconButton(
-                      icon: Icon(Icons.rotate_90_degrees_cw_rounded, color: c.primary),
+                      icon: Icon(Icons.rotate_90_degrees_cw_outlined, color: c.primary),
                       tooltip: 'Rotate 90°',
                       onPressed: _rotate90Degrees,
                     ),
                     IconButton(
-                      icon: Icon(Icons.flip_rounded, color: c.primary),
+                      icon: Icon(Icons.flip_outlined, color: c.primary),
                       tooltip: 'Flip Horizontal',
                       onPressed: _flipHorizontally,
                     ),
                     IconButton(
-                      icon: Icon(Icons.refresh_rounded, color: c.textSecondary),
+                      icon: Icon(Icons.refresh_outlined, color: c.textSecondary),
                       tooltip: 'Reset Crop Frame',
                       onPressed: () {
                         setState(() {
@@ -1141,7 +1141,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
                           height: 14,
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                         )
-                      : const Icon(Icons.crop_rounded, size: 16),
+                      : const Icon(Icons.crop_outlined, size: 15),
                   label: const Text(
                     'Apply Crop',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
@@ -1157,7 +1157,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildSliderRow(
-              icon: Icons.brightness_6_rounded,
+              icon: Icons.brightness_6_outlined,
               label: 'Brightness',
               value: _brightness,
               min: -1.0,
@@ -1166,7 +1166,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
               c: c,
             ),
             _buildSliderRow(
-              icon: Icons.contrast_rounded,
+              icon: Icons.contrast_outlined,
               label: 'Contrast',
               value: _contrast,
               min: 0.2,
@@ -1175,7 +1175,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
               c: c,
             ),
             _buildSliderRow(
-              icon: Icons.color_lens_rounded,
+              icon: Icons.color_lens_outlined,
               label: 'Saturation',
               value: _saturation,
               min: 0.0,
@@ -1184,7 +1184,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
               c: c,
             ),
             _buildSliderRow(
-              icon: Icons.thermostat_rounded,
+              icon: Icons.thermostat_outlined,
               label: 'Warmth',
               value: _warmth,
               min: -1.0,
@@ -1265,7 +1265,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
               ),
             ),
             IconButton(
-              icon: Icon(Icons.undo_rounded, color: _strokes.isEmpty ? c.textTertiary : c.textPrimary),
+              icon: Icon(Icons.undo_outlined, color: _strokes.isEmpty ? c.textTertiary : c.textPrimary),
               onPressed: _strokes.isEmpty
                   ? null
                   : () {
@@ -1382,7 +1382,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected ? c.primary.withOpacity(0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: isSelected ? c.primary : c.glassBorder,
             width: 1,

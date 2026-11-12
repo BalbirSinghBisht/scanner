@@ -263,7 +263,7 @@ class _UnrestrictedBackgroundSheetState
                     color: _isAllConfigured
                         ? c.accentGreen.withOpacity(0.12)
                         : c.accentAmber.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: _isAllConfigured
                           ? c.accentGreen.withOpacity(0.4)
@@ -280,7 +280,7 @@ class _UnrestrictedBackgroundSheetState
                         color: _isAllConfigured
                             ? c.accentGreen
                             : c.accentAmber,
-                        size: 20,
+                        size: 18,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -389,7 +389,7 @@ class _UnrestrictedBackgroundSheetState
                       color: _isAllConfigured
                           ? c.accentGreen
                           : c.surfaceElevated,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(18),
                       border: _isAllConfigured
                           ? null
                           : Border.all(color: c.glassBorderSubtle, width: 0.5),
@@ -413,7 +413,7 @@ class _UnrestrictedBackgroundSheetState
                           color: _isAllConfigured
                               ? Colors.white
                               : c.textTertiary,
-                          size: 18,
+                          size: 16,
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -458,7 +458,7 @@ class _UnrestrictedBackgroundSheetState
         color: isGranted
             ? c.accentGreen.withOpacity(0.08)
             : c.surfaceElevated,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isGranted
               ? c.accentGreen.withOpacity(0.35)
@@ -482,7 +482,7 @@ class _UnrestrictedBackgroundSheetState
                 child: Icon(
                   icon,
                   color: isGranted ? c.accentGreen : c.primary,
-                  size: 20,
+                  size: 18,
                 ),
               ),
               const SizedBox(width: 12),
@@ -516,7 +516,7 @@ class _UnrestrictedBackgroundSheetState
                 Icon(
                   CupertinoIcons.checkmark_circle_fill,
                   color: c.accentGreen,
-                  size: 22,
+                  size: 19,
                 ),
             ],
           ),
@@ -540,7 +540,7 @@ class _UnrestrictedBackgroundSheetState
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
                   color: c.primary,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -557,7 +557,7 @@ class _UnrestrictedBackgroundSheetState
                     const Icon(
                       CupertinoIcons.chevron_right,
                       color: Colors.white,
-                      size: 14,
+                      size: 13,
                     ),
                   ],
                 ),
@@ -663,7 +663,7 @@ class _UnrestrictedBackgroundSheetState
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
                   color: c.primary,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,

@@ -30,7 +30,7 @@ class MediaFolderCard extends StatelessWidget {
 
     return ThreeDTouchCard(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(20),
       maxTiltAngle: 0.04,
       pressScale: 0.96,
       glowColor: isAll ? c.primary : null,
@@ -43,7 +43,7 @@ class MediaFolderCard extends StatelessWidget {
               width: double.infinity,
               decoration: BoxDecoration(
                 color: c.surfaceElevated,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isAll
                       ? c.primary.withOpacity(0.35)
@@ -141,7 +141,7 @@ class MediaFolderCard extends StatelessWidget {
         child: Icon(
           isAll ? CupertinoIcons.photo_on_rectangle : CupertinoIcons.folder,
           color: c.textTertiary,
-          size: 32,
+          size: 26,
         ),
       ),
     );

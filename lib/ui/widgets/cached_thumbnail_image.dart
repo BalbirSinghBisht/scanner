@@ -158,9 +158,9 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
           color: c.surfaceElevated,
           child: Center(
             child: Icon(
-              Icons.play_circle_fill_rounded,
+              Icons.play_circle_outline,
               color: c.primary.withOpacity(0.4),
-              size: 28,
+              size: 24,
             ),
           ),
         );
@@ -177,9 +177,9 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
       color: c.surfaceElevated,
       child: Center(
         child: Icon(
-          Icons.broken_image_rounded,
+          Icons.broken_image_outlined,
           color: c.textTertiary.withOpacity(0.5),
-          size: 24,
+          size: 22,
         ),
       ),
     );

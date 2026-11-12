@@ -105,7 +105,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                 children: [
                   Icon(
                     CupertinoIcons.sparkles,
-                    size: 16,
+                    size: 14,
                     color: c.primary,
                   ),
                   const SizedBox(width: 8),
@@ -191,7 +191,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                         margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                         decoration: BoxDecoration(
                           color: c.surfaceElevated,
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color: c.glassBorderSubtle,
                             width: 0.5,
@@ -238,21 +238,21 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
                                 top: 12,
                                 right: 12,
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(14),
                                   child: BackdropFilter(
                                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
                                         color: Colors.black.withOpacity(0.45),
-                                        borderRadius: BorderRadius.circular(10),
+                                        borderRadius: BorderRadius.circular(14),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           const Icon(
                                             CupertinoIcons.play_fill,
-                                            size: 9,
+                                            size: 8,
                                             color: Colors.white,
                                           ),
                                           if (item.durationSeconds != null && item.durationSeconds! > 0) ...[
@@ -388,7 +388,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 44),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
               child: CachedThumbnailImage(
                 localId: item.localId,
                 size: 750,
@@ -409,7 +409,7 @@ class _ThreeDShowcaseCarouselState extends State<ThreeDShowcaseCarousel>
         child: Icon(
           CupertinoIcons.photo,
           color: c.textTertiary,
-          size: 32,
+          size: 26,
         ),
       ),
     );
