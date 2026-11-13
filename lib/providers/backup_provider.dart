@@ -231,9 +231,10 @@ class BackupProvider extends ChangeNotifier {
 
   /// Refreshes all cached lists and dashboard statistics from SQLite manifest (Read-Only)
   Future<void> refreshData() async {
-    // Purge any disk vs MediaStore duplicates in SQLite manifest
+    // Purge any disk vs MediaStore duplicates & audio/ringtones in SQLite manifest
     try {
       await _db.deduplicateManifest();
+      await _db.purgeAudioAndRingtones();
     } catch (_) {}
 
     _stats = await _db.computeDashboardStats(
@@ -254,11 +255,37 @@ class BackupProvider extends ChangeNotifier {
     for (final it in rawItems) {
       if (it.isLockedFolder) continue;
 
-      // Active file existence check: ONLY for direct disk scan items (disk_...)
-      if (it.localId.startsWith('disk_') && it.localFilePath != null && it.localFilePath!.isNotEmpty) {
-        if (!File(it.localFilePath!).existsSync()) {
-          missingIds.add(it.localId);
-          continue;
+      // Strictly exclude audio, ringtones, notification sounds
+      final fName = it.fileName.toLowerCase();
+      final mime = it.mimeType.toLowerCase();
+      final fDir = (it.folderName ?? '').toLowerCase();
+      if (mime.startsWith('audio/') ||
+          fName.endsWith('.mp3') ||
+          fName.endsWith('.ogg') ||
+          fName.endsWith('.m4a') ||
+          fName.endsWith('.wav') ||
+          fName.endsWith('.aac') ||
+          fName.endsWith('.flac') ||
+          fName.endsWith('.opus') ||
+          fName.endsWith('.amr') ||
+          fDir == 'ringtones' ||
+          fDir == 'notifications' ||
+          fDir == 'alarms' ||
+          fDir == 'audio' ||
+          fDir == 'music') {
+        missingIds.add(it.localId);
+        continue;
+      }
+
+      // Active file existence check: prune orphaned items that do not exist on disk
+      // unless they are backed up in Google Drive (cloud items)
+      if (it.localFilePath != null && it.localFilePath!.isNotEmpty) {
+        final f = File(it.localFilePath!);
+        if (!f.existsSync()) {
+          if (it.driveFileId == null || it.driveFileId!.isEmpty) {
+            missingIds.add(it.localId);
+            continue;
+          }
         }
       }
 
@@ -289,7 +316,12 @@ class BackupProvider extends ChangeNotifier {
             !f.toLowerCase().contains('private') &&
             !f.toLowerCase().contains('locked') &&
             !f.toLowerCase().contains('secret') &&
-            !f.toLowerCase().contains('vault'))
+            !f.toLowerCase().contains('vault') &&
+            !f.toLowerCase().contains('ringtone') &&
+            !f.toLowerCase().contains('notification') &&
+            !f.toLowerCase().contains('alarm') &&
+            !f.toLowerCase().contains('audio') &&
+            !f.toLowerCase().contains('music'))
         .toList();
 
     notifyListeners();

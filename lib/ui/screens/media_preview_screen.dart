@@ -13,7 +13,10 @@ import '../../models/media_item.dart';
 import '../../providers/backup_provider.dart';
 import '../../services/device_settings_helper.dart';
 import '../../services/favorites_service.dart';
+import '../../services/google_drive_service.dart';
 import '../../services/media_scanner_service.dart';
+import '../../services/vault_service.dart';
+import '../widgets/move_to_folder_sheet.dart';
 import 'photo_editor_screen.dart';
 import 'video_editor_screen.dart';
 
@@ -391,6 +394,66 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
           ),
         );
       }
+    }
+  }
+
+  Future<void> _moveCurrentItem() async {
+    if (_items.isEmpty) return;
+    final item = _items[_currentIndex];
+    final isVaultItem = VaultService.instance.isLockedInApp(item.localId) ||
+        (item.localFilePath != null && item.localFilePath!.contains('.private_vault'));
+
+    if (isVaultItem) {
+      final confirm = await showCupertinoModalPopup<String>(
+        context: context,
+        builder: (ctx) => CupertinoActionSheet(
+          title: const Text('Restore Item'),
+          message: Text('Restore "${item.fileName}" back to its original location?'),
+          actions: [
+            CupertinoActionSheetAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(ctx).pop('restore'),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(CupertinoIcons.arrow_counterclockwise, size: 18),
+                  SizedBox(width: 8),
+                  Text('Restore to Same Place (Original)'),
+                ],
+              ),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Cancel'),
+          ),
+        ),
+      );
+      if (confirm == 'restore' && mounted) {
+        await VaultService.instance.moveOutOfVault([item]);
+        if (mounted) {
+          context.read<BackupProvider>().refreshData();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Restored "${item.fileName}" to original location'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          Navigator.of(context).pop();
+        }
+      }
+      return;
+    }
+
+    final target = await MoveToFolderSheet.show(context, [item]);
+    if (target != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Moved "${item.fileName}" to $target'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -1032,6 +1095,16 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
+                                onPressed: _moveCurrentItem,
+                                child: Icon(
+                                  Icons.drive_file_move_outlined,
+                                  color: c.primary,
+                                  size: 20,
+                                ),
+                              ),
+                              CupertinoButton(
+                                padding: const EdgeInsets.all(8),
+                                minSize: 0,
                                 onPressed: _showItemDetailsBottomSheet,
                                 child: Icon(CupertinoIcons.info, color: c.primary, size: 20),
                               ),
@@ -1317,21 +1390,23 @@ class _FullImagePreviewPageState extends State<_FullImagePreviewPage> {
   Future<void> _resolveFullResolutionMedia() async {
     // 1. Check direct local file path if available
     if (widget.item.localFilePath != null && widget.item.localFilePath!.isNotEmpty) {
-      final f = File(widget.item.localFilePath!);
-      if (await f.exists()) {
-        if (mounted) {
-          setState(() {
-            _resolvedFile = f;
-          });
-          return;
+      try {
+        final f = File(widget.item.localFilePath!);
+        if (await f.exists() && await f.length() > 0) {
+          if (mounted) {
+            setState(() {
+              _resolvedFile = f;
+            });
+            return;
+          }
         }
-      }
+      } catch (_) {}
     }
 
     // 2. Resolve origin / full file via MediaScannerService
     try {
       final file = await MediaScannerService.instance.getMediaFile(widget.item.localId);
-      if (file != null && await file.exists()) {
+      if (file != null && await file.exists() && await file.length() > 0) {
         if (mounted) {
           setState(() {
             _resolvedFile = file;
@@ -1356,6 +1431,21 @@ class _FullImagePreviewPageState extends State<_FullImagePreviewPage> {
         }
       }
     } catch (_) {}
+
+    // 4. Cloud Fallback: Download from Google Drive if backed up!
+    if (widget.item.driveFileId != null && widget.item.driveFileId!.isNotEmpty) {
+      try {
+        final cloudBytes = await GoogleDriveService.instance.downloadFileBytes(widget.item.driveFileId!);
+        if (cloudBytes != null && cloudBytes.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _resolvedBytes = cloudBytes;
+            });
+            return;
+          }
+        }
+      } catch (_) {}
+    }
 
     if (mounted) {
       setState(() {

@@ -1,8 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scanner/models/media_item.dart';
+import 'package:scanner/services/media_scanner_service.dart';
 
 void main() {
   group('Prune & Folder Deletion Tests', () {
+    test('Ringtones, notifications, and audio files are strictly excluded from media scanner and albums', () {
+      expect(MediaScannerService.isJunkOrThumbnail('Ringtones', '/storage/emulated/0/Ringtones'), isTrue);
+      expect(MediaScannerService.isJunkOrThumbnail('Notifications', '/storage/emulated/0/Notifications'), isTrue);
+      expect(MediaScannerService.isJunkOrThumbnail('Alarms', '/storage/emulated/0/Alarms'), isTrue);
+      expect(MediaScannerService.isJunkOrThumbnail('my_ringtone.mp3', '/storage/emulated/0/Ringtones/my_ringtone.mp3'), isTrue);
+      expect(MediaScannerService.isJunkOrThumbnail('chime.ogg', '/storage/emulated/0/Notifications/chime.ogg'), isTrue);
+      expect(MediaScannerService.isJunkOrThumbnail('Camera', '/storage/emulated/0/DCIM/Camera'), isFalse);
+      expect(MediaScannerService.isJunkOrThumbnail('photo.jpg', '/storage/emulated/0/DCIM/Camera/photo.jpg'), isFalse);
+    });
     test('groups items by display folder and cleans up when items are pruned', () {
       final item1 = MediaItem(
         localId: 'id_1',

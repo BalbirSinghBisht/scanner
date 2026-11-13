@@ -78,6 +78,11 @@ class DatabaseHelper {
       );
     } catch (_) {}
 
+    // Automatically purge any indexed audio, ringtones, and notification sounds
+    try {
+      await purgeAudioAndRingtones(db);
+    } catch (_) {}
+
     try {
       // Auto-purge any duplicate records across MediaStore and direct disk scans
       await deduplicateManifest(db);
@@ -253,6 +258,51 @@ class DatabaseHelper {
       });
       await batch.commit(noResult: true);
       debugPrint('Marked ${toMarkUploaded.length} items as UPLOADED because they already exist on Google Drive.');
+    }
+  }
+
+  /// Strictly purges any audio files, ringtones, and notification sounds from SQLite manifest
+  Future<int> purgeAudioAndRingtones([Database? targetDb]) async {
+    final db = targetDb ?? await database;
+    try {
+      final count = await db.delete(
+        AppConstants.manifestTableName,
+        where: '''
+          mime_type LIKE 'audio/%' OR 
+          mime_type LIKE '%ogg%' OR 
+          file_name LIKE '%.mp3' OR 
+          file_name LIKE '%.ogg' OR 
+          file_name LIKE '%.m4a' OR 
+          file_name LIKE '%.wav' OR 
+          file_name LIKE '%.aac' OR 
+          file_name LIKE '%.flac' OR 
+          file_name LIKE '%.opus' OR 
+          file_name LIKE '%.amr' OR 
+          file_name LIKE '%.mid' OR 
+          file_name LIKE '%.midi' OR 
+          file_name LIKE '%.wma' OR 
+          folder_name = 'Ringtones' OR 
+          folder_name = 'ringtone' OR 
+          folder_name = 'Notifications' OR 
+          folder_name = 'notification' OR 
+          folder_name = 'Alarms' OR 
+          folder_name = 'alarm' OR 
+          folder_name = 'Audio' OR 
+          folder_name = 'Music' OR 
+          local_file_path LIKE '%/Ringtones/%' OR 
+          local_file_path LIKE '%/Notifications/%' OR 
+          local_file_path LIKE '%/Alarms/%' OR 
+          local_file_path LIKE '%/Audio/%' OR 
+          local_file_path LIKE '%/Music/%'
+        ''',
+      );
+      if (count > 0) {
+        debugPrint('[DatabaseHelper] Purged $count audio/ringtone items from SQLite');
+      }
+      return count;
+    } catch (e) {
+      debugPrint('[DatabaseHelper] Error purging audio/ringtones: $e');
+      return 0;
     }
   }
 
@@ -527,6 +577,11 @@ class DatabaseHelper {
       args.add(maxVideoSizeBytes);
     }
 
+    // Strictly exclude any audio files or ringtones from sync
+    conditions.add("mime_type NOT LIKE 'audio/%'");
+    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
+    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
+
     final whereClause = conditions.join(' AND ');
 
     final maps = await db.query(
@@ -575,6 +630,11 @@ class DatabaseHelper {
       args.add(AppMediaType.video.name);
       args.add(maxVideoSizeBytes);
     }
+
+    // Strictly exclude any audio files or ringtones from sync
+    conditions.add("mime_type NOT LIKE 'audio/%'");
+    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
+    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
 
     final whereClause = conditions.join(' AND ');
 
@@ -959,6 +1019,88 @@ class DatabaseHelper {
       limit: limit,
     );
     return res.map((map) => MediaItem.fromMap(map)).toList();
+  }
+
+  /// Updates the folder and optionally local file path for a single media item
+  Future<int> updateItemFolder(
+    String localId,
+    String newFolderName, {
+    String? newLocalFilePath,
+  }) async {
+    final db = await database;
+    final values = <String, dynamic>{
+      'folder_name': newFolderName,
+    };
+    if (newLocalFilePath != null) {
+      values['local_file_path'] = newLocalFilePath;
+    }
+    return await db.update(
+      AppConstants.manifestTableName,
+      values,
+      where: 'local_id = ?',
+      whereArgs: [localId],
+    );
+  }
+
+  /// Batch updates the folder and optionally local file paths for multiple media items
+  Future<void> batchUpdateFolder(
+    List<String> localIds,
+    String newFolderName, {
+    Map<String, String>? idToNewPath,
+  }) async {
+    if (localIds.isEmpty) return;
+    final db = await database;
+    final batch = db.batch();
+    for (final id in localIds) {
+      final values = <String, dynamic>{
+        'folder_name': newFolderName,
+      };
+      if (idToNewPath != null && idToNewPath.containsKey(id)) {
+        values['local_file_path'] = idToNewPath[id];
+      }
+      batch.update(
+        AppConstants.manifestTableName,
+        values,
+        where: 'local_id = ?',
+        whereArgs: [id],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Retrieves all items identified as belonging to a private or locked folder
+  Future<List<MediaItem>> getPrivateItems({
+    int limit = 500,
+    Set<String>? inAppLockedIds,
+  }) async {
+    final db = await database;
+    final allItems = await db.query(
+      AppConstants.manifestTableName,
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+    final mapped = allItems.map((m) => MediaItem.fromMap(m));
+    if (inAppLockedIds != null) {
+      return mapped.where((it) =>
+        inAppLockedIds.contains(it.localId) ||
+        (it.localFilePath != null &&
+            (it.localFilePath!.contains('.private_vault') ||
+             it.localFilePath!.contains('.PrivateVault')))
+      ).toList();
+    }
+    return mapped
+        .where((it) =>
+            it.isLockedFolder ||
+            (it.localFilePath != null &&
+                (it.localFilePath!.contains('.private_vault') ||
+                 it.localFilePath!.contains('.PrivateVault'))))
+        .toList();
+  }
+
+  /// Returns total count of private locked items
+  Future<int> getPrivateItemsCount() async {
+    final items = await getPrivateItems();
+    return items.length;
   }
 
   /// Deletes a single media item by its localId

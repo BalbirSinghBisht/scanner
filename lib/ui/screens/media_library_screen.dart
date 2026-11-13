@@ -12,16 +12,21 @@ import '../../providers/backup_provider.dart';
 import '../../services/background_sync_manager.dart';
 import '../../services/device_settings_helper.dart';
 import '../../services/favorites_service.dart';
+import '../../services/folder_service.dart';
 import '../../services/media_scanner_service.dart';
 import '../../services/memories_service.dart';
+import '../widgets/create_album_dialog.dart';
 import '../widgets/haikei_background.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
 import '../widgets/memories_showcase.dart';
+import '../widgets/move_to_folder_sheet.dart';
+import '../widgets/pin_code_dialog.dart';
 import '../widgets/three_d_carousel.dart';
 import '../widgets/unrestricted_background_sheet.dart';
 import 'collage_maker_screen.dart';
 import 'media_preview_screen.dart';
+import 'private_folder_screen.dart';
 
 enum SortMode {
   newest,
@@ -82,6 +87,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       overlays: SystemUiOverlay.values,
     );
     WidgetsBinding.instance.addObserver(this);
+    FolderService.instance.init();
     _loadFeaturedPreference();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initAutoScanAndBackup();
@@ -376,6 +382,49 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     }
   }
 
+  Future<void> _batchMoveSelected(List<MediaItem> allItems) async {
+    final selectedItems =
+        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    if (selectedItems.isEmpty) return;
+
+    final targetFolder = await MoveToFolderSheet.show(context, selectedItems);
+    if (targetFolder != null && mounted) {
+      _exitSelectionMode();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Moved ${selectedItems.length} item(s) to $targetFolder'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _createNewAlbum() async {
+    final name = await CreateAlbumDialog.show(context);
+    if (name != null && name.trim().isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Created album "$name"'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openPrivateFolder() async {
+    final unlocked = await PinCodeDialog.showUnlock(context);
+    if (unlocked && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (ctx) => const PrivateFolderScreen(),
+        ),
+      );
+      if (mounted) {
+        context.read<BackupProvider>().refreshData();
+      }
+    }
+  }
+
   Future<void> _batchDeleteSelected(List<MediaItem> allItems) async {
     final c = AppTheme.colors(context);
     final selectedItems =
@@ -574,21 +623,29 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: systemUiOverlay,
       child: ListenableBuilder(
-        listenable: favService,
+        listenable: Listenable.merge([favService, FolderService.instance]),
         builder: (context, _) {
           final groupedFolders = _groupItemsByFolder(backup.mediaItems);
-          final sortedFolderNames = groupedFolders.keys.toList()
-            ..sort((a, b) =>
-                groupedFolders[b]!.length.compareTo(groupedFolders[a]!.length));
+          final allFolderKeys = <String>{
+            ...groupedFolders.keys,
+            ...FolderService.instance.customAlbums,
+          }.toList();
+          allFolderKeys.sort((a, b) {
+            final countA = groupedFolders[a]?.length ?? 0;
+            final countB = groupedFolders[b]?.length ?? 0;
+            if (countA != countB) return countB.compareTo(countA);
+            return a.compareTo(b);
+          });
+          final sortedFolderNames = allFolderKeys;
 
           // Reset opened folder if it was removed
           if (_openedFolder != null &&
               _openedFolder != 'All Photos & Videos' &&
-              !groupedFolders.containsKey(_openedFolder)) {
+              !sortedFolderNames.contains(_openedFolder)) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted &&
                   _openedFolder != null &&
-                  !groupedFolders.containsKey(_openedFolder)) {
+                  !sortedFolderNames.contains(_openedFolder)) {
                 setState(() => _openedFolder = null);
               }
             });
@@ -1408,10 +1465,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 it.displayFolderName, it.localFilePath))
         .toList();
 
-    if (visibleItems.isEmpty && sortedFolderNames.isEmpty) {
-      return _buildEmptyState(backup, c);
-    }
-
     final totalCount = visibleItems.length;
     final totalFolders = sortedFolderNames.length;
 
@@ -1526,13 +1579,38 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       letterSpacing: -0.4,
                     ),
                   ),
-                  Text(
-                    '$totalFolders albums',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: c.textSecondary,
-                      fontWeight: FontWeight.w400,
-                    ),
+                  Row(
+                    children: [
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        minSize: 0,
+                        onPressed: _createNewAlbum,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(CupertinoIcons.plus, size: 16, color: c.primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              'New Album',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: c.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$totalFolders albums',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: c.textSecondary,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1566,8 +1644,18 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     );
                   }
 
-                  // Subsequent cards: Physical phone folders
-                  final folderName = sortedFolderNames[index - 1];
+                  // Card 1: "Private Folder" (Locked)
+                  if (index == 1) {
+                    return MediaFolderCard(
+                      folderName: 'Private Folder',
+                      itemCount: 0,
+                      isLocked: true,
+                      onTap: _openPrivateFolder,
+                    );
+                  }
+
+                  // Subsequent cards: Physical phone folders and custom albums
+                  final folderName = sortedFolderNames[index - 2];
                   final folderItems = groupedFolders[folderName] ?? [];
 
                   return MediaFolderCard(
@@ -1580,7 +1668,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     },
                   );
                 },
-                childCount: sortedFolderNames.length + 1,
+                childCount: sortedFolderNames.length + 2,
               ),
             ),
           ),
@@ -1860,6 +1948,26 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   ],
                 ),
               ),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                minSize: 0,
+                onPressed: () => _batchMoveSelected(allItems),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.drive_file_move_outlined, color: c.primary, size: 19),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Move',
+                      style: TextStyle(
+                        color: c.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               if (_selectedIds.length >= 2 && _selectedIds.length <= 6)
                 CupertinoButton(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -2004,6 +2112,25 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                             Text(
                               'Scan Device Media',
                               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      CupertinoButton(
+                        onPressed: _openPrivateFolder,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(CupertinoIcons.lock_shield_fill, size: 16, color: c.primary),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Open Private Folder',
+                              style: TextStyle(
+                                color: c.primary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
                             ),
                           ],
                         ),

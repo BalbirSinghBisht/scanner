@@ -11,6 +11,7 @@ import '../core/errors/app_exceptions.dart';
 import '../models/media_item.dart';
 import 'database_helper.dart';
 import 'device_settings_helper.dart';
+import 'google_drive_service.dart';
 import 'settings_repository.dart';
 
 class ScanProgressReport {
@@ -72,6 +73,53 @@ class MediaScannerService {
 
     // 4. Android internal package app caches
     if (p.contains('/android/data/') && (p.contains('/cache') || p.contains('/code_cache'))) {
+      return true;
+    }
+
+    // 5. System audio, ringtones, notifications, and alarms (strictly photos & videos only)
+    if (n == 'ringtones' ||
+        n == 'ringtone' ||
+        n == 'notifications' ||
+        n == 'notification' ||
+        n == 'alarms' ||
+        n == 'alarm' ||
+        n == 'audio' ||
+        n == 'music' ||
+        n == 'podcasts' ||
+        n == 'recordings' ||
+        n == 'voice recorder' ||
+        p.contains('/ringtones/') ||
+        p.contains('/notifications/') ||
+        p.contains('/alarms/') ||
+        p.contains('/audio/') ||
+        p.contains('/music/') ||
+        p.contains('/system/media/audio/')) {
+      return true;
+    }
+
+    // Audio file extensions
+    if (n.endsWith('.mp3') ||
+        n.endsWith('.ogg') ||
+        n.endsWith('.m4a') ||
+        n.endsWith('.wav') ||
+        n.endsWith('.aac') ||
+        n.endsWith('.flac') ||
+        n.endsWith('.opus') ||
+        n.endsWith('.amr') ||
+        n.endsWith('.mid') ||
+        n.endsWith('.midi') ||
+        n.endsWith('.wma') ||
+        p.endsWith('.mp3') ||
+        p.endsWith('.ogg') ||
+        p.endsWith('.m4a') ||
+        p.endsWith('.wav') ||
+        p.endsWith('.aac') ||
+        p.endsWith('.flac') ||
+        p.endsWith('.opus') ||
+        p.endsWith('.amr') ||
+        p.endsWith('.mid') ||
+        p.endsWith('.midi') ||
+        p.endsWith('.wma')) {
       return true;
     }
 
@@ -187,17 +235,10 @@ class MediaScannerService {
         return [];
       }
       var albums = await PhotoManager.getAssetPathList(
-        type: RequestType.common,
+        type: RequestType.common, // Strictly images and videos (no audio/ringtones)
         hasAll: true,
         onlyAll: false,
       );
-      if (albums.isEmpty) {
-        albums = await PhotoManager.getAssetPathList(
-          type: RequestType.all,
-          hasAll: true,
-          onlyAll: false,
-        );
-      }
       if (albums.isEmpty) {
         final img = await PhotoManager.getAssetPathList(
           type: RequestType.image,
@@ -249,18 +290,10 @@ class MediaScannerService {
           await Future.delayed(const Duration(milliseconds: 300));
         }
         albums = await PhotoManager.getAssetPathList(
-          type: RequestType.common, // Images and videos
+          type: RequestType.common, // Strictly images and videos (no audio/ringtones)
           hasAll: true,
           onlyAll: false,
         );
-
-        if (albums.isEmpty) {
-          albums = await PhotoManager.getAssetPathList(
-            type: RequestType.all,
-            hasAll: true,
-            onlyAll: false,
-          );
-        }
 
         if (albums.isEmpty) {
           final img = await PhotoManager.getAssetPathList(
@@ -361,6 +394,28 @@ class MediaScannerService {
 
         for (final entity in entities) {
           try {
+            // Strictly exclude audio, ringtones, system sounds, and non-visual assets
+            if (entity.type == AssetType.audio || entity.type == AssetType.other) {
+              processedCount++;
+              continue;
+            }
+
+            final fileNameLower = (entity.title ?? '').toLowerCase();
+            if (fileNameLower.endsWith('.mp3') ||
+                fileNameLower.endsWith('.ogg') ||
+                fileNameLower.endsWith('.m4a') ||
+                fileNameLower.endsWith('.wav') ||
+                fileNameLower.endsWith('.aac') ||
+                fileNameLower.endsWith('.flac') ||
+                fileNameLower.endsWith('.opus') ||
+                fileNameLower.endsWith('.amr') ||
+                fileNameLower.endsWith('.mid') ||
+                fileNameLower.endsWith('.midi') ||
+                fileNameLower.endsWith('.wma')) {
+              processedCount++;
+              continue;
+            }
+
             // Instant O(1) incremental check: if already uploaded, skip immediately
             if (!forceFullScan && uploadedLocalIds.contains(entity.id)) {
               processedCount++;
@@ -386,6 +441,13 @@ class MediaScannerService {
                 final m = await entity.mimeTypeAsync;
                 if (m != null && m.isNotEmpty) mimeType = m;
               } catch (_) {}
+            }
+
+            if (mimeType.toLowerCase().startsWith('audio/') ||
+                mimeType.toLowerCase().contains('ogg') ||
+                mimeType.toLowerCase().contains('audio')) {
+              processedCount++;
+              continue;
             }
 
             // Fast file size: reuse already cached DB size or read from MediaStore
@@ -783,6 +845,18 @@ class MediaScannerService {
           buffer?.dispose();
         }
       }
+    }
+
+    // 3. Cloud fallback: If file is not on device but was backed up to Google Drive
+    if (dbItem?.driveFileId != null && dbItem!.driveFileId!.isNotEmpty) {
+      try {
+        final cloudBytes = await GoogleDriveService.instance.downloadFileBytes(dbItem.driveFileId!);
+        if (cloudBytes != null && cloudBytes.isNotEmpty) {
+          _putInThumbnailCache(cacheKey, cloudBytes);
+          _putInThumbnailCache(assetId, cloudBytes);
+          return cloudBytes;
+        }
+      } catch (_) {}
     }
 
     return null;

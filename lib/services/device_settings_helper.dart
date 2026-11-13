@@ -351,4 +351,15 @@ class DeviceSettingsHelper {
       return null;
     }
   }
+
+  /// Triggers Android OS media scanner so the newly created/moved file is indexed in system MediaStore and visible in File Manager
+  static Future<void> notifyMediaScanner(String filePath, [String? mimeType]) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('scanMediaFile', {
+        'path': filePath,
+        'mimeType': mimeType,
+      });
+    } catch (_) {}
+  }
 }

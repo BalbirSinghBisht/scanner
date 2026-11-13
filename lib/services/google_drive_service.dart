@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -472,6 +473,68 @@ class GoogleDriveService {
         final backoffMs = (1 << attempt) * 1000;
         await Future.delayed(Duration(milliseconds: backoffMs));
       }
+    }
+  }
+
+  /// Relocates a file on Google Drive to a new target folder under PhoneBackup/`deviceFolder`/`targetFolderName`
+  Future<bool> moveDriveFile({
+    required String driveFileId,
+    required String targetFolderName,
+  }) async {
+    try {
+      final api = await _getDriveApi();
+      final deviceFolder =
+          await DeviceStateService.instance.getDeviceBackupFolderName();
+      final pathSegments = [rootFolderName, deviceFolder, targetFolderName];
+      final targetFolderId = await getOrCreateFolderPath(pathSegments);
+
+      final fileInfo = await api.files.get(
+        driveFileId,
+        supportsAllDrives: true,
+        $fields: 'id, parents',
+      );
+
+      if (fileInfo is drive.File) {
+        final currentParents = (fileInfo.parents ?? []).join(',');
+        await api.files.update(
+          drive.File(),
+          driveFileId,
+          addParents: targetFolderId,
+          removeParents: currentParents.isNotEmpty ? currentParents : null,
+          supportsAllDrives: true,
+        );
+        debugPrint('[GoogleDriveService] Relocated Drive file $driveFileId to $targetFolderName ($targetFolderId)');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[GoogleDriveService] Error moving file on Drive: $e');
+      return false;
+    }
+  }
+
+  /// Downloads file content bytes directly from Google Drive (e.g. for cloud-only items)
+  Future<Uint8List?> downloadFileBytes(String driveFileId) async {
+    try {
+      final api = await _getDriveApi();
+      final media = await api.files.get(
+        driveFileId,
+        downloadOptions: drive.DownloadOptions.fullMedia,
+        supportsAllDrives: true,
+      );
+
+      if (media is drive.Media) {
+        final bytesBuilder = BytesBuilder(copy: false);
+        await for (final chunk in media.stream) {
+          bytesBuilder.add(chunk);
+        }
+        final bytes = bytesBuilder.toBytes();
+        return bytes.isNotEmpty ? bytes : null;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[GoogleDriveService] Download file bytes warning: $e');
+      return null;
     }
   }
 
