@@ -225,13 +225,13 @@ class GoogleDriveService {
     String? contentHash,
     String? localId,
   }) async {
-    // 0. Instant O(1) in-memory cache lookup from remote summary (0 network latency!)
+    // 0. Fast-path: in-memory cache lookup from remote summary
     if (_cachedRemoteFilesByName != null) {
       final cachedId = _cachedRemoteFilesByName![fileName];
       if (cachedId != null) {
         return cachedId;
       }
-      return null;
+      // Cache miss: proceed to live query to guarantee no duplicates
     }
 
     try {
@@ -260,7 +260,53 @@ class GoogleDriveService {
         return id;
       }
 
-      // 2. Search by localId in appProperties
+      // 2. Global search: Check if this file already exists in ANY folder on Drive
+      // Prevents duplicating files when they are moved across folders (Camera -> Album -> Vault)
+      final globalQuery =
+          "name = '$escapedName' and "
+          "trashed = false and "
+          "mimeType != 'application/vnd.google-apps.folder'";
+
+      final globalList = await api.files.list(
+        q: globalQuery,
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        corpora: 'allDrives',
+        pageSize: 5,
+        $fields: 'files(id, name, size, parents)',
+      );
+
+      if (globalList.files != null && globalList.files!.isNotEmpty) {
+        for (final existingFile in globalList.files!) {
+          final existingSize = int.tryParse(existingFile.size ?? '') ?? 0;
+          if (fileSize <= 0 || existingSize <= 0 || (existingSize - fileSize).abs() < 2048) {
+            final id = existingFile.id;
+            if (id != null) {
+              // Relocate file to the current target folder instead of uploading a duplicate!
+              final currentParents = (existingFile.parents ?? []).join(',');
+              if (!currentParents.contains(parentFolderId)) {
+                try {
+                  await api.files.update(
+                    drive.File(),
+                    id,
+                    addParents: parentFolderId,
+                    removeParents: currentParents.isNotEmpty ? currentParents : null,
+                    supportsAllDrives: true,
+                  );
+                  debugPrint('[GoogleDriveService] Relocated existing Drive file $fileName ($id) to $parentFolderId (prevented duplicate upload)');
+                } catch (e) {
+                  debugPrint('[GoogleDriveService] Relocation warning: $e');
+                }
+              }
+              _cachedRemoteFilesByName?[fileName] = id;
+              return id;
+            }
+          }
+        }
+      }
+
+      // 3. Search by localId in appProperties
       if (localId != null && localId.isNotEmpty) {
         try {
           final localIdQuery =
@@ -283,7 +329,7 @@ class GoogleDriveService {
         } catch (_) {}
       }
 
-      // 3. Search by contentHash in appProperties if available
+      // 4. Search by contentHash in appProperties if available
       if (contentHash != null && contentHash.isNotEmpty) {
         try {
           final hashQuery =
@@ -307,6 +353,56 @@ class GoogleDriveService {
       }
     } catch (_) {}
     return null;
+  }
+
+  /// Scans Google Drive and purges any duplicate files in the backup folders
+  /// Keeps the newest copy and deletes redundant duplicates
+  Future<int> cleanDuplicateDriveFiles() async {
+    int deletedCount = 0;
+    try {
+      final api = await _getDriveApi();
+      final seenFiles = <String, drive.File>{};
+      String? pageToken;
+
+      do {
+        final list = await api.files.list(
+          q: "trashed = false and mimeType != 'application/vnd.google-apps.folder'",
+          spaces: 'drive',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+          corpora: 'allDrives',
+          $fields: 'nextPageToken, files(id, name, size, parents, modifiedTime)',
+          pageToken: pageToken,
+          pageSize: 500,
+        );
+
+        if (list.files != null) {
+          for (final f in list.files!) {
+            if (f.id == null || f.name == null) continue;
+            final parent = (f.parents ?? []).join(',');
+            final key = '${f.name}::$parent';
+
+            if (seenFiles.containsKey(key)) {
+              // Found duplicate in the exact same folder!
+              final duplicateToDelete = f.id!;
+              try {
+                await api.files.delete(duplicateToDelete, supportsAllDrives: true);
+                deletedCount++;
+                debugPrint('[GoogleDriveService] Purged duplicate file on Drive: ${f.name} ($duplicateToDelete)');
+              } catch (_) {}
+            } else {
+              seenFiles[key] = f;
+            }
+          }
+        }
+        pageToken = list.nextPageToken;
+      } while (pageToken != null && pageToken.isNotEmpty);
+
+      _cachedRemoteFilesByName = null;
+    } catch (e) {
+      debugPrint('[GoogleDriveService] Error cleaning duplicate Drive files: $e');
+    }
+    return deletedCount;
   }
 
   /// Fetches a mapping of all accessible media files on Google Drive

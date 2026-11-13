@@ -416,34 +416,55 @@ class DatabaseHelper {
   Future<int> deduplicateManifest([Database? targetDb]) async {
     final db = targetDb ?? await database;
     try {
-      // 1. For records with the same file_name where one is a disk_* scan and one is a MediaStore ID:
+      // 1. For records with the same file_name where one is a disk_* or vault_* scan and one is a MediaStore ID:
       // Update the MediaStore record's local_file_path if it was null
       await db.rawUpdate('''
         UPDATE ${AppConstants.manifestTableName}
         SET local_file_path = (
           SELECT d.local_file_path FROM ${AppConstants.manifestTableName} d
-          WHERE d.local_id LIKE 'disk_%' 
+          WHERE (d.local_id LIKE 'disk_%' OR d.local_id LIKE 'vault_%')
             AND d.file_name = ${AppConstants.manifestTableName}.file_name
             AND d.local_file_path IS NOT NULL
           LIMIT 1
         )
-        WHERE local_id NOT LIKE 'disk_%'
+        WHERE local_id NOT LIKE 'disk_%' AND local_id NOT LIKE 'vault_%'
           AND (local_file_path IS NULL OR local_file_path = '')
           AND file_name IN (
-            SELECT file_name FROM ${AppConstants.manifestTableName} WHERE local_id LIKE 'disk_%'
+            SELECT file_name FROM ${AppConstants.manifestTableName} WHERE local_id LIKE 'disk_%' OR local_id LIKE 'vault_%'
           )
       ''');
 
-      // 2. Delete the disk_* duplicates when a canonical MediaStore record exists for that file_name
+      // 2. Propagate drive_file_id and UPLOADED state across duplicate file_name records:
+      // If one record for file_name was already uploaded, all duplicate records inherit it!
+      await db.rawUpdate('''
+        UPDATE ${AppConstants.manifestTableName}
+        SET upload_state = '${UploadState.UPLOADED.name}',
+            drive_file_id = (
+              SELECT u.drive_file_id FROM ${AppConstants.manifestTableName} u
+              WHERE u.file_name = ${AppConstants.manifestTableName}.file_name
+                AND u.upload_state = '${UploadState.UPLOADED.name}'
+                AND u.drive_file_id IS NOT NULL
+              LIMIT 1
+            ),
+            uploaded_at = COALESCE(uploaded_at, strftime('%s','now') * 1000)
+        WHERE upload_state != '${UploadState.UPLOADED.name}'
+          AND file_name IN (
+            SELECT u2.file_name FROM ${AppConstants.manifestTableName} u2
+            WHERE u2.upload_state = '${UploadState.UPLOADED.name}'
+              AND u2.drive_file_id IS NOT NULL
+          )
+      ''');
+
+      // 3. Delete disk_* and vault_* duplicates when a canonical MediaStore record exists for that file_name
       final deletedCount = await db.rawDelete('''
         DELETE FROM ${AppConstants.manifestTableName}
-        WHERE local_id LIKE 'disk_%'
+        WHERE (local_id LIKE 'disk_%' OR (local_id LIKE 'vault_%' AND folder_name != '.private'))
           AND file_name IN (
-            SELECT file_name FROM ${AppConstants.manifestTableName} WHERE local_id NOT LIKE 'disk_%'
+            SELECT file_name FROM ${AppConstants.manifestTableName} WHERE local_id NOT LIKE 'disk_%' AND local_id NOT LIKE 'vault_%'
           )
       ''');
 
-      // 3. For any remaining exact duplicates by local_file_path, keep only the lowest rowid
+      // 4. For any remaining exact duplicates by local_file_path, keep only the lowest rowid
       await db.rawDelete('''
         DELETE FROM ${AppConstants.manifestTableName}
         WHERE rowid NOT IN (
@@ -654,6 +675,31 @@ class DatabaseHelper {
 
       final item = MediaItem.fromMap(maps.first);
       final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      // Duplicate guard: check if another record with identical file_name is already UPLOADED
+      final alreadyUploaded = await db.query(
+        AppConstants.manifestTableName,
+        where: 'file_name = ? AND upload_state = ? AND drive_file_id IS NOT NULL',
+        whereArgs: [item.fileName, UploadState.UPLOADED.name],
+        limit: 1,
+      );
+
+      if (alreadyUploaded.isNotEmpty) {
+        final existingDriveId = alreadyUploaded.first['drive_file_id'] as String?;
+        if (existingDriveId != null && existingDriveId.isNotEmpty) {
+          await db.update(
+            AppConstants.manifestTableName,
+            {
+              'upload_state': UploadState.UPLOADED.name,
+              'drive_file_id': existingDriveId,
+              'uploaded_at': nowMs,
+            },
+            where: 'local_id = ?',
+            whereArgs: [item.localId],
+          );
+          continue; // Successfully adopted existing Drive upload; check next candidate
+        }
+      }
 
       // Atomically transition to UPLOADING only if still READY or RETRY
       final updatedRows = await db.update(

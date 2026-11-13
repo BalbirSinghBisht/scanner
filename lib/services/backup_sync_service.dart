@@ -70,6 +70,7 @@ class BackupSyncService {
   MediaItem? _currentUploadingItem;
   MediaItem? get currentUploadingItem => _currentUploadingItem;
   final Set<String> _activeUploadingIds = {};
+  final Set<String> _activeUploadingFileKeys = {};
   bool _isLargeUploadInFlight = false;
 
   void pause() {
@@ -214,6 +215,7 @@ class BackupSyncService {
       // - If data is already on Drive, mark SQLite as UPLOADED so it never duplicates
       if (!settings.localOnlyMode && _auth.isAuthenticated) {
         try {
+          await _drive.cleanDuplicateDriveFiles();
           final remoteSummary = await _drive.fetchRemoteFilesSummary();
           await _db.reconcileWithDrive(
             remoteSummary.filesByName,
@@ -247,6 +249,7 @@ class BackupSyncService {
       _inProcessSyncLock = false;
       _currentUploadingItem = null;
       _activeUploadingIds.clear();
+      _activeUploadingFileKeys.clear();
       _isLargeUploadInFlight = false;
       _progressController.add(null);
     }
@@ -319,6 +322,12 @@ class BackupSyncService {
   }
 
   Future<void> _processSingleUpload(MediaItem item, BackupSettings settings) async {
+    final fileKey = '${item.fileName}_${item.fileSize}';
+    if (_activeUploadingFileKeys.contains(fileKey)) {
+      debugPrint('[BackupSyncService] Skipping duplicate in-flight upload for $fileKey');
+      return;
+    }
+    _activeUploadingFileKeys.add(fileKey);
     _currentUploadingItem = item;
     _activeUploadingIds.add(item.localId);
 
@@ -544,6 +553,7 @@ class BackupSyncService {
         _isSyncing = false;
       }
     } finally {
+      _activeUploadingFileKeys.remove(fileKey);
       _activeUploadingIds.remove(item.localId);
       if (_activeUploadingIds.isEmpty) {
         _currentUploadingItem = null;
@@ -564,6 +574,7 @@ class BackupSyncService {
     _isSyncing = false;
     _currentUploadingItem = null;
     _activeUploadingIds.clear();
+    _activeUploadingFileKeys.clear();
     _isLargeUploadInFlight = false;
   }
 }
