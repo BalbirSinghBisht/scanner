@@ -618,11 +618,13 @@ class DatabaseHelper {
 
   /// Atomically claims a single pending item by transitioning its state to UPLOADING.
   /// Prioritizes newest media first (created_at DESC) so recently taken photos sync immediately while older items wait in queue.
+  /// Supports optional [minCreatedAt] constraint for tiered network sync (e.g. mobile data only uploads recent files).
   /// Uses atomic conditional update to prevent race conditions without deadlocking SQLite connection.
   Future<MediaItem?> claimNextPendingUpload({
     bool includePhotos = true,
     bool includeVideos = true,
     int? maxVideoSizeBytes,
+    DateTime? minCreatedAt,
   }) async {
     final db = await database;
     final conditions = <String>[];
@@ -650,6 +652,11 @@ class DatabaseHelper {
       args.add(AppMediaType.image.name);
       args.add(AppMediaType.video.name);
       args.add(maxVideoSizeBytes);
+    }
+
+    if (minCreatedAt != null) {
+      conditions.add('created_at >= ?');
+      args.add(minCreatedAt.millisecondsSinceEpoch);
     }
 
     // Strictly exclude any audio files or ringtones from sync
@@ -725,6 +732,66 @@ class DatabaseHelper {
     }
 
     return null;
+  }
+
+  /// Counts pending upload items with optional filters including date constraints for tiered sync
+  Future<int> countPendingUploads({
+    bool includePhotos = true,
+    bool includeVideos = true,
+    int? maxVideoSizeBytes,
+    DateTime? minCreatedAt,
+    DateTime? maxCreatedAt,
+  }) async {
+    final db = await database;
+    final conditions = <String>[];
+    final args = <dynamic>[
+      UploadState.READY_TO_UPLOAD.name,
+      UploadState.RETRY_PENDING.name,
+    ];
+
+    conditions.add('(upload_state = ? OR upload_state = ?)');
+
+    if (!includePhotos && !includeVideos) {
+      return 0;
+    } else if (includePhotos && !includeVideos) {
+      conditions.add('media_type = ?');
+      args.add(AppMediaType.image.name);
+    } else if (!includePhotos && includeVideos) {
+      conditions.add('media_type = ?');
+      args.add(AppMediaType.video.name);
+    }
+
+    if (maxVideoSizeBytes != null && maxVideoSizeBytes > 0) {
+      conditions.add(
+        '(media_type = ? OR (media_type = ? AND file_size <= ?))',
+      );
+      args.add(AppMediaType.image.name);
+      args.add(AppMediaType.video.name);
+      args.add(maxVideoSizeBytes);
+    }
+
+    if (minCreatedAt != null) {
+      conditions.add('created_at >= ?');
+      args.add(minCreatedAt.millisecondsSinceEpoch);
+    }
+
+    if (maxCreatedAt != null) {
+      conditions.add('created_at < ?');
+      args.add(maxCreatedAt.millisecondsSinceEpoch);
+    }
+
+    conditions.add("mime_type NOT LIKE 'audio/%'");
+    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
+    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
+
+    final whereClause = conditions.join(' AND ');
+
+    final res = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM ${AppConstants.manifestTableName} WHERE $whereClause',
+      args,
+    );
+
+    return Sqflite.firstIntValue(res) ?? 0;
   }
 
   Future<List<MediaItem>> getFailedUploads({int limit = 100}) async {

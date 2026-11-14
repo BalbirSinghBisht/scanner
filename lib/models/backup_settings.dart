@@ -11,6 +11,8 @@ class BackupSettings {
   final bool isPaused;
   final bool syncLockedFolders;
   final List<String> customFolderPaths;
+  final bool wifiOnlyForOldMedia;
+  final int oldMediaMonthsThreshold;
 
   const BackupSettings({
     this.autoBackupEnabled = true,
@@ -25,6 +27,8 @@ class BackupSettings {
     this.isPaused = false,
     this.syncLockedFolders = true,
     this.customFolderPaths = const [],
+    this.wifiOnlyForOldMedia = true,
+    this.oldMediaMonthsThreshold = 6,
   });
 
   BackupSettings copyWith({
@@ -40,6 +44,8 @@ class BackupSettings {
     bool? isPaused,
     bool? syncLockedFolders,
     List<String>? customFolderPaths,
+    bool? wifiOnlyForOldMedia,
+    int? oldMediaMonthsThreshold,
   }) {
     return BackupSettings(
       autoBackupEnabled: autoBackupEnabled ?? this.autoBackupEnabled,
@@ -54,6 +60,8 @@ class BackupSettings {
       isPaused: isPaused ?? this.isPaused,
       syncLockedFolders: syncLockedFolders ?? this.syncLockedFolders,
       customFolderPaths: customFolderPaths ?? this.customFolderPaths,
+      wifiOnlyForOldMedia: wifiOnlyForOldMedia ?? this.wifiOnlyForOldMedia,
+      oldMediaMonthsThreshold: oldMediaMonthsThreshold ?? this.oldMediaMonthsThreshold,
     );
   }
 
@@ -71,6 +79,8 @@ class BackupSettings {
       'isPaused': isPaused,
       'syncLockedFolders': syncLockedFolders,
       'customFolderPaths': customFolderPaths,
+      'wifiOnlyForOldMedia': wifiOnlyForOldMedia,
+      'oldMediaMonthsThreshold': oldMediaMonthsThreshold,
     };
   }
 
@@ -91,6 +101,8 @@ class BackupSettings {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      wifiOnlyForOldMedia: map['wifiOnlyForOldMedia'] as bool? ?? true,
+      oldMediaMonthsThreshold: (map['oldMediaMonthsThreshold'] as num?)?.toInt() ?? 6,
     );
   }
 }

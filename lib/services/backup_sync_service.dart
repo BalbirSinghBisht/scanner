@@ -277,15 +277,61 @@ class BackupSyncService {
         break;
       }
 
+      final isWifi = await _device.isWifiConnection();
+      DateTime? minCreatedAt;
+      if (!isWifi) {
+        // Always enforced: media older than 6 months is strictly Wi-Fi only to protect mobile data
+        final now = DateTime.now();
+        minCreatedAt = DateTime(
+          now.year,
+          now.month - 6,
+          now.day,
+          now.hour,
+          now.minute,
+          now.second,
+        );
+      }
+
       // Atomically claim the single next pending upload in an SQLite transaction
       final item = await _db.claimNextPendingUpload(
         includePhotos: settings.backupPhotos,
         includeVideos: settings.backupVideos,
         maxVideoSizeBytes: settings.maxVideoSizeBytes,
+        minCreatedAt: minCreatedAt,
       );
 
       if (item == null) {
-        debugPrint('[Worker $workerId] No more pending items in queue.');
+        if (!isWifi && minCreatedAt != null) {
+          final countOldPending = await _db.countPendingUploads(
+            includePhotos: settings.backupPhotos,
+            includeVideos: settings.backupVideos,
+            maxVideoSizeBytes: settings.maxVideoSizeBytes,
+            maxCreatedAt: minCreatedAt,
+          );
+          if (countOldPending > 0) {
+            _progressController.add(UploadProgressEvent(
+              item: MediaItem(
+                localId: 'wifi_waiting_for_old',
+                fileName: 'Older media waiting for Wi-Fi',
+                mediaType: AppMediaType.other,
+                mimeType: 'text/plain',
+                fileSize: 0,
+                createdAt: DateTime.now(),
+              ),
+              bytesSent: 0,
+              totalBytes: 0,
+              progress: 0.0,
+              statusMessage:
+                  'Recent media synced. $countOldPending older items (>6 mos) waiting for Wi-Fi',
+            ));
+            debugPrint(
+                '[Worker $workerId] Recent media synced. $countOldPending items older than 6 months waiting for Wi-Fi.');
+          } else {
+            debugPrint('[Worker $workerId] No more pending items in queue.');
+          }
+        } else {
+          debugPrint('[Worker $workerId] No more pending items in queue.');
+        }
         break;
       }
 
