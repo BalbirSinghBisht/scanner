@@ -82,7 +82,7 @@ class SetExpiryDialog {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Frees up device storage when timer ends. Your Google Drive backup is 100% safe and never deleted.',
+                            'Frees up device storage automatically when the timer ends.',
                             style: TextStyle(
                               color: c.textSecondary,
                               fontSize: 12,
@@ -94,31 +94,7 @@ class SetExpiryDialog {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: c.accentGreen.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: c.accentGreen.withOpacity(0.3), width: 0.5),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.cloud_done_rounded, color: c.accentGreen, size: 14),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Cloud Safe: Backups in Google Drive are never deleted',
-                        style: TextStyle(
-                          color: c.accentGreen,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 18),
                 _buildOptionTile(
                   context,
                   title: '1 Hour',

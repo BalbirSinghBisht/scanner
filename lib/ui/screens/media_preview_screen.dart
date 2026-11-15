@@ -794,11 +794,11 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Device Self-Destruct · Cloud Safe',
+                              'Self-Destruct Active',
                               style: TextStyle(color: c.accentAmber, fontSize: 11, fontWeight: FontWeight.w700),
                             ),
                             Text(
-                              'Expires on device in: ${expiringItem.formattedTimeRemaining}',
+                              'Expires in: ${expiringItem.formattedTimeRemaining}',
                               style: TextStyle(color: c.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
                             ),
                           ],
@@ -844,11 +844,11 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Set Device Auto-Expiry Timer',
+                              'Set Auto-Expiry Timer',
                               style: TextStyle(color: c.textPrimary, fontSize: 13.5, fontWeight: FontWeight.w600),
                             ),
                             Text(
-                              'Frees local phone space. Drive backups are never removed.',
+                              'Frees up device storage automatically when timer ends.',
                               style: TextStyle(color: c.textSecondary, fontSize: 11),
                             ),
                           ],

@@ -615,7 +615,7 @@ class _PrivateFolderScreenState extends State<PrivateFolderScreen>
             ),
             const SizedBox(height: 10),
             Text(
-              'Photos and videos placed here are hidden from your main library and protected by your PIN. They are also securely synced to Google Drive in your private backup.',
+              'Photos and videos placed here are hidden from your main library and protected by your PIN.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13.5,
