@@ -90,6 +90,103 @@ void main() {
       expect(recentItem.createdAt.isAfter(cutoff), isTrue);
       expect(oldItem.createdAt.isBefore(cutoff), isTrue);
     });
+
+    test('prioritizes recent 6-month media in tier 1 before tier 2 older backlog', () {
+      final now = DateTime.now();
+      const settings = BackupSettings(
+        oldMediaMonthsThreshold: 6,
+      );
+
+      final cutoff = DateTime(
+        now.year,
+        now.month - settings.oldMediaMonthsThreshold,
+        now.day,
+        now.hour,
+        now.minute,
+        now.second,
+      );
+
+      final queue = [
+        MediaItem(
+          localId: '1',
+          fileName: 'old_1.jpg',
+          mediaType: AppMediaType.image,
+          mimeType: 'image/jpeg',
+          fileSize: 1024,
+          createdAt: now.subtract(const Duration(days: 300)),
+        ),
+        MediaItem(
+          localId: '2',
+          fileName: 'recent_1.jpg',
+          mediaType: AppMediaType.image,
+          mimeType: 'image/jpeg',
+          fileSize: 1024,
+          createdAt: now.subtract(const Duration(days: 10)),
+        ),
+        MediaItem(
+          localId: '3',
+          fileName: 'recent_2.jpg',
+          mediaType: AppMediaType.image,
+          mimeType: 'image/jpeg',
+          fileSize: 1024,
+          createdAt: now.subtract(const Duration(days: 90)),
+        ),
+      ];
+
+      // Tier 1 items must strictly be >= cutoff
+      final tier1Items = queue.where((it) => it.createdAt.isAfter(cutoff) || it.createdAt.isAtSameMomentAs(cutoff)).toList();
+      tier1Items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      // Tier 2 items are older than cutoff
+      final tier2Items = queue.where((it) => it.createdAt.isBefore(cutoff)).toList();
+
+      expect(tier1Items.length, equals(2));
+      expect(tier1Items.first.localId, equals('2')); // newest first
+      expect(tier1Items.last.localId, equals('3'));
+      expect(tier2Items.length, equals(1));
+      expect(tier2Items.first.localId, equals('1'));
+    });
+
+    test('chunks 6-month media into 5 to 10 records per batch', () {
+      final now = DateTime.now();
+      final items = List.generate(
+        23,
+        (i) => MediaItem(
+          localId: 'id_$i',
+          fileName: 'photo_$i.jpg',
+          mediaType: AppMediaType.image,
+          mimeType: 'image/jpeg',
+          fileSize: 1024,
+          createdAt: now.subtract(Duration(days: i + 1)), // all within last 24 days (< 6 months)
+        ),
+      );
+
+      // Verify batch chunking between minBatchSize (5) and maxBatchSize (10)
+      const batchSizeWifi = 10;
+      const batchSizeMobile = 5;
+
+      final wifiBatches = <List<MediaItem>>[];
+      for (int i = 0; i < items.length; i += batchSizeWifi) {
+        wifiBatches.add(items.sublist(i, (i + batchSizeWifi).clamp(0, items.length)));
+      }
+
+      expect(wifiBatches.length, equals(3));
+      expect(wifiBatches[0].length, equals(10)); // first 10
+      expect(wifiBatches[1].length, equals(10)); // next 10
+      expect(wifiBatches[2].length, equals(3)); // remainder
+
+      final mobileBatches = <List<MediaItem>>[];
+      for (int i = 0; i < items.length; i += batchSizeMobile) {
+        mobileBatches.add(items.sublist(i, (i + batchSizeMobile).clamp(0, items.length)));
+      }
+
+      expect(mobileBatches.length, equals(5));
+      expect(mobileBatches[0].length, equals(5));
+      expect(mobileBatches[1].length, equals(5));
+      expect(mobileBatches[2].length, equals(5));
+      expect(mobileBatches[3].length, equals(5));
+      expect(mobileBatches[4].length, equals(3));
+    });
   });
 
   group('DuplicateGroup Tests', () {

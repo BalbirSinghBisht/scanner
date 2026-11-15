@@ -226,20 +226,14 @@ class BackupSyncService {
         }
       }
 
-      // 4. Process pending queue concurrently with adaptive multi-worker pool
+      // 4. Process pending queue in 5-10 records batched mode (Tier-1 priority for recent 6-month media)
       final isWifi = await _device.isWifiConnection();
-      final concurrency = isWifi
-          ? AppConstants.maxConcurrentUploadsWifi
-          : AppConstants.maxConcurrentUploadsMobile;
+      final batchSize = isWifi
+          ? AppConstants.batchSizeWifi
+          : AppConstants.batchSizeMobile;
+      debugPrint('Starting batched backup (batch size: $batchSize records, Wi-Fi: $isWifi)...');
 
-      debugPrint('Starting parallel backup with $concurrency worker(s) (Wi-Fi: $isWifi)...');
-
-      final workers = List.generate(
-        concurrency,
-        (index) => _runUploadWorker(index, settings, prefs),
-      );
-
-      await Future.wait(workers);
+      await _runBatchedSync(settings, prefs);
     } catch (e) {
       debugPrint('Error during backup sync: $e');
     } finally {
@@ -255,8 +249,7 @@ class BackupSyncService {
     }
   }
 
-  Future<void> _runUploadWorker(
-    int workerId,
+  Future<void> _runBatchedSync(
     BackupSettings settings,
     SharedPreferences prefs,
   ) async {
@@ -267,46 +260,53 @@ class BackupSyncService {
       // Verify network & retry every 15s if internet/wifi is off without pausing the background service
       final networkOk = await _waitForNetwork(settings, prefs);
       if (!networkOk) {
-        debugPrint('[Worker $workerId] Sync exited: User paused while waiting for network.');
+        debugPrint('[BackupSyncService] Sync exited: User paused while waiting for network.');
         break;
       }
 
       final batteryOk = await _device.isBatteryPermitted(settings);
       if (!batteryOk) {
-        debugPrint('[Worker $workerId] Sync paused: Battery constraints not met.');
+        debugPrint('[BackupSyncService] Sync paused: Battery constraints not met.');
         break;
       }
 
       final isWifi = await _device.isWifiConnection();
-      DateTime? minCreatedAt;
-      if (!isWifi) {
-        // Always enforced: media older than 6 months is strictly Wi-Fi only to protect mobile data
-        final now = DateTime.now();
-        minCreatedAt = DateTime(
-          now.year,
-          now.month - 6,
-          now.day,
-          now.hour,
-          now.minute,
-          now.second,
-        );
-      }
+      // Enforce 5-10 records batching: 10 on Wi-Fi for maximum throughput, 5 on Mobile Data to conserve bandwidth
+      final batchSize = isWifi
+          ? AppConstants.batchSizeWifi // 10
+          : AppConstants.batchSizeMobile; // 5
 
-      // Atomically claim the single next pending upload in an SQLite transaction
-      final item = await _db.claimNextPendingUpload(
+      final now = DateTime.now();
+      final thresholdMonths = settings.oldMediaMonthsThreshold > 0
+          ? settings.oldMediaMonthsThreshold
+          : 6;
+      final recentCutoff = DateTime(
+        now.year,
+        now.month - thresholdMonths,
+        now.day,
+        now.hour,
+        now.minute,
+        now.second,
+      );
+
+      // Tier 1 Priority: ALWAYS claim 5-10 records batch from the recent 6 months first!
+      // This guarantees 100% of bandwidth and concurrency is dedicated to recent 6-month media in 5-10 batches.
+      List<MediaItem> batch = await _db.claimNextPendingUploadBatch(
         includePhotos: settings.backupPhotos,
         includeVideos: settings.backupVideos,
         maxVideoSizeBytes: settings.maxVideoSizeBytes,
-        minCreatedAt: minCreatedAt,
+        minCreatedAt: recentCutoff,
+        batchSize: batchSize,
       );
 
-      if (item == null) {
-        if (!isWifi && minCreatedAt != null) {
+      // Tier 2: If no recent media (< 6 months) remains in the pending queue, handle older media
+      if (batch.isEmpty) {
+        if (!isWifi && settings.wifiOnlyForOldMedia) {
           final countOldPending = await _db.countPendingUploads(
             includePhotos: settings.backupPhotos,
             includeVideos: settings.backupVideos,
             maxVideoSizeBytes: settings.maxVideoSizeBytes,
-            maxCreatedAt: minCreatedAt,
+            maxCreatedAt: recentCutoff,
           );
           if (countOldPending > 0) {
             _progressController.add(UploadProgressEvent(
@@ -322,47 +322,67 @@ class BackupSyncService {
               totalBytes: 0,
               progress: 0.0,
               statusMessage:
-                  'Recent media synced. $countOldPending older items (>6 mos) waiting for Wi-Fi',
+                  'Recent media (first $thresholdMonths months) synced. $countOldPending older items waiting for Wi-Fi',
             ));
             debugPrint(
-                '[Worker $workerId] Recent media synced. $countOldPending items older than 6 months waiting for Wi-Fi.');
+                '[BackupSyncService] First $thresholdMonths months media synced in batches of 5-10. $countOldPending items older than $thresholdMonths months waiting for Wi-Fi.');
           } else {
-            debugPrint('[Worker $workerId] No more pending items in queue.');
+            debugPrint('[BackupSyncService] No more pending items in queue.');
           }
+          break;
         } else {
-          debugPrint('[Worker $workerId] No more pending items in queue.');
+          // On Wi-Fi (or if wifiOnlyForOldMedia is false), process older media backlog in batches of 5-10
+          batch = await _db.claimNextPendingUploadBatch(
+            includePhotos: settings.backupPhotos,
+            includeVideos: settings.backupVideos,
+            maxVideoSizeBytes: settings.maxVideoSizeBytes,
+            maxCreatedAt: recentCutoff,
+            batchSize: batchSize,
+          );
+          if (batch.isEmpty) {
+            debugPrint('[BackupSyncService] All media successfully synced. No more pending items in queue.');
+            break;
+          }
         }
-        break;
       }
 
-      // Check video size limit
-      if (item.mediaType == AppMediaType.video &&
-          settings.maxVideoSizeBytes != null &&
-          item.fileSize > settings.maxVideoSizeBytes!) {
-        await _db.updateUploadState(
-          item.localId,
-          UploadState.SKIPPED,
-          errorMessage:
-              'Exceeds maximum video size limit of ${settings.maxVideoSizeBytes} bytes',
-        );
-        continue;
-      }
+      debugPrint('[BackupSyncService] Syncing batch of ${batch.length} items (5-10 batched mode, Wi-Fi: $isWifi)...');
 
-      // Heavy file guard (>50MB): serialize with other large files to protect mobile RAM and CPU
-      final isLargeFile = item.fileSize > AppConstants.defaultLargeFileThresholdBytes;
+      // Process all 5-10 items in the batch concurrently in parallel!
+      await Future.wait(
+        batch.map((item) => _uploadBatchItem(item, settings)),
+      );
+    }
+  }
+
+  Future<void> _uploadBatchItem(MediaItem item, BackupSettings settings) async {
+    // Check video size limit
+    if (item.mediaType == AppMediaType.video &&
+        settings.maxVideoSizeBytes != null &&
+        item.fileSize > settings.maxVideoSizeBytes!) {
+      await _db.updateUploadState(
+        item.localId,
+        UploadState.SKIPPED,
+        errorMessage:
+            'Exceeds maximum video size limit of ${settings.maxVideoSizeBytes} bytes',
+      );
+      return;
+    }
+
+    // Heavy file guard (>50MB): serialize with other large files to protect mobile RAM and CPU
+    final isLargeFile = item.fileSize > AppConstants.defaultLargeFileThresholdBytes;
+    if (isLargeFile) {
+      while (_isLargeUploadInFlight && _isSyncing && !_isPaused) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      _isLargeUploadInFlight = true;
+    }
+
+    try {
+      await _processSingleUpload(item, settings);
+    } finally {
       if (isLargeFile) {
-        while (_isLargeUploadInFlight && _isSyncing && !_isPaused) {
-          await Future.delayed(const Duration(milliseconds: 300));
-        }
-        _isLargeUploadInFlight = true;
-      }
-
-      try {
-        await _processSingleUpload(item, settings);
-      } finally {
-        if (isLargeFile) {
-          _isLargeUploadInFlight = false;
-        }
+        _isLargeUploadInFlight = false;
       }
     }
   }

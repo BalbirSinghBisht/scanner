@@ -54,6 +54,7 @@ class DatabaseHelper {
     try {
       await db.execute('CREATE INDEX IF NOT EXISTS idx_file_name ON ${AppConstants.manifestTableName} (file_name)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_local_file_path ON ${AppConstants.manifestTableName} (local_file_path)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_upload_state_created_at ON ${AppConstants.manifestTableName} (upload_state, created_at DESC)');
     } catch (_) {}
 
     // Automatically purge any indexed items originating from .thumbnail / .thumbnails folders
@@ -139,6 +140,9 @@ class DatabaseHelper {
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_local_file_path ON ${AppConstants.manifestTableName} (local_file_path)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_upload_state_created_at ON ${AppConstants.manifestTableName} (upload_state, created_at DESC)',
     );
   }
 
@@ -618,13 +622,14 @@ class DatabaseHelper {
 
   /// Atomically claims a single pending item by transitioning its state to UPLOADING.
   /// Prioritizes newest media first (created_at DESC) so recently taken photos sync immediately while older items wait in queue.
-  /// Supports optional [minCreatedAt] constraint for tiered network sync (e.g. mobile data only uploads recent files).
+  /// Supports optional [minCreatedAt] and [maxCreatedAt] constraints for tiered network sync (e.g. mobile data only uploads recent files).
   /// Uses atomic conditional update to prevent race conditions without deadlocking SQLite connection.
   Future<MediaItem?> claimNextPendingUpload({
     bool includePhotos = true,
     bool includeVideos = true,
     int? maxVideoSizeBytes,
     DateTime? minCreatedAt,
+    DateTime? maxCreatedAt,
   }) async {
     final db = await database;
     final conditions = <String>[];
@@ -657,6 +662,11 @@ class DatabaseHelper {
     if (minCreatedAt != null) {
       conditions.add('created_at >= ?');
       args.add(minCreatedAt.millisecondsSinceEpoch);
+    }
+
+    if (maxCreatedAt != null) {
+      conditions.add('created_at < ?');
+      args.add(maxCreatedAt.millisecondsSinceEpoch);
     }
 
     // Strictly exclude any audio files or ringtones from sync
@@ -732,6 +742,131 @@ class DatabaseHelper {
     }
 
     return null;
+  }
+
+  /// Atomically claims a batch of pending items (default 5 to 10 records) by transitioning their state to UPLOADING.
+  /// Prioritizes newest media first (created_at DESC).
+  /// Supports optional [minCreatedAt] and [maxCreatedAt] constraints for tiered network and fast priority sync.
+  Future<List<MediaItem>> claimNextPendingUploadBatch({
+    bool includePhotos = true,
+    bool includeVideos = true,
+    int? maxVideoSizeBytes,
+    DateTime? minCreatedAt,
+    DateTime? maxCreatedAt,
+    int batchSize = 10,
+  }) async {
+    final effectiveLimit = batchSize.clamp(1, 50);
+    final db = await database;
+    final conditions = <String>[];
+    final args = <dynamic>[
+      UploadState.READY_TO_UPLOAD.name,
+      UploadState.RETRY_PENDING.name,
+    ];
+
+    conditions.add('(upload_state = ? OR upload_state = ?)');
+
+    if (!includePhotos && !includeVideos) {
+      return [];
+    } else if (includePhotos && !includeVideos) {
+      conditions.add('media_type = ?');
+      args.add(AppMediaType.image.name);
+    } else if (!includePhotos && includeVideos) {
+      conditions.add('media_type = ?');
+      args.add(AppMediaType.video.name);
+    }
+
+    if (maxVideoSizeBytes != null && maxVideoSizeBytes > 0) {
+      conditions.add(
+        '(media_type = ? OR (media_type = ? AND file_size <= ?))',
+      );
+      args.add(AppMediaType.image.name);
+      args.add(AppMediaType.video.name);
+      args.add(maxVideoSizeBytes);
+    }
+
+    if (minCreatedAt != null) {
+      conditions.add('created_at >= ?');
+      args.add(minCreatedAt.millisecondsSinceEpoch);
+    }
+
+    if (maxCreatedAt != null) {
+      conditions.add('created_at < ?');
+      args.add(maxCreatedAt.millisecondsSinceEpoch);
+    }
+
+    // Strictly exclude any audio files or ringtones from sync
+    conditions.add("mime_type NOT LIKE 'audio/%'");
+    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
+    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
+
+    final whereClause = conditions.join(' AND ');
+
+    // Query candidates with a slight overfetch buffer to compensate for any already-uploaded duplicates
+    final queryLimit = effectiveLimit * 2;
+    final maps = await db.query(
+      AppConstants.manifestTableName,
+      where: whereClause,
+      whereArgs: args,
+      orderBy: 'created_at DESC',
+      limit: queryLimit,
+    );
+
+    if (maps.isEmpty) {
+      return [];
+    }
+
+    final claimedItems = <MediaItem>[];
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    for (final map in maps) {
+      if (claimedItems.length >= effectiveLimit) break;
+      final item = MediaItem.fromMap(map);
+
+      // Duplicate guard: check if another record with identical file_name is already UPLOADED
+      final alreadyUploaded = await db.query(
+        AppConstants.manifestTableName,
+        where: 'file_name = ? AND upload_state = ? AND drive_file_id IS NOT NULL',
+        whereArgs: [item.fileName, UploadState.UPLOADED.name],
+        limit: 1,
+      );
+
+      if (alreadyUploaded.isNotEmpty) {
+        final existingDriveId = alreadyUploaded.first['drive_file_id'] as String?;
+        if (existingDriveId != null && existingDriveId.isNotEmpty) {
+          await db.update(
+            AppConstants.manifestTableName,
+            {
+              'upload_state': UploadState.UPLOADED.name,
+              'drive_file_id': existingDriveId,
+              'uploaded_at': nowMs,
+            },
+            where: 'local_id = ?',
+            whereArgs: [item.localId],
+          );
+          continue;
+        }
+      }
+
+      // Atomically transition to UPLOADING only if still READY or RETRY
+      final updatedRows = await db.update(
+        AppConstants.manifestTableName,
+        {
+          'upload_state': UploadState.UPLOADING.name,
+          'last_attempt_at': nowMs,
+        },
+        where: 'local_id = ? AND (upload_state = ? OR upload_state = ?)',
+        whereArgs: [item.localId, UploadState.READY_TO_UPLOAD.name, UploadState.RETRY_PENDING.name],
+      );
+
+      if (updatedRows > 0) {
+        claimedItems.add(item.copyWith(
+          uploadState: UploadState.UPLOADING,
+          lastAttemptAt: DateTime.fromMillisecondsSinceEpoch(nowMs),
+        ));
+      }
+    }
+
+    return claimedItems;
   }
 
   /// Counts pending upload items with optional filters including date constraints for tiered sync

@@ -19,6 +19,10 @@ class AppConstants {
   static const int maxConcurrentUploads = 5; // Parallel uploads for high throughput
   static const int maxConcurrentUploadsWifi = 5; // 5 concurrent uploads on Wi-Fi
   static const int maxConcurrentUploadsMobile = 3; // 3 upload on mobile data to conserve bandwidth
+  static const int batchSizeWifi = 10; // 10 records per batch on Wi-Fi
+  static const int batchSizeMobile = 5; // 5 records per batch on Mobile Data
+  static const int minBatchSize = 5;
+  static const int maxBatchSize = 10;
   static const int defaultLargeFileThresholdBytes = 50 * 1024 * 1024; // 50 MB
   static const int maxRetryAttempts = 5;
 
