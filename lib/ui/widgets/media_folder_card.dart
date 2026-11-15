@@ -14,6 +14,9 @@ class MediaFolderCard extends StatelessWidget {
   final MediaItem? coverItem;
   final bool isAll;
   final bool isLocked;
+  final IconData? customIcon;
+  final Color? customAccentColor;
+  final String? customSubtitle;
   final VoidCallback onTap;
 
   const MediaFolderCard({
@@ -23,21 +26,26 @@ class MediaFolderCard extends StatelessWidget {
     this.coverItem,
     this.isAll = false,
     this.isLocked = false,
+    this.customIcon,
+    this.customAccentColor,
+    this.customSubtitle,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
+    final accent = customAccentColor ??
+        (isLocked
+            ? const Color(0xFFE5A93B)
+            : (isAll ? c.primary : null));
 
     return ThreeDTouchCard(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       maxTiltAngle: 0.04,
       pressScale: 0.96,
-      glowColor: isLocked
-          ? const Color(0xFFE5A93B).withOpacity(0.3)
-          : (isAll ? c.primary : null),
+      glowColor: accent != null ? accent.withOpacity(0.3) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -49,11 +57,9 @@ class MediaFolderCard extends StatelessWidget {
                 color: c.surfaceElevated,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isLocked
-                      ? const Color(0xFFE5A93B).withOpacity(0.4)
-                      : (isAll
-                          ? c.primary.withOpacity(0.35)
-                          : c.glassBorderSubtle),
+                  color: accent != null
+                      ? accent.withOpacity(0.35)
+                      : c.glassBorderSubtle,
                   width: 0.5,
                 ),
                 boxShadow: [
@@ -70,7 +76,7 @@ class MediaFolderCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (coverItem != null && !isLocked)
+                  if (coverItem != null && !isLocked && customIcon == null)
                     CachedThumbnailImage(
                       localId: coverItem!.localId,
                       filePath: coverItem!.localFilePath,
@@ -128,13 +134,14 @@ class MediaFolderCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
             child: Text(
-              isLocked
-                  ? 'Locked • PIN'
-                  : (isAll ? '$itemCount items' : '$itemCount'),
+              customSubtitle ??
+                  (isLocked
+                      ? 'Locked • PIN'
+                      : (isAll ? '$itemCount items' : '$itemCount')),
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w400,
-                color: isLocked ? const Color(0xFFE5A93B) : c.textSecondary,
+                color: accent ?? c.textSecondary,
                 letterSpacing: -0.1,
               ),
             ),
@@ -145,6 +152,39 @@ class MediaFolderCard extends StatelessWidget {
   }
 
   Widget _buildPlaceholder(AppThemeColors c) {
+    if (customIcon != null && customAccentColor != null) {
+      return Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              customAccentColor!.withOpacity(0.25),
+              c.isDark ? const Color(0xFF14191F) : const Color(0xFFE8ECEF),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: customAccentColor!.withOpacity(0.18),
+              border: Border.all(
+                color: customAccentColor!.withOpacity(0.4),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              customIcon,
+              color: customAccentColor,
+              size: 32,
+            ),
+          ),
+        ),
+      );
+    }
+
     if (isLocked) {
       return Container(
         decoration: BoxDecoration(

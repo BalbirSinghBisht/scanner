@@ -38,6 +38,8 @@ class AppThemeColors {
   final Color accentGreen; // Apple System Green: #34C759
   final Color accentRose; // Apple System Pink/Red: #FF2D55
   final Color accentAmber; // Apple System Orange: #FF9500
+  Color get accentTeal => const Color(0xFF30B0C7);
+  Color get accentViolet => const Color(0xFFAF52DE);
 
   // Dedicated Glass & Overlay Tokens
   final Color glassOverlay;

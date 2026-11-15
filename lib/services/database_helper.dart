@@ -5,6 +5,8 @@ import 'package:sqflite/sqflite.dart';
 import '../core/constants/app_constants.dart';
 import '../models/media_item.dart';
 import '../models/dashboard_stats.dart';
+import '../models/expiring_media_item.dart';
+import '../models/paper_trail_doc.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -55,6 +57,35 @@ class DatabaseHelper {
       await db.execute('CREATE INDEX IF NOT EXISTS idx_file_name ON ${AppConstants.manifestTableName} (file_name)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_local_file_path ON ${AppConstants.manifestTableName} (local_file_path)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_upload_state_created_at ON ${AppConstants.manifestTableName} (upload_state, created_at DESC)');
+
+      // Ensure Expiring Media & Paper Trail tables exist
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS expiring_media (
+          local_id TEXT PRIMARY KEY,
+          expires_at INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          duration_seconds INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_expiring_expires_at ON expiring_media (expires_at)');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS paper_trail_docs (
+          id TEXT PRIMARY KEY,
+          local_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          category TEXT NOT NULL,
+          purchase_date INTEGER NOT NULL,
+          warranty_expiry_date INTEGER,
+          amount REAL,
+          currency TEXT,
+          store_name TEXT,
+          notes TEXT,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_paper_trail_local_id ON paper_trail_docs (local_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_paper_trail_warranty ON paper_trail_docs (warranty_expiry_date)');
     } catch (_) {}
 
     // Automatically purge any indexed items originating from .thumbnail / .thumbnails folders
@@ -144,6 +175,36 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_upload_state_created_at ON ${AppConstants.manifestTableName} (upload_state, created_at DESC)',
     );
+
+    // Expiring Media table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS expiring_media (
+        local_id TEXT PRIMARY KEY,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        duration_seconds INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_expiring_expires_at ON expiring_media (expires_at)');
+
+    // Paper Trail Documents table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS paper_trail_docs (
+        id TEXT PRIMARY KEY,
+        local_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL,
+        purchase_date INTEGER NOT NULL,
+        warranty_expiry_date INTEGER,
+        amount REAL,
+        currency TEXT,
+        store_name TEXT,
+        notes TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_paper_trail_local_id ON paper_trail_docs (local_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_paper_trail_warranty ON paper_trail_docs (warranty_expiry_date)');
   }
 
   Future<void> _onUpgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -1381,6 +1442,97 @@ class DatabaseHelper {
       where: 'folder_name = ?',
       whereArgs: [folderName],
     );
+  }
+
+  /// ==========================================
+  /// EXPIRING / SELF-DESTRUCTING MEDIA METHODS
+  /// ==========================================
+
+  Future<int> insertOrUpdateExpiring(ExpiringMediaItem item) async {
+    final db = await database;
+    return await db.insert(
+      'expiring_media',
+      item.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<int> removeExpiring(String localId) async {
+    final db = await database;
+    return await db.delete(
+      'expiring_media',
+      where: 'local_id = ?',
+      whereArgs: [localId],
+    );
+  }
+
+  Future<List<ExpiringMediaItem>> getAllExpiring() async {
+    final db = await database;
+    final maps = await db.query('expiring_media');
+    return maps.map((m) => ExpiringMediaItem.fromMap(m)).toList();
+  }
+
+  Future<List<ExpiringMediaItem>> getExpiredItems() async {
+    final db = await database;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final maps = await db.query(
+      'expiring_media',
+      where: 'expires_at <= ?',
+      whereArgs: [nowMs],
+    );
+    return maps.map((m) => ExpiringMediaItem.fromMap(m)).toList();
+  }
+
+  /// ==========================================
+  /// PAPER TRAIL & WARRANTY TRACKER METHODS
+  /// ==========================================
+
+  Future<int> insertOrUpdatePaperTrailDoc(PaperTrailDoc doc) async {
+    final db = await database;
+    return await db.insert(
+      'paper_trail_docs',
+      doc.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<int> deletePaperTrailDoc(String id) async {
+    final db = await database;
+    return await db.delete(
+      'paper_trail_docs',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deletePaperTrailDocByLocalId(String localId) async {
+    final db = await database;
+    return await db.delete(
+      'paper_trail_docs',
+      where: 'local_id = ?',
+      whereArgs: [localId],
+    );
+  }
+
+  Future<List<PaperTrailDoc>> getAllPaperTrailDocs() async {
+    final db = await database;
+    final maps = await db.query(
+      'paper_trail_docs',
+      orderBy: 'purchase_date DESC',
+    );
+    return maps.map((m) => PaperTrailDoc.fromMap(m)).toList();
+  }
+
+  Future<PaperTrailDoc?> getPaperTrailDocByLocalId(String localId) async {
+    final db = await database;
+    final maps = await db.query(
+      'paper_trail_docs',
+      where: 'local_id = ?',
+      whereArgs: [localId],
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return PaperTrailDoc.fromMap(maps.first);
   }
 
   Future<void> clearAll() async {

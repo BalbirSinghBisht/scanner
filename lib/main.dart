@@ -8,6 +8,9 @@ import 'providers/backup_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/background_sync_manager.dart';
 import 'services/favorites_service.dart';
+import 'services/expiring_media_service.dart';
+import 'services/paper_trail_service.dart';
+import 'services/ghost_drop_service.dart';
 import 'ui/screens/media_library_screen.dart';
 
 void main() async {
@@ -40,6 +43,9 @@ void main() async {
         ChangeNotifierProvider(create: (_) => SettingsProvider()..init()),
         ChangeNotifierProvider(create: (_) => BackupProvider()..init()),
         ChangeNotifierProvider.value(value: FavoritesService.instance..init()),
+        ChangeNotifierProvider.value(value: ExpiringMediaService.instance..init()),
+        ChangeNotifierProvider.value(value: PaperTrailService.instance..init()),
+        ChangeNotifierProvider.value(value: GhostDropService.instance),
       ],
       child: const MediaBackupApp(),
     ),

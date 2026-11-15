@@ -16,7 +16,12 @@ import '../../services/favorites_service.dart';
 import '../../services/google_drive_service.dart';
 import '../../services/media_scanner_service.dart';
 import '../../services/vault_service.dart';
+import '../../services/expiring_media_service.dart';
+import '../../services/paper_trail_service.dart';
+import '../widgets/ghost_drop_sheet.dart';
 import '../widgets/move_to_folder_sheet.dart';
+import '../widgets/paper_trail_form_sheet.dart';
+import '../widgets/set_expiry_dialog.dart';
 import 'photo_editor_screen.dart';
 import 'video_editor_screen.dart';
 
@@ -661,6 +666,200 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             _buildDetailRow(CupertinoIcons.calendar, 'Date Taken', df.format(item.createdAt), c),
             if (item.localFilePath != null)
               _buildDetailRow(CupertinoIcons.device_phone_portrait, 'Storage Path', item.localFilePath!, c),
+            const SizedBox(height: 14),
+
+            // Paper Trail & Warranty Section
+            Builder(builder: (context) {
+              final paperTrailDoc = PaperTrailService.instance.getDocForMedia(item.localId);
+              if (paperTrailDoc != null) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: c.isDark ? const Color(0xFF1E2824) : const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: c.accentTeal.withOpacity(0.4), width: 0.8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(CupertinoIcons.shield_fill, size: 16, color: c.accentTeal),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Tracked in Paper Trail',
+                            style: TextStyle(
+                              color: c.accentTeal,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const Spacer(),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minSize: 0,
+                            onPressed: () {
+                              Navigator.of(ctx).pop();
+                              PaperTrailFormSheet.show(context, item: item, existingDoc: paperTrailDoc);
+                            },
+                            child: Text(
+                              'Edit',
+                              style: TextStyle(color: c.accentTeal, fontSize: 13, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        paperTrailDoc.title,
+                        style: TextStyle(color: c.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${paperTrailDoc.category}${paperTrailDoc.storeName != null ? ' · ${paperTrailDoc.storeName}' : ''}${paperTrailDoc.amount != null ? ' · ${paperTrailDoc.formattedAmount}' : ''}',
+                        style: TextStyle(color: c.textSecondary, fontSize: 12),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: (paperTrailDoc.isWarrantyExpired ? c.accentRose : c.accentTeal).withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          paperTrailDoc.formattedWarrantyStatus,
+                          style: TextStyle(
+                            color: paperTrailDoc.isWarrantyExpired ? c.accentRose : c.accentTeal,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return InkWell(
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  PaperTrailFormSheet.show(context, item: item);
+                },
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: c.isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: c.accentTeal.withOpacity(0.35), width: 0.6),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long, color: c.accentTeal, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Track in Paper Trail / Warranty',
+                          style: TextStyle(color: c.textPrimary, fontSize: 13.5, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Icon(CupertinoIcons.chevron_right, size: 13, color: c.textTertiary),
+                    ],
+                  ),
+                ),
+              );
+            }),
+
+            // Auto-Expiry Self-Destruct Section
+            Builder(builder: (context) {
+              final expiringItem = ExpiringMediaService.instance.getExpiry(item.localId);
+              if (expiringItem != null) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: c.isDark ? const Color(0xFF2C2216) : const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: c.accentAmber.withOpacity(0.4), width: 0.8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(CupertinoIcons.timer, color: c.accentAmber, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Device Self-Destruct · Cloud Safe',
+                              style: TextStyle(color: c.accentAmber, fontSize: 11, fontWeight: FontWeight.w700),
+                            ),
+                            Text(
+                              'Expires on device in: ${expiringItem.formattedTimeRemaining}',
+                              style: TextStyle(color: c.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minSize: 0,
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          SetExpiryDialog.show(context, localIds: [item.localId]);
+                        },
+                        child: Text(
+                          'Change',
+                          style: TextStyle(color: c.accentAmber, fontSize: 13, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return InkWell(
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  SetExpiryDialog.show(context, localIds: [item.localId]);
+                },
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: c.isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: c.accentAmber.withOpacity(0.35), width: 0.6),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(CupertinoIcons.timer, color: c.accentAmber, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Set Device Auto-Expiry Timer',
+                              style: TextStyle(color: c.textPrimary, fontSize: 13.5, fontWeight: FontWeight.w600),
+                            ),
+                            Text(
+                              'Frees local phone space. Drive backups are never removed.',
+                              style: TextStyle(color: c.textSecondary, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(CupertinoIcons.chevron_right, size: 13, color: c.textTertiary),
+                    ],
+                  ),
+                ),
+              );
+            }),
             const SizedBox(height: 8),
           ],
         ),
@@ -1068,6 +1267,14 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 minSize: 0,
                                 onPressed: _shareCurrentItem,
                                 child: Icon(CupertinoIcons.share, color: c.primary, size: 20),
+                              ),
+                              CupertinoButton(
+                                padding: const EdgeInsets.all(8),
+                                minSize: 0,
+                                onPressed: () {
+                                  GhostDropSheet.show(context, items: [currentItem]);
+                                },
+                                child: Icon(Icons.bolt, color: c.primary, size: 22),
                               ),
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),

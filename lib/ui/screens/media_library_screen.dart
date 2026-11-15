@@ -17,15 +17,20 @@ import '../../services/media_scanner_service.dart';
 import '../../services/memories_service.dart';
 import '../widgets/create_album_dialog.dart';
 import '../widgets/haikei_background.dart';
+import '../../services/expiring_media_service.dart';
+import '../../services/paper_trail_service.dart';
+import '../widgets/ghost_drop_sheet.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
 import '../widgets/memories_showcase.dart';
 import '../widgets/move_to_folder_sheet.dart';
 import '../widgets/pin_code_dialog.dart';
+import '../widgets/set_expiry_dialog.dart';
 import '../widgets/three_d_carousel.dart';
 import '../widgets/unrestricted_background_sheet.dart';
 import 'collage_maker_screen.dart';
 import 'media_preview_screen.dart';
+import 'paper_trail_screen.dart';
 import 'private_folder_screen.dart';
 
 enum SortMode {
@@ -40,6 +45,7 @@ enum MediaFilter {
   photos,
   videos,
   favorites,
+  expiring,
 }
 
 class MediaLibraryScreen extends StatefulWidget {
@@ -254,6 +260,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       case MediaFilter.favorites:
         final favService = FavoritesService.instance;
         result = result.where((it) => favService.isFavorite(it.localId)).toList();
+        break;
+      case MediaFilter.expiring:
+        final expService = ExpiringMediaService.instance;
+        result = result.where((it) => expService.isExpiring(it.localId)).toList();
         break;
       case MediaFilter.all:
         break;
@@ -1153,6 +1163,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             MediaFilter.favorites,
             c,
           ),
+          if (ExpiringMediaService.instance.count > 0)
+            _buildFilterChip(
+              'Expiring (${ExpiringMediaService.instance.count})',
+              CupertinoIcons.timer,
+              MediaFilter.expiring,
+              c,
+            ),
         ],
       ),
     );
@@ -1714,8 +1731,31 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     );
                   }
 
+                  // Card 2: "Paper Trail & Warranties"
+                  if (index == 2) {
+                    final paperTrail = PaperTrailService.instance;
+                    final activeCount = paperTrail.activeWarranties.length;
+                    return MediaFolderCard(
+                      folderName: 'Paper Trail & Warranties',
+                      itemCount: paperTrail.totalCount,
+                      customIcon: Icons.receipt_long,
+                      customAccentColor: c.accentTeal,
+                      customSubtitle: activeCount > 0
+                          ? '$activeCount active warranties'
+                          : '${paperTrail.totalCount} documents',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PaperTrailScreen(),
+                          ),
+                        );
+                      },
+                    );
+                  }
+
                   // Subsequent cards: Physical phone folders and custom albums
-                  final folderName = sortedFolderNames[index - 2];
+                  final folderName = sortedFolderNames[index - 3];
                   final folderItems = groupedFolders[folderName] ?? [];
 
                   return MediaFolderCard(
@@ -1728,7 +1768,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     },
                   );
                 },
-                childCount: sortedFolderNames.length + 2,
+                childCount: sortedFolderNames.length + 3,
               ),
             ),
           ),
@@ -2087,7 +2127,62 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 ),
               ),
               CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minSize: 0,
+                onPressed: () {
+                  final selected =
+                      allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+                  if (selected.isNotEmpty) {
+                    GhostDropSheet.show(context, items: selected);
+                  }
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bolt, color: c.primary, size: 19),
+                    const SizedBox(height: 3),
+                    Text(
+                      'GhostDrop',
+                      style: TextStyle(
+                        color: c.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minSize: 0,
+                onPressed: () {
+                  SetExpiryDialog.show(
+                    context,
+                    localIds: _selectedIds.toList(),
+                    onCompleted: () {
+                      _exitSelectionMode();
+                      setState(() {});
+                    },
+                  );
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.timer, color: c.accentAmber, size: 19),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Expire',
+                      style: TextStyle(
+                        color: c.accentAmber,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 minSize: 0,
                 onPressed: () => _batchMoveSelected(allItems),
                 child: Column(

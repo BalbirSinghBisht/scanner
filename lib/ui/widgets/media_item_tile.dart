@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
 import '../../services/favorites_service.dart';
+import '../../services/expiring_media_service.dart';
+import '../../services/paper_trail_service.dart';
 import '../screens/media_preview_screen.dart';
 import 'cached_thumbnail_image.dart';
+import 'expiring_timer_badge.dart';
 
 /// Apple Photos Grid Item Tile:
 /// Authentic iOS Photos item presentation with edge-to-edge precision,
@@ -38,6 +41,8 @@ class _MediaItemTileState extends State<MediaItemTile>
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
     final isFavorite = FavoritesService.instance.isFavorite(widget.item.localId);
+    final expiringItem = ExpiringMediaService.instance.getExpiry(widget.item.localId);
+    final paperTrailDoc = PaperTrailService.instance.getDocForMedia(widget.item.localId);
 
     // Apple subtle interactive scale
     final double targetScale = widget.isSelected
@@ -119,6 +124,59 @@ class _MediaItemTileState extends State<MediaItemTile>
                             Colors.transparent,
                           ],
                         ),
+                      ),
+                    ),
+                  ),
+
+                // Expiring Clutter Countdown Badge (Top-Left)
+                if (expiringItem != null && !widget.isSelectionMode)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: ExpiringTimerBadge(expiringItem: expiringItem, compact: true),
+                  ),
+
+                // Paper Trail / Warranty Badge (Bottom-Left)
+                if (paperTrailDoc != null && !widget.isSelectionMode)
+                  Positioned(
+                    bottom: 5,
+                    left: isFavorite ? 24 : 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC000000),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: paperTrailDoc.isWarrantyExpired
+                              ? c.accentRose.withOpacity(0.8)
+                              : c.accentTeal.withOpacity(0.8),
+                          width: 0.6,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            paperTrailDoc.hasWarranty
+                                ? (paperTrailDoc.isWarrantyExpired
+                                    ? CupertinoIcons.shield_slash
+                                    : CupertinoIcons.shield_fill)
+                                : Icons.receipt_long,
+                            size: 9,
+                            color: paperTrailDoc.isWarrantyExpired ? c.accentRose : c.accentTeal,
+                          ),
+                          if (paperTrailDoc.hasWarranty && !paperTrailDoc.isWarrantyExpired) ...[
+                            const SizedBox(width: 3),
+                            Text(
+                              '${paperTrailDoc.daysRemaining}d',
+                              style: TextStyle(
+                                color: c.accentTeal,
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
