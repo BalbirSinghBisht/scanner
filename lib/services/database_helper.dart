@@ -116,6 +116,10 @@ class DatabaseHelper {
     } catch (_) {}
 
     try {
+      await purgeStatusesAndStickers(db);
+    } catch (_) {}
+
+    try {
       // Auto-purge any duplicate records across MediaStore and direct disk scans
       await deduplicateManifest(db);
     } catch (_) {}
@@ -539,6 +543,29 @@ class DatabaseHelper {
           )
       ''');
 
+      // 2b. Propagate drive_file_id across duplicate content_hash records:
+      // If one record with this hash was uploaded, all other records with the same hash inherit it!
+      await db.rawUpdate('''
+        UPDATE ${AppConstants.manifestTableName}
+        SET upload_state = '${UploadState.UPLOADED.name}',
+            drive_file_id = (
+              SELECT u.drive_file_id FROM ${AppConstants.manifestTableName} u
+              WHERE u.content_hash = ${AppConstants.manifestTableName}.content_hash
+                AND u.upload_state = '${UploadState.UPLOADED.name}'
+                AND u.drive_file_id IS NOT NULL
+              LIMIT 1
+            ),
+            uploaded_at = COALESCE(uploaded_at, strftime('%s','now') * 1000),
+            error_message = 'Duplicate of uploaded media'
+        WHERE upload_state != '${UploadState.UPLOADED.name}'
+          AND content_hash IS NOT NULL AND content_hash != ''
+          AND content_hash IN (
+            SELECT u2.content_hash FROM ${AppConstants.manifestTableName} u2
+            WHERE u2.upload_state = '${UploadState.UPLOADED.name}'
+              AND u2.drive_file_id IS NOT NULL
+          )
+      ''');
+
       // 3. Delete disk_* and vault_* duplicates when a canonical MediaStore record exists for that file_name
       final deletedCount = await db.rawDelete('''
         DELETE FROM ${AppConstants.manifestTableName}
@@ -578,6 +605,49 @@ class DatabaseHelper {
       return MediaItem.fromMap(maps.first);
     }
     return null;
+  }
+
+  /// Propagates drive_file_id and marks all duplicate items with matching content_hash as UPLOADED
+  Future<int> markDuplicatesUploadedByHash({
+    required String contentHash,
+    required String driveFileId,
+    required String survivingLocalId,
+  }) async {
+    final db = await database;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    return await db.update(
+      AppConstants.manifestTableName,
+      {
+        'upload_state': UploadState.UPLOADED.name,
+        'drive_file_id': driveFileId,
+        'uploaded_at': nowMs,
+        'error_message': 'Duplicate of uploaded media',
+      },
+      where: 'content_hash = ? AND local_id != ? AND upload_state != ?',
+      whereArgs: [contentHash, survivingLocalId, UploadState.UPLOADED.name],
+    );
+  }
+
+  /// Propagates drive_file_id and marks all duplicate items with matching file_name and file_size as UPLOADED
+  Future<int> markDuplicatesUploadedByNameAndSize({
+    required String fileName,
+    required int fileSize,
+    required String driveFileId,
+    required String survivingLocalId,
+  }) async {
+    final db = await database;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    return await db.update(
+      AppConstants.manifestTableName,
+      {
+        'upload_state': UploadState.UPLOADED.name,
+        'drive_file_id': driveFileId,
+        'uploaded_at': nowMs,
+        'error_message': 'Duplicate of uploaded media',
+      },
+      where: 'file_name = ? AND file_size = ? AND local_id != ? AND upload_state != ?',
+      whereArgs: [fileName, fileSize, survivingLocalId, UploadState.UPLOADED.name],
+    );
   }
 
   Future<MediaItem?> getItemByContentHash(String contentHash) async {
@@ -700,6 +770,9 @@ class DatabaseHelper {
     conditions.add("mime_type NOT LIKE 'audio/%'");
     conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
     conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
+    conditions.add("folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'");
+    conditions.add("folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'");
+    conditions.add("local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'");
 
     final whereClause = conditions.join(' AND ');
 
@@ -767,6 +840,9 @@ class DatabaseHelper {
     conditions.add("mime_type NOT LIKE 'audio/%'");
     conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
     conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
+    conditions.add("folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'");
+    conditions.add("folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'");
+    conditions.add("local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'");
 
     final whereClause = conditions.join(' AND ');
 
@@ -892,6 +968,9 @@ class DatabaseHelper {
     conditions.add("mime_type NOT LIKE 'audio/%'");
     conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
     conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
+    conditions.add("folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'");
+    conditions.add("folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'");
+    conditions.add("local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'");
 
     final whereClause = conditions.join(' AND ');
 
@@ -927,6 +1006,42 @@ class DatabaseHelper {
       }
 
       // Duplicate guard: check if another record with identical file_name or content_hash is already UPLOADED
+      if (item.contentHash != null && item.contentHash!.isNotEmpty) {
+        final uploadedByHash = await db.query(
+          AppConstants.manifestTableName,
+          where: 'content_hash = ? AND upload_state = ? AND drive_file_id IS NOT NULL',
+          whereArgs: [item.contentHash!, UploadState.UPLOADED.name],
+          limit: 1,
+        );
+        if (uploadedByHash.isNotEmpty) {
+          final existingDriveId = uploadedByHash.first['drive_file_id'] as String?;
+          if (existingDriveId != null && existingDriveId.isNotEmpty) {
+            await db.update(
+              AppConstants.manifestTableName,
+              {
+                'upload_state': UploadState.UPLOADED.name,
+                'drive_file_id': existingDriveId,
+                'uploaded_at': nowMs,
+                'error_message': 'Duplicate content already uploaded',
+              },
+              where: 'local_id = ?',
+              whereArgs: [item.localId],
+            );
+            continue;
+          }
+        }
+
+        final activeUploadingByHash = await db.query(
+          AppConstants.manifestTableName,
+          where: 'content_hash = ? AND upload_state = ? AND local_id != ?',
+          whereArgs: [item.contentHash!, UploadState.UPLOADING.name, item.localId],
+          limit: 1,
+        );
+        if (activeUploadingByHash.isNotEmpty) {
+          continue; // Wait for active upload of same content to finish
+        }
+      }
+
       final alreadyUploaded = await db.query(
         AppConstants.manifestTableName,
         where: 'file_name = ? AND upload_state = ? AND drive_file_id IS NOT NULL',
@@ -1092,7 +1207,7 @@ class DatabaseHelper {
       args.add(stateFilter);
     }
 
-    // Exclude any internal/cached thumbnail items
+    // Exclude any internal/cached thumbnail items, statuses, stickers, and sent items from UI
     conditions.add('''
       (folder_name IS NULL OR (
         folder_name NOT LIKE '%.thumbnail%' AND 
@@ -1102,7 +1217,14 @@ class DatabaseHelper {
         folder_name != '.thumbnails' AND 
         folder_name != '.thumbnail' AND 
         folder_name != '.cache' AND 
-        folder_name NOT LIKE '%.cache%'
+        folder_name NOT LIKE '%.cache%' AND
+        folder_name NOT LIKE '%status%' AND
+        folder_name NOT LIKE '%.status%' AND
+        folder_name NOT LIKE '%sticker%' AND
+        folder_name NOT LIKE '%.sticker%' AND
+        folder_name NOT LIKE '%Sent%' AND
+        folder_name != 'Sent' AND
+        folder_name != 'sent'
       ))
     ''');
     conditions.add('''
@@ -1110,7 +1232,13 @@ class DatabaseHelper {
         local_file_path NOT LIKE '%.thumbnail%' AND 
         local_file_path NOT LIKE '%.thumbnails%' AND 
         local_file_path NOT LIKE '%/.thumbnails/%' AND 
-        local_file_path NOT LIKE '%/.thumbnail/%'
+        local_file_path NOT LIKE '%/.thumbnail/%' AND
+        local_file_path NOT LIKE '%/.Statuses%' AND
+        local_file_path NOT LIKE '%/Statuses%' AND
+        local_file_path NOT LIKE '%status%' AND
+        local_file_path NOT LIKE '%sticker%' AND
+        local_file_path NOT LIKE '%/Sent/%' AND
+        local_file_path NOT LIKE '%/sent/%'
       ))
     ''');
 
@@ -1385,6 +1513,9 @@ class DatabaseHelper {
     conditions.add("folder_name IS NOT NULL AND folder_name != ''");
     conditions.add("folder_name NOT LIKE '%.thumbnail%' AND folder_name NOT LIKE '%.thumbnails%' AND folder_name != 'thumbnails' AND folder_name != 'thumbnail'");
     conditions.add("folder_name != '.thumbnails' AND folder_name != '.thumbnail' AND folder_name != '.cache' AND folder_name NOT LIKE '%.cache%'");
+    conditions.add("folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'");
+    conditions.add("folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'");
+    conditions.add("local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'");
 
     final whereClause = conditions.join(' AND ');
     final res = await db.rawQuery('''
@@ -1441,6 +1572,27 @@ class DatabaseHelper {
         file_name LIKE '%.thumbnail%'
       ''',
     );
+  }
+
+  /// Purges any WhatsApp Statuses or stickers indexed into SQLite manifest
+  Future<int> purgeStatusesAndStickers([Database? targetDb]) async {
+    final db = targetDb ?? await database;
+    final count = await db.delete(
+      AppConstants.manifestTableName,
+      where: '''
+        folder_name LIKE '%.status%' OR 
+        folder_name LIKE '%status%' OR 
+        local_file_path LIKE '%/.Statuses%' OR 
+        local_file_path LIKE '%/Statuses%' OR 
+        local_file_path LIKE '%status%' OR 
+        folder_name LIKE '%sticker%' OR 
+        local_file_path LIKE '%sticker%'
+      ''',
+    );
+    if (count > 0) {
+      debugPrint('[DatabaseHelper] Purged $count WhatsApp status/sticker items from manifest.');
+    }
+    return count;
   }
 
   Future<List<MediaItem>> getItemsByFolder(String folderName, {int limit = 500}) async {

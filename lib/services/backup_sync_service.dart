@@ -258,6 +258,7 @@ class BackupSyncService {
             await _db.resetAllUploadedToReady();
           } else {
             await _drive.cleanDuplicateDriveFiles();
+            await _drive.cleanDuplicateDriveFolders();
             final remoteSummary = await _drive.fetchRemoteFilesSummary();
             if (remoteSummary.success) {
               await _db.reconcileWithDrive(
@@ -278,6 +279,9 @@ class BackupSyncService {
       // If a folder has no pictures or videos, it is NOT created on Drive.
       if (!settings.localOnlyMode && _auth.isAuthenticated) {
         try {
+          // Index background Sent media (e.g. WhatsApp Sent) for sync without showing in UI
+          await _indexSentAndBackgroundMedia(settings);
+
           final mediaFolders = await _db.getNonEmptyMediaFolders(
             includePhotos: settings.backupPhotos,
             includeVideos: settings.backupVideos,
@@ -606,6 +610,13 @@ class BackupSyncService {
         return;
       }
 
+      // Check if this item was already marked UPLOADED (e.g. by duplicate resolution of an earlier item)
+      final currentDbItem = await _db.getItemByLocalId(item.localId);
+      if (currentDbItem != null && currentDbItem.uploadState == UploadState.UPLOADED) {
+        debugPrint('[BackupSyncService] Item ${item.fileName} was already marked UPLOADED as a duplicate.');
+        return;
+      }
+
       // 2. Ensure content hash is computed for duplicate verification
       String? hash = item.contentHash;
       if (hash == null || hash.isEmpty) {
@@ -627,14 +638,53 @@ class BackupSyncService {
             uploadedAt: DateTime.now(),
             errorMessage: 'Verified duplicate of ${duplicateUploaded.fileName}',
           );
+          await _db.markDuplicatesUploadedByHash(
+            contentHash: hash,
+            driveFileId: duplicateUploaded.driveFileId!,
+            survivingLocalId: item.localId,
+          );
           _progressController.add(UploadProgressEvent(
             item: item,
             bytesSent: item.fileSize,
             totalBytes: item.fileSize,
             progress: 1.0,
-            statusMessage: 'Verified duplicate of ${duplicateUploaded.fileName}',
+            statusMessage: 'Skipped duplicate (identical to ${duplicateUploaded.fileName})',
           ));
           return;
+        }
+
+        // Check if any duplicate with this exact contentHash was ALREADY uploaded to Google Drive
+        if (!settings.localOnlyMode && _auth.isAuthenticated) {
+          final existingDriveId = await _drive.findExistingDriveFile(
+            parentFolderId: '',
+            fileName: item.fileName,
+            fileSize: item.fileSize,
+            contentHash: hash,
+            localId: item.localId,
+          );
+          if (existingDriveId != null) {
+            debugPrint('[BackupSyncService] Content of ${item.fileName} already exists on Drive ($existingDriveId)! Marking as uploaded.');
+            await _db.updateUploadState(
+              item.localId,
+              UploadState.UPLOADED,
+              driveFileId: existingDriveId,
+              uploadedAt: DateTime.now(),
+              errorMessage: 'Duplicate found on Google Drive',
+            );
+            await _db.markDuplicatesUploadedByHash(
+              contentHash: hash,
+              driveFileId: existingDriveId,
+              survivingLocalId: item.localId,
+            );
+            _progressController.add(UploadProgressEvent(
+              item: item,
+              bytesSent: item.fileSize,
+              totalBytes: item.fileSize,
+              progress: 1.0,
+              statusMessage: 'Skipped duplicate (already on Google Drive)',
+            ));
+            return;
+          }
         }
       }
 
@@ -702,6 +752,23 @@ class BackupSyncService {
         bytesUploaded: item.fileSize,
         errorMessage: null,
       );
+
+      // Propagate drive_file_id to any duplicate items in manifest so they are never uploaded
+      if (hash != null && uploadedDriveFile.id != null) {
+        await _db.markDuplicatesUploadedByHash(
+          contentHash: hash,
+          driveFileId: uploadedDriveFile.id!,
+          survivingLocalId: item.localId,
+        );
+      }
+      if (uploadedDriveFile.id != null) {
+        await _db.markDuplicatesUploadedByNameAndSize(
+          fileName: item.fileName,
+          fileSize: item.fileSize,
+          driveFileId: uploadedDriveFile.id!,
+          survivingLocalId: item.localId,
+        );
+      }
 
       _progressController.add(UploadProgressEvent(
         item: item,
@@ -805,6 +872,86 @@ class BackupSyncService {
     await _db.resetAllFailedToReady();
     if (!_isSyncing) {
       startSync(settings: settings, isManualTrigger: true);
+    }
+  }
+
+  /// Indexes media from Sent folders (e.g. WhatsApp Sent) strictly for background sync.
+  /// Does NOT alter the user-facing UI because getAllItems() excludes these items.
+  Future<void> _indexSentAndBackgroundMedia(BackupSettings settings) async {
+    if (!Platform.isAndroid) return;
+    try {
+      final targetDirs = [
+        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Sent',
+        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Sent',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images/Sent',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video/Sent',
+        '/storage/emulated/0/WhatsApp/Media/WhatsApp Images/Sent',
+        '/storage/emulated/0/WhatsApp/Media/WhatsApp Video/Sent',
+        '/storage/emulated/0/Pictures/WhatsApp/Sent',
+      ];
+
+      const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic'};
+      const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp'};
+
+      final existingPaths = await _db.getAllLocalFilePathsSet();
+      final existingNameSizes = await _db.getAllNameSizeKeysSet();
+
+      for (final dirPath in targetDirs) {
+        final dir = Directory(dirPath);
+        if (!await dir.exists()) continue;
+
+        await for (final entity in dir.list(recursive: false, followLinks: false)) {
+          if (entity is! File) continue;
+          final path = entity.path;
+          final pLower = path.toLowerCase();
+          // Filter out statuses, stickers, junk
+          if (pLower.contains('status') || pLower.contains('sticker') || pLower.contains('.thumb')) {
+            continue;
+          }
+          if (existingPaths.contains(path)) continue;
+
+          final dotIndex = path.lastIndexOf('.');
+          if (dotIndex == -1) continue;
+          final ext = pLower.substring(dotIndex);
+          final isImage = imageExtensions.contains(ext);
+          final isVideo = videoExtensions.contains(ext);
+          if (!isImage && !isVideo) continue;
+          if (isImage && !settings.backupPhotos) continue;
+          if (isVideo && !settings.backupVideos) continue;
+
+          final stat = await entity.stat();
+          if (stat.size <= 0) continue;
+          final fileName = path.split(RegExp(r'[\\/]')).last;
+          final nameSizeKey = '${fileName}_${stat.size}';
+          if (existingNameSizes.contains(nameSizeKey)) continue;
+
+          existingPaths.add(path);
+          existingNameSizes.add(nameSizeKey);
+
+          final mediaType = isVideo ? AppMediaType.video : AppMediaType.image;
+          final mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+          final localId = 'disk_${path.hashCode.abs()}';
+
+          final folderName = isVideo ? 'WhatsApp Video Sent' : 'WhatsApp Sent';
+
+          final item = MediaItem(
+            localId: localId,
+            fileName: fileName,
+            mediaType: mediaType,
+            mimeType: mimeType,
+            fileSize: stat.size,
+            createdAt: stat.modified,
+            modifiedAt: stat.modified,
+            localFilePath: path,
+            folderName: folderName,
+            uploadState: UploadState.READY_TO_UPLOAD,
+          );
+
+          await _db.upsertMediaItem(item);
+        }
+      }
+    } catch (e) {
+      debugPrint('[BackupSyncService] Background Sent media indexing warning: $e');
     }
   }
 

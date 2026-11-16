@@ -386,26 +386,28 @@ class GoogleDriveService {
       final api = await _getDriveApi();
       final escapedName = fileName.replaceAll("'", "\\'");
 
-      // 1. Search by exact file name inside target folder
-      final query =
-          "name = '$escapedName' and "
-          "'$parentFolderId' in parents and "
-          "trashed = false";
+      // 1. Search by exact file name inside target folder (if a valid parentFolderId is provided)
+      if (parentFolderId.trim().isNotEmpty) {
+        final query =
+            "name = '$escapedName' and "
+            "'$parentFolderId' in parents and "
+            "trashed = false";
 
-      final fileList = await api.files.list(
-        q: query,
-        spaces: 'drive',
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true,
-        corpora: 'allDrives',
-        pageSize: 1,
-        $fields: 'files(id, name, size)',
-      );
+        final fileList = await api.files.list(
+          q: query,
+          spaces: 'drive',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+          corpora: 'allDrives',
+          pageSize: 1,
+          $fields: 'files(id, name, size)',
+        );
 
-      if (fileList.files != null && fileList.files!.isNotEmpty) {
-        final id = fileList.files!.first.id;
-        if (id != null) _cachedRemoteFilesByName?[fileName] = id;
-        return id;
+        if (fileList.files != null && fileList.files!.isNotEmpty) {
+          final id = fileList.files!.first.id;
+          if (id != null) _cachedRemoteFilesByName?[fileName] = id;
+          return id;
+        }
       }
 
       // 2. Global search: Check if this file already exists in ANY folder on Drive
@@ -431,20 +433,22 @@ class GoogleDriveService {
           if (fileSize <= 0 || existingSize <= 0 || (existingSize - fileSize).abs() < 2048) {
             final id = existingFile.id;
             if (id != null) {
-              // Relocate file to the current target folder instead of uploading a duplicate!
-              final currentParents = (existingFile.parents ?? []).join(',');
-              if (!currentParents.contains(parentFolderId)) {
-                try {
-                  await api.files.update(
-                    drive.File(),
-                    id,
-                    addParents: parentFolderId,
-                    removeParents: currentParents.isNotEmpty ? currentParents : null,
-                    supportsAllDrives: true,
-                  );
-                  debugPrint('[GoogleDriveService] Relocated existing Drive file $fileName ($id) to $parentFolderId (prevented duplicate upload)');
-                } catch (e) {
-                  debugPrint('[GoogleDriveService] Relocation warning: $e');
+              // Relocate file to the current target folder instead of uploading a duplicate (if parentFolderId provided)
+              if (parentFolderId.trim().isNotEmpty) {
+                final currentParents = (existingFile.parents ?? []).join(',');
+                if (!currentParents.contains(parentFolderId)) {
+                  try {
+                    await api.files.update(
+                      drive.File(),
+                      id,
+                      addParents: parentFolderId,
+                      removeParents: currentParents.isNotEmpty ? currentParents : null,
+                      supportsAllDrives: true,
+                    );
+                    debugPrint('[GoogleDriveService] Relocated existing Drive file $fileName ($id) to $parentFolderId (prevented duplicate upload)');
+                  } catch (e) {
+                    debugPrint('[GoogleDriveService] Relocation warning: $e');
+                  }
                 }
               }
               _cachedRemoteFilesByName?[fileName] = id;
@@ -557,6 +561,112 @@ class GoogleDriveService {
       debugPrint('[GoogleDriveService] Error cleaning duplicate Drive files: $e');
     }
     return deletedCount;
+  }
+
+  /// Ensures no two folders share the same name under the device backup folder on Google Drive.
+  /// Consolidates duplicate folders by moving contents into the canonical folder and removing duplicates.
+  Future<int> cleanDuplicateDriveFolders() async {
+    int mergedOrDeleted = 0;
+    try {
+      final api = await _getDriveApi();
+      final rootId = await createRootFolderInMyDrive();
+      final deviceFolder =
+          await DeviceStateService.instance.getDeviceBackupFolderName();
+      final escapedDev = deviceFolder.replaceAll("'", "\\'");
+
+      final devList = await api.files.list(
+        q: "name = '$escapedDev' and mimeType = 'application/vnd.google-apps.folder' and '$rootId' in parents and trashed = false",
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        $fields: 'files(id)',
+        pageSize: 10,
+      );
+
+      if (devList.files == null || devList.files!.isEmpty) return 0;
+      final deviceFolderId = devList.files!.first.id;
+      if (deviceFolderId == null) return 0;
+
+      // If duplicate device folders exist, remove extra empty ones
+      if (devList.files!.length > 1) {
+        for (int i = 1; i < devList.files!.length; i++) {
+          final dupDevId = devList.files![i].id;
+          if (dupDevId != null) {
+            try {
+              await api.files.delete(dupDevId, supportsAllDrives: true);
+              mergedOrDeleted++;
+            } catch (_) {}
+          }
+        }
+      }
+
+      // List all child folders directly under deviceFolder
+      final childFolders = await api.files.list(
+        q: "'$deviceFolderId' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        $fields: 'files(id, name)',
+        pageSize: 500,
+      );
+
+      if (childFolders.files == null || childFolders.files!.isEmpty) return mergedOrDeleted;
+
+      final foldersByName = <String, List<drive.File>>{};
+      for (final f in childFolders.files!) {
+        if (f.name == null || f.id == null) continue;
+        foldersByName.putIfAbsent(f.name!, () => []).add(f);
+      }
+
+      for (final entry in foldersByName.entries) {
+        final list = entry.value;
+        if (list.length > 1) {
+          debugPrint('[GoogleDriveService] Found ${list.length} duplicate folders named "${entry.key}" on Drive. Consolidating...');
+          final primaryFolderId = list.first.id!;
+
+          for (int i = 1; i < list.length; i++) {
+            final dupFolderId = list[i].id;
+            if (dupFolderId == null) continue;
+
+            // Move any files in duplicate folder to primary folder
+            try {
+              final dupFiles = await api.files.list(
+                q: "'$dupFolderId' in parents and trashed = false",
+                spaces: 'drive',
+                supportsAllDrives: true,
+                includeItemsFromAllDrives: true,
+                $fields: 'files(id)',
+                pageSize: 100,
+              );
+
+              if (dupFiles.files != null) {
+                for (final file in dupFiles.files!) {
+                  if (file.id != null) {
+                    await api.files.update(
+                      drive.File(),
+                      file.id!,
+                      addParents: primaryFolderId,
+                      removeParents: dupFolderId,
+                      supportsAllDrives: true,
+                    );
+                  }
+                }
+              }
+
+              // Delete the duplicate folder now that it's empty
+              await api.files.delete(dupFolderId, supportsAllDrives: true);
+              mergedOrDeleted++;
+              debugPrint('[GoogleDriveService] Consolidated and deleted duplicate Drive folder "${entry.key}" ($dupFolderId)');
+            } catch (e) {
+              debugPrint('[GoogleDriveService] Error consolidating duplicate folder "${entry.key}": $e');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[GoogleDriveService] Error cleaning duplicate Drive folders: $e');
+    }
+    return mergedOrDeleted;
   }
 
   /// Checks whether the device backup folder (PhoneBackup/<deviceFolder>) exists and is NOT trashed on Google Drive.
