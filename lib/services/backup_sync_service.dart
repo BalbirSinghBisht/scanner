@@ -697,12 +697,18 @@ class BackupSyncService {
           uploadedAt: DateTime.now(),
           errorMessage: 'Verified duplicate of ${duplicateByName.fileName}',
         );
+        await _db.markDuplicatesUploadedByNameAndSize(
+          fileName: item.fileName,
+          fileSize: item.fileSize,
+          driveFileId: duplicateByName.driveFileId!,
+          survivingLocalId: item.localId,
+        );
         _progressController.add(UploadProgressEvent(
           item: item,
           bytesSent: item.fileSize,
           totalBytes: item.fileSize,
           progress: 1.0,
-          statusMessage: 'Verified duplicate of ${duplicateByName.fileName}',
+          statusMessage: 'Skipped duplicate (identical to ${duplicateByName.fileName})',
         ));
         return;
       }

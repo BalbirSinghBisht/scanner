@@ -654,7 +654,7 @@ class DatabaseHelper {
     final db = await database;
     final maps = await db.query(
       AppConstants.manifestTableName,
-      where: 'content_hash = ? AND upload_state = ?',
+      where: 'content_hash = ? AND upload_state = ? AND drive_file_id IS NOT NULL AND drive_file_id != \'\'',
       whereArgs: [contentHash, UploadState.UPLOADED.name],
       limit: 1,
     );
