@@ -188,6 +188,9 @@ class _PaperTrailFormSheetState extends State<PaperTrailFormSheet> {
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
     final df = DateFormat('MMM d, yyyy');
+    final mq = MediaQuery.maybeOf(context);
+    final screenHeight = mq?.size.height ?? 800.0;
+    final bottomInset = (mq?.viewInsets.bottom ?? 0.0) + (mq?.padding.bottom ?? 0.0) + 20;
 
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -195,7 +198,7 @@ class _PaperTrailFormSheetState extends State<PaperTrailFormSheet> {
         filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
         child: Container(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.90,
+            maxHeight: screenHeight * 0.90,
           ),
           decoration: BoxDecoration(
             color: c.isDark ? const Color(0xF51C1C1E) : const Color(0xF8FFFFFF),
@@ -206,9 +209,7 @@ class _PaperTrailFormSheetState extends State<PaperTrailFormSheet> {
             top: 12,
             left: 20,
             right: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom +
-                MediaQuery.of(context).padding.bottom +
-                20,
+            bottom: bottomInset,
           ),
           child: SingleChildScrollView(
             child: Column(

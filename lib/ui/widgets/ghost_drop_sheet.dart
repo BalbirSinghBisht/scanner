@@ -47,11 +47,14 @@ class _GhostDropSheetState extends State<GhostDropSheet> {
 
     return ListenableBuilder(
       listenable: _ghostDrop,
-      builder: (context, _) {
+      builder: (builderCtx, _) {
         final url = _ghostDrop.serverUrl;
         final isRunning = _ghostDrop.isRunning;
         final totalSize = _ghostDrop.formattedTotalSize;
         final count = widget.items.length;
+        final mq = MediaQuery.maybeOf(builderCtx);
+        final screenHeight = mq?.size.height ?? 800.0;
+        final bottomPadding = (mq?.padding.bottom ?? 0.0) + 20;
 
         return ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -59,7 +62,7 @@ class _GhostDropSheetState extends State<GhostDropSheet> {
             filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
             child: Container(
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.90,
+                maxHeight: screenHeight * 0.90,
               ),
               decoration: BoxDecoration(
                 color: c.isDark
@@ -76,7 +79,7 @@ class _GhostDropSheetState extends State<GhostDropSheet> {
                     top: 12,
                     left: 20,
                     right: 20,
-                    bottom: MediaQuery.of(context).padding.bottom + 20,
+                    bottom: bottomPadding,
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
