@@ -173,14 +173,7 @@ class BackupSyncService {
               debugPrint('[BackupSyncService] Device folder removed on Drive! Resetting all items to READY_TO_UPLOAD...');
               await _drive.clearFolderCache();
               await _db.resetAllUploadedToReady();
-              final mediaFolders = await _db.getNonEmptyMediaFolders(
-                includePhotos: settings.backupPhotos,
-                includeVideos: settings.backupVideos,
-              );
-              if (mediaFolders.isNotEmpty) {
-                await _drive.preCreateFolders(mediaFolders);
-              }
-              await _drive.deleteEmptyDriveFolders(keepFolderNames: mediaFolders.toSet());
+              await _drive.deleteEmptyDriveFolders();
             } else {
               await _drive.clearFolderCache();
               final remoteSummary = await _drive.fetchRemoteFilesSummary();
@@ -282,15 +275,9 @@ class BackupSyncService {
           // Index background Sent media (e.g. WhatsApp Sent) for sync without showing in UI
           await _indexSentAndBackgroundMedia(settings);
 
-          final mediaFolders = await _db.getNonEmptyMediaFolders(
-            includePhotos: settings.backupPhotos,
-            includeVideos: settings.backupVideos,
-          );
-          if (mediaFolders.isNotEmpty) {
-            await _drive.preCreateFolders(mediaFolders);
-          }
-          // Prune any empty Drive folders that don't contain pictures or videos
-          await _drive.deleteEmptyDriveFolders(keepFolderNames: mediaFolders.toSet());
+          // Clean any duplicate or empty folders on Drive so only folders with actual data remain
+          await _drive.cleanDuplicateDriveFolders();
+          await _drive.deleteEmptyDriveFolders();
         } catch (e) {
           debugPrint('[BackupSyncService] Upfront folder pre-creation warning: $e');
         }
@@ -450,15 +437,8 @@ class BackupSyncService {
                 debugPrint('[BackupSyncService] Device folder removed on Google Drive! Clearing folder cache and resetting all uploads...');
                 await _drive.clearFolderCache();
                 final count = await _db.resetAllUploadedToReady();
-                debugPrint('[BackupSyncService] Reset $count items to READY_TO_UPLOAD. Pre-creating folders and restarting upload...');
-                final mediaFolders = await _db.getNonEmptyMediaFolders(
-                  includePhotos: settings.backupPhotos,
-                  includeVideos: settings.backupVideos,
-                );
-                if (mediaFolders.isNotEmpty) {
-                  await _drive.preCreateFolders(mediaFolders);
-                }
-                await _drive.deleteEmptyDriveFolders(keepFolderNames: mediaFolders.toSet());
+                debugPrint('[BackupSyncService] Reset $count items to READY_TO_UPLOAD. Restarting upload...');
+                await _drive.deleteEmptyDriveFolders();
                 continue; // Loop again, claim newly reset items, and start uploading immediately!
               }
 

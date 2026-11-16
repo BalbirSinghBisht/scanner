@@ -114,37 +114,14 @@ class GoogleDriveService {
     }
   }
 
-  /// Pre-creates and caches all needed album folders in Drive upfront in parallel
+  /// Folders are created on-demand only when data is actively being uploaded into them.
   Future<void> preCreateFolders(List<String> folderNames) async {
-    if (folderNames.isEmpty) return;
-    try {
-      final deviceFolder =
-          await DeviceStateService.instance.getDeviceBackupFolderName();
-
-      // 1. Ensure root and device folder exist first
-      await getOrCreateFolderPath([rootFolderName, deviceFolder]);
-
-      // 2. Pre-create all distinct child folders in parallel
-      final uniqueFolders = folderNames.where((f) => f.trim().isNotEmpty).toSet().toList();
-      debugPrint('[GoogleDriveService] Pre-creating ${uniqueFolders.length} album folders in parallel on Drive: $uniqueFolders');
-
-      await Future.wait(
-        uniqueFolders.map((phoneFolder) async {
-          try {
-            await getOrCreateFolderPath([rootFolderName, deviceFolder, phoneFolder]);
-          } catch (e) {
-            debugPrint('[GoogleDriveService] Pre-create folder warning for $phoneFolder: $e');
-          }
-        }),
-      );
-      debugPrint('[GoogleDriveService] Upfront folder creation complete for ${uniqueFolders.length} folders.');
-    } catch (e) {
-      debugPrint('[GoogleDriveService] Error in preCreateFolders: $e');
-    }
+    // Intentionally no-op: do not create empty folders upfront.
+    // Folders are created strictly JIT when media files are being uploaded.
   }
 
-  /// Deletes any empty child folders under PhoneBackup/<deviceFolder> that do not contain any files
-  /// and are not in [keepFolderNames] (i.e. folders that have no media data on the device).
+  /// Deletes any empty child folders under PhoneBackup/<deviceFolder> that do not contain any files.
+  /// Ensures only folders containing actual uploaded data exist on Google Drive.
   Future<int> deleteEmptyDriveFolders({Set<String>? keepFolderNames}) async {
     int deleted = 0;
     try {
@@ -186,20 +163,15 @@ class GoogleDriveService {
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
         $fields: 'files(id, name)',
-        pageSize: 100,
+        pageSize: 200,
       );
 
       if (childFolders.files == null || childFolders.files!.isEmpty) return 0;
-
-      final keep = keepFolderNames ?? <String>{};
 
       for (final folder in childFolders.files!) {
         final fId = folder.id;
         final fName = folder.name;
         if (fId == null || fId.isEmpty || fName == null) continue;
-
-        // If this folder is designated to receive media uploads, keep it!
-        if (keep.contains(fName)) continue;
 
         // Check if this folder has any files
         final items = await api.files.list(
@@ -212,11 +184,11 @@ class GoogleDriveService {
         );
 
         if (items.files == null || items.files!.isEmpty) {
-          // Folder is empty and has no media on device: delete it!
+          // Folder is completely empty (no data uploaded yet): delete it!
           try {
             await api.files.delete(fId, supportsAllDrives: true);
             deleted++;
-            debugPrint('[GoogleDriveService] Deleted empty Drive folder: $fName ($fId)');
+            debugPrint('[GoogleDriveService] Deleted empty Drive folder with no data: $fName ($fId)');
             final partialPath = '$rootFolderName/$deviceFolder/$fName';
             _folderCache.remove(partialPath);
             final prefKey = 'gdrive_folder_id_${partialPath.replaceAll(RegExp(r'[^\w]'), '_')}';
@@ -569,7 +541,19 @@ class GoogleDriveService {
     int mergedOrDeleted = 0;
     try {
       final api = await _getDriveApi();
-      final rootId = await createRootFolderInMyDrive();
+      final escapedRoot = rootFolderName.replaceAll("'", "\\'");
+      final rootList = await api.files.list(
+        q: "name = '$escapedRoot' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        $fields: 'files(id)',
+        pageSize: 1,
+      );
+      if (rootList.files == null || rootList.files!.isEmpty) return 0;
+      final rootId = rootList.files!.first.id;
+      if (rootId == null) return 0;
+
       final deviceFolder =
           await DeviceStateService.instance.getDeviceBackupFolderName();
       final escapedDev = deviceFolder.replaceAll("'", "\\'");
