@@ -45,11 +45,7 @@ class SettingsRepository {
     if (jsonStr != null) {
       try {
         final map = jsonDecode(jsonStr) as Map<String, dynamic>;
-        final loaded = BackupSettings.fromMap(map);
-        return loaded.copyWith(
-          autoBackupEnabled: true,
-          userConsentGiven: true,
-        );
+        return BackupSettings.fromMap(map);
       } catch (_) {}
     }
     return const BackupSettings();

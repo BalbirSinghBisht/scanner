@@ -245,7 +245,7 @@ class DatabaseHelper {
   /// 1. Any file currently on Google Drive is ensured to be marked UPLOADED (prevents duplicate uploads).
   /// 2. Any file marked UPLOADED locally that NO LONGER exists on Google Drive (e.g. user deleted it from Drive)
   ///    is reset to READY_TO_UPLOAD (automatically re-syncs to Drive without needing to clear app data).
-  Future<void> reconcileWithDrive(
+  Future<int> reconcileWithDrive(
     Map<String, String> remoteFilesByName,
     Set<String> remoteFileIds,
   ) async {
@@ -253,7 +253,7 @@ class DatabaseHelper {
 
     // A. For any item currently marked UPLOADED in SQLite:
     // If its driveFileId is NOT in remoteFileIds AND its fileName is NOT in remoteFilesByName,
-    // the user deleted it from Drive! Reset it to READY_TO_UPLOAD.
+    // the user deleted it from Drive! Reset it to READY_TO_UPLOAD so it automatically re-syncs.
     final uploadedItems = await db.query(
       AppConstants.manifestTableName,
       where: 'upload_state = ?',
@@ -287,7 +287,7 @@ class DatabaseHelper {
         );
       }
       await batch.commit(noResult: true);
-      debugPrint('Reset ${toResetIds.length} items to READY_TO_UPLOAD because they were removed from Google Drive.');
+      debugPrint('[DatabaseHelper] Reset ${toResetIds.length} items to READY_TO_UPLOAD because they were removed from Google Drive.');
     }
 
     // B. For any item in SQLite NOT marked UPLOADED:
@@ -324,6 +324,25 @@ class DatabaseHelper {
       await batch.commit(noResult: true);
       debugPrint('Marked ${toMarkUploaded.length} items as UPLOADED because they already exist on Google Drive.');
     }
+    return toResetIds.length;
+  }
+
+  /// Resets all items marked UPLOADED back to READY_TO_UPLOAD.
+  /// Used when the device backup folder on Google Drive has been deleted or trashed.
+  Future<int> resetAllUploadedToReady() async {
+    final db = await database;
+    final count = await db.update(
+      AppConstants.manifestTableName,
+      {
+        'upload_state': UploadState.READY_TO_UPLOAD.name,
+        'drive_file_id': null,
+        'uploaded_at': null,
+      },
+      where: 'upload_state = ?',
+      whereArgs: [UploadState.UPLOADED.name],
+    );
+    debugPrint('[DatabaseHelper] resetAllUploadedToReady: reset $count items to READY_TO_UPLOAD');
+    return count;
   }
 
   /// Strictly purges any audio files, ringtones, and notification sounds from SQLite manifest
@@ -567,6 +586,20 @@ class DatabaseHelper {
       AppConstants.manifestTableName,
       where: 'content_hash = ? AND upload_state = ?',
       whereArgs: [contentHash, UploadState.UPLOADED.name],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return MediaItem.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  Future<MediaItem?> getItemByFileName(String fileName) async {
+    final db = await database;
+    final maps = await db.query(
+      AppConstants.manifestTableName,
+      where: 'file_name = ? AND upload_state = ? AND drive_file_id IS NOT NULL',
+      whereArgs: [fileName, UploadState.UPLOADED.name],
       limit: 1,
     );
     if (maps.isNotEmpty) {
@@ -877,13 +910,23 @@ class DatabaseHelper {
     }
 
     final claimedItems = <MediaItem>[];
+    final claimedFileNames = <String>{};
+    final claimedHashes = <String>{};
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
     for (final map in maps) {
       if (claimedItems.length >= effectiveLimit) break;
       final item = MediaItem.fromMap(map);
 
-      // Duplicate guard: check if another record with identical file_name is already UPLOADED
+      // Intra-batch duplicate check: avoid claiming duplicate files within the same batch
+      if (claimedFileNames.contains(item.fileName)) {
+        continue;
+      }
+      if (item.contentHash != null && item.contentHash!.isNotEmpty && claimedHashes.contains(item.contentHash!)) {
+        continue;
+      }
+
+      // Duplicate guard: check if another record with identical file_name or content_hash is already UPLOADED
       final alreadyUploaded = await db.query(
         AppConstants.manifestTableName,
         where: 'file_name = ? AND upload_state = ? AND drive_file_id IS NOT NULL',
@@ -908,6 +951,17 @@ class DatabaseHelper {
         }
       }
 
+      // Check if another record with identical file_name is actively UPLOADING right now
+      final activeUploading = await db.query(
+        AppConstants.manifestTableName,
+        where: 'file_name = ? AND upload_state = ? AND local_id != ?',
+        whereArgs: [item.fileName, UploadState.UPLOADING.name, item.localId],
+        limit: 1,
+      );
+      if (activeUploading.isNotEmpty) {
+        continue; // Wait for active upload to finish and adopt its driveFileId
+      }
+
       // Atomically transition to UPLOADING only if still READY or RETRY
       final updatedRows = await db.update(
         AppConstants.manifestTableName,
@@ -920,6 +974,10 @@ class DatabaseHelper {
       );
 
       if (updatedRows > 0) {
+        claimedFileNames.add(item.fileName);
+        if (item.contentHash != null && item.contentHash!.isNotEmpty) {
+          claimedHashes.add(item.contentHash!);
+        }
         claimedItems.add(item.copyWith(
           uploadState: UploadState.UPLOADING,
           lastAttemptAt: DateTime.fromMillisecondsSinceEpoch(nowMs),
@@ -1293,6 +1351,73 @@ class DatabaseHelper {
       ORDER BY folder_name ASC
     ''');
     return res.map((r) => r['folder_name'] as String).toList();
+  }
+
+  /// Returns only distinct folder names that actually contain pictures and/or videos.
+  /// Empty folders with no media data are excluded so they are never created on Drive.
+  Future<List<String>> getNonEmptyMediaFolders({
+    bool includePhotos = true,
+    bool includeVideos = true,
+  }) async {
+    final db = await database;
+    final conditions = <String>[];
+    final args = <dynamic>[];
+
+    if (!includePhotos && !includeVideos) {
+      return [];
+    } else if (includePhotos && !includeVideos) {
+      conditions.add('media_type = ?');
+      args.add(AppMediaType.image.name);
+    } else if (!includePhotos && includeVideos) {
+      conditions.add('media_type = ?');
+      args.add(AppMediaType.video.name);
+    } else {
+      conditions.add('(media_type = ? OR media_type = ?)');
+      args.add(AppMediaType.image.name);
+      args.add(AppMediaType.video.name);
+    }
+
+    // Exclude zero-byte or corrupt items, and exclude audio/ringtones
+    conditions.add('file_size > 0');
+    conditions.add("mime_type NOT LIKE 'audio/%'");
+    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
+    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
+    conditions.add("folder_name IS NOT NULL AND folder_name != ''");
+    conditions.add("folder_name NOT LIKE '%.thumbnail%' AND folder_name NOT LIKE '%.thumbnails%' AND folder_name != 'thumbnails' AND folder_name != 'thumbnail'");
+    conditions.add("folder_name != '.thumbnails' AND folder_name != '.thumbnail' AND folder_name != '.cache' AND folder_name NOT LIKE '%.cache%'");
+
+    final whereClause = conditions.join(' AND ');
+    final res = await db.rawQuery('''
+      SELECT DISTINCT folder_name, local_file_path, media_type
+      FROM ${AppConstants.manifestTableName}
+      WHERE $whereClause
+    ''', args);
+
+    final folderSet = <String>{};
+    for (final row in res) {
+      final fName = row['folder_name'] as String?;
+      final path = row['local_file_path'] as String?;
+      final mTypeStr = row['media_type'] as String?;
+      final mType = mTypeStr == AppMediaType.video.name ? AppMediaType.video : AppMediaType.image;
+
+      final item = MediaItem(
+        localId: '',
+        fileName: '',
+        mediaType: mType,
+        mimeType: '',
+        fileSize: 0,
+        createdAt: DateTime.now(),
+        folderName: fName,
+        localFilePath: path,
+      );
+      final display = item.displayFolderName;
+      if (display.trim().isNotEmpty) {
+        folderSet.add(display.trim());
+      }
+    }
+
+    final sorted = folderSet.toList()..sort();
+    return sorted;
   }
 
   /// Purges any legacy records indexed from .thumbnail / .thumbnails folders

@@ -8,6 +8,7 @@ import '../models/duplicate_group.dart';
 import '../models/media_item.dart';
 import '../services/backup_sync_service.dart';
 import '../services/database_helper.dart';
+import '../services/expiring_media_service.dart';
 import '../services/media_analysis_service.dart';
 import '../services/media_scanner_service.dart';
 import '../services/settings_repository.dart';
@@ -145,6 +146,12 @@ class BackupProvider extends ChangeNotifier {
         await startScan(forceFullScan: false);
       }
     });
+
+    // 9. Sync with auto-expiring media: immediately remove self-destructed items from gallery
+    ExpiringMediaService.instance.onItemPurged = (localId) {
+      removeMediaItemLocally(localId);
+      refreshData();
+    };
   }
 
   Future<void> _autoStartUpload() async {

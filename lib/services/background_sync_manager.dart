@@ -61,8 +61,8 @@ void onStartBackgroundService(ServiceInstance service) async {
     }
   });
 
-  // Fast background check every 15 seconds to catch newly downloaded/saved media immediately and sync pending items
-  Timer.periodic(const Duration(seconds: 15), (timer) async {
+  // Background check every 45 seconds to catch newly downloaded/saved media and sync pending items
+  Timer.periodic(const Duration(seconds: 45), (timer) async {
     try {
       await _runBackgroundSyncCycle(service);
     } catch (e) {

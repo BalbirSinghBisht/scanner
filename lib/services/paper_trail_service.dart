@@ -58,10 +58,13 @@ class PaperTrailService extends ChangeNotifier {
   }
 
   Future<void> deleteDoc(String id) async {
-    final doc = _allDocs.firstWhere((d) => d.id == id, orElse: () => _allDocs.first);
-    _docsByLocalId.remove(doc.localId);
-    _allDocs.removeWhere((d) => d.id == id);
-    notifyListeners();
+    final index = _allDocs.indexWhere((d) => d.id == id);
+    if (index != -1) {
+      final doc = _allDocs[index];
+      _docsByLocalId.remove(doc.localId);
+      _allDocs.removeAt(index);
+      notifyListeners();
+    }
 
     try {
       await _db.deletePaperTrailDoc(id);

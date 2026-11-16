@@ -116,17 +116,21 @@ class GhostDropService extends ChangeNotifier {
           await req.response.close();
         } else if (path == '/file') {
           final id = req.uri.queryParameters['id'];
-          final item = _currentItems.firstWhere(
-            (it) => it.localId == id,
-            orElse: () => _currentItems.first,
-          );
+          final matching = _currentItems.where((it) => it.localId == id).toList();
+          if (matching.isEmpty) {
+            req.response.statusCode = HttpStatus.notFound;
+            req.response.write('File not found');
+            await req.response.close();
+            return;
+          }
+          final item = matching.first;
 
           File? file;
-          if (item.localFilePath != null && File(item.localFilePath!).existsSync()) {
-            file = File(item.localFilePath!);
-          } else {
-            file = await MediaScannerService.instance.getMediaFile(item.localId);
+          if (item.localFilePath != null) {
+            final directF = File(item.localFilePath!);
+            if (await directF.exists()) file = directF;
           }
+          file ??= await MediaScannerService.instance.getMediaFile(item.localId);
 
           if (file != null && await file.exists()) {
             _downloadCount++;
@@ -140,7 +144,11 @@ class GhostDropService extends ChangeNotifier {
               'attachment; filename="${Uri.encodeComponent(item.fileName)}"',
             );
             req.response.headers.set('Content-Length', length.toString());
-            await file.openRead().pipe(req.response);
+            try {
+              await file.openRead().pipe(req.response);
+            } catch (pipeErr) {
+              debugPrint('[GhostDrop] Client aborted stream: $pipeErr');
+            }
           } else {
             req.response.statusCode = HttpStatus.notFound;
             req.response.write('File not found');
@@ -148,21 +156,29 @@ class GhostDropService extends ChangeNotifier {
           }
         } else if (path == '/thumb') {
           final id = req.uri.queryParameters['id'];
-          final item = _currentItems.firstWhere(
-            (it) => it.localId == id,
-            orElse: () => _currentItems.first,
-          );
+          final matching = _currentItems.where((it) => it.localId == id).toList();
+          if (matching.isEmpty) {
+            req.response.statusCode = HttpStatus.notFound;
+            req.response.write('Thumbnail not found');
+            await req.response.close();
+            return;
+          }
+          final item = matching.first;
 
           File? file;
-          if (item.localFilePath != null && File(item.localFilePath!).existsSync()) {
-            file = File(item.localFilePath!);
-          } else {
-            file = await MediaScannerService.instance.getMediaFile(item.localId);
+          if (item.localFilePath != null) {
+            final directF = File(item.localFilePath!);
+            if (await directF.exists()) file = directF;
           }
+          file ??= await MediaScannerService.instance.getMediaFile(item.localId);
 
           if (file != null && await file.exists()) {
             req.response.headers.set('Content-Type', item.mimeType);
-            await file.openRead().pipe(req.response);
+            try {
+              await file.openRead().pipe(req.response);
+            } catch (pipeErr) {
+              debugPrint('[GhostDrop] Client aborted thumb stream: $pipeErr');
+            }
           } else {
             req.response.statusCode = HttpStatus.notFound;
             await req.response.close();
@@ -171,33 +187,53 @@ class GhostDropService extends ChangeNotifier {
           _activeStatus = 'Archiving all files into ZIP for $clientIp...';
           notifyListeners();
 
-          final filesMap = <String, List<int>>{};
+          final filesMap = <String, File>{};
           for (final it in _currentItems) {
             File? f;
-            if (it.localFilePath != null && File(it.localFilePath!).existsSync()) {
-              f = File(it.localFilePath!);
-            } else {
-              f = await MediaScannerService.instance.getMediaFile(it.localId);
+            if (it.localFilePath != null) {
+              final directF = File(it.localFilePath!);
+              if (await directF.exists()) f = directF;
             }
+            f ??= await MediaScannerService.instance.getMediaFile(it.localId);
             if (f != null && await f.exists()) {
-              final bytes = await f.readAsBytes();
-              filesMap[it.fileName] = bytes;
+              filesMap[it.fileName] = f;
             }
           }
 
-          final zipBytes = ZipArchiveBuilder.buildZip(filesMap);
-          _downloadCount++;
-          _activeStatus = 'Sent ZIP package to $clientIp!';
-          notifyListeners();
+          if (filesMap.isEmpty) {
+            req.response.statusCode = HttpStatus.notFound;
+            req.response.write('No files available');
+            await req.response.close();
+            return;
+          }
 
-          req.response.headers.set('Content-Type', 'application/zip');
-          req.response.headers.set(
-            'Content-Disposition',
-            'attachment; filename="GhostDrop_Bundle.zip"',
+          final tempZip = File(
+            '${Directory.systemTemp.path}/ghost_drop_${DateTime.now().millisecondsSinceEpoch}.zip',
           );
-          req.response.headers.set('Content-Length', zipBytes.length.toString());
-          req.response.add(zipBytes);
-          await req.response.close();
+          try {
+            await ZipArchiveBuilder.buildZipFromFiles(filesMap, tempZip);
+            final length = await tempZip.length();
+
+            _downloadCount++;
+            _activeStatus = 'Sent ZIP package to $clientIp!';
+            notifyListeners();
+
+            req.response.headers.set('Content-Type', 'application/zip');
+            req.response.headers.set(
+              'Content-Disposition',
+              'attachment; filename="GhostDrop_Bundle.zip"',
+            );
+            req.response.headers.set('Content-Length', length.toString());
+            await tempZip.openRead().pipe(req.response);
+          } catch (e) {
+            debugPrint('[GhostDrop] ZIP stream error: $e');
+          } finally {
+            if (await tempZip.exists()) {
+              try {
+                await tempZip.delete();
+              } catch (_) {}
+            }
+          }
         } else {
           req.response.statusCode = HttpStatus.notFound;
           await req.response.close();

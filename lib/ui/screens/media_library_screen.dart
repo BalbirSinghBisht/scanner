@@ -514,27 +514,30 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   }
 
   void _showSortOptionsDialog() {
-    final c = AppTheme.colors(context);
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-          child: Container(
-            decoration: BoxDecoration(
-              color: c.isDark ? const Color(0xE61C1C1E) : const Color(0xF2FFFFFF),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              border: Border.all(color: c.glassBorderSubtle, width: 0.5),
-            ),
-            padding: EdgeInsets.only(
-              top: 10,
-              left: 16,
-              right: 16,
-              bottom: MediaQuery.of(context).padding.bottom + 16,
-            ),
+      builder: (ctx) {
+        final c = AppTheme.colors(ctx);
+        final mq = MediaQuery.maybeOf(ctx);
+        final bottomPadding = (mq?.padding.bottom ?? 0.0) + 16;
+
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+            child: Container(
+              decoration: BoxDecoration(
+                color: c.isDark ? const Color(0xE61C1C1E) : const Color(0xF2FFFFFF),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(color: c.glassBorderSubtle, width: 0.5),
+              ),
+              padding: EdgeInsets.only(
+                top: 10,
+                left: 16,
+                right: 16,
+                bottom: bottomPadding,
+              ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -575,9 +578,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
+    },
+  );
+}
 
   Widget _buildSortOption(
       SortMode mode, String label, IconData icon, AppThemeColors c) {

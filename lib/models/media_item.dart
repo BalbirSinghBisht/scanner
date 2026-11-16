@@ -149,6 +149,7 @@ class MediaItem {
 
     if (rawName != null && rawName.isNotEmpty) {
       if (rawName.toUpperCase() == 'DCIM') return 'Camera';
+      if (rawName == 'Downloads') return 'Download';
       if (rawName.startsWith('.')) {
         final stripped = rawName.replaceFirst(RegExp(r'^\.+'), '');
         final sLower = stripped.toLowerCase();

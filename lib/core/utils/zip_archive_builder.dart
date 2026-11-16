@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 /// Pure-Dart Zero-Dependency Zip Archive Builder
@@ -29,6 +30,104 @@ class ZipArchiveBuilder {
       crc = _crcTable[(crc ^ b) & 0xFF] ^ (crc >>> 8);
     }
     return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+  }
+
+  /// Memory-safe streaming ZIP builder:
+  /// Streams files from disk chunk-by-chunk directly into [destinationZip].
+  /// Memory consumption is O(1) regardless of total file sizes, preventing OOM crashes.
+  static Future<void> buildZipFromFiles(
+    Map<String, File> files,
+    File destinationZip,
+  ) async {
+    final sink = destinationZip.openWrite();
+    final centralDirBytes = BytesBuilder();
+    int offset = 0;
+    int entryCount = 0;
+
+    for (final entry in files.entries) {
+      final fileName = entry.key;
+      final file = entry.value;
+      if (!await file.exists()) continue;
+
+      final fileNameBytes = Uint8List.fromList(fileName.codeUnits);
+      final size = await file.length();
+
+      // Compute CRC32 chunk by chunk
+      int crc = 0xFFFFFFFF;
+      await for (final chunk in file.openRead()) {
+        for (final b in chunk) {
+          crc = _crcTable[(crc ^ b) & 0xFF] ^ (crc >>> 8);
+        }
+      }
+      crc = (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+
+      // Local File Header (30 bytes + filename)
+      final localHeader = ByteData(30);
+      localHeader.setUint32(0, 0x04034b50, Endian.little);
+      localHeader.setUint16(4, 20, Endian.little);
+      localHeader.setUint16(6, 0, Endian.little);
+      localHeader.setUint16(8, 0, Endian.little);
+      localHeader.setUint16(10, 0x4821, Endian.little);
+      localHeader.setUint16(12, 0x5897, Endian.little);
+      localHeader.setUint32(14, crc, Endian.little);
+      localHeader.setUint32(18, size, Endian.little);
+      localHeader.setUint32(22, size, Endian.little);
+      localHeader.setUint16(26, fileNameBytes.length, Endian.little);
+      localHeader.setUint16(28, 0, Endian.little);
+
+      sink.add(localHeader.buffer.asUint8List());
+      sink.add(fileNameBytes);
+
+      // Stream file payload in chunks
+      await sink.addStream(file.openRead());
+
+      // Central Directory Header (46 bytes + filename)
+      final centralHeader = ByteData(46);
+      centralHeader.setUint32(0, 0x02014b50, Endian.little);
+      centralHeader.setUint16(4, 20, Endian.little);
+      centralHeader.setUint16(6, 20, Endian.little);
+      centralHeader.setUint16(8, 0, Endian.little);
+      centralHeader.setUint16(10, 0, Endian.little);
+      centralHeader.setUint16(10, 0x4821, Endian.little);
+      centralHeader.setUint14(14, 0x5897, Endian.little);
+      centralHeader.setUint32(16, crc, Endian.little);
+      centralHeader.setUint32(20, size, Endian.little);
+      centralHeader.setUint32(24, size, Endian.little);
+      centralHeader.setUint16(28, fileNameBytes.length, Endian.little);
+      centralHeader.setUint16(30, 0, Endian.little);
+      centralHeader.setUint16(32, 0, Endian.little);
+      centralHeader.setUint16(34, 0, Endian.little);
+      centralHeader.setUint16(36, 0, Endian.little);
+      centralHeader.setUint32(38, 0, Endian.little);
+      centralHeader.setUint32(42, offset, Endian.little);
+
+      centralDirBytes.add(centralHeader.buffer.asUint8List());
+      centralDirBytes.add(fileNameBytes);
+
+      offset += 30 + fileNameBytes.length + size;
+      entryCount++;
+    }
+
+    final centralDirData = centralDirBytes.toBytes();
+    final centralDirOffset = offset;
+    final centralDirSize = centralDirData.length;
+
+    sink.add(centralDirData);
+
+    // End of Central Directory Record (22 bytes)
+    final eocd = ByteData(22);
+    eocd.setUint32(0, 0x06054b50, Endian.little);
+    eocd.setUint16(4, 0, Endian.little);
+    eocd.setUint16(6, 0, Endian.little);
+    eocd.setUint16(8, entryCount, Endian.little);
+    eocd.setUint16(10, entryCount, Endian.little);
+    eocd.setUint32(12, centralDirSize, Endian.little);
+    eocd.setUint32(16, centralDirOffset, Endian.little);
+    eocd.setUint16(20, 0, Endian.little);
+
+    sink.add(eocd.buffer.asUint8List());
+    await sink.flush();
+    await sink.close();
   }
 
   /// Builds a complete ZIP binary byte buffer from a map of [fileName] -> [fileBytes]

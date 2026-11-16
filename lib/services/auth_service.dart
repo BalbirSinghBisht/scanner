@@ -146,10 +146,16 @@ class AuthService {
         }
       } catch (e) {
         debugPrint('Could not refresh GoogleSignIn headers: $e');
-        await _signInInstance.signInSilently().timeout(
+        final refreshed = await _signInInstance.signInSilently().timeout(
           const Duration(seconds: 4),
           onTimeout: () => null,
         );
+        if (refreshed != null) {
+          _currentUser = refreshed;
+        } else {
+          // If silent sign in failed, proactively refresh direct developer token
+          await refreshDirectAccessToken();
+        }
       }
     } else {
       _directRefreshToken ??= await _settings.getDirectRefreshToken();
@@ -190,6 +196,11 @@ class AuthService {
             }
           } catch (_) {}
           return true;
+        } else {
+          // Silent sign-in returned null or timed out.
+          // Disengage stale _currentUser so that direct developer token can take over smoothly!
+          debugPrint('[AuthService] GoogleSignIn silent renewal failed or timed out. Falling back to direct developer token.');
+          _currentUser = null;
         }
       }
 
@@ -392,9 +403,29 @@ class AuthService {
       await restoreSession();
     }
     if (_currentUser != null) {
-      return AuthenticatedHttpClient(() async {
-        return await _currentUser!.authHeaders;
-      });
+      return AuthenticatedHttpClient(
+        () async {
+          try {
+            final headers = await _currentUser!.authHeaders;
+            final authHeader = headers['Authorization'];
+            if (authHeader != null && authHeader.isNotEmpty) {
+              return headers;
+            }
+          } catch (e) {
+            debugPrint('[AuthService] currentUser.authHeaders failed: $e');
+          }
+          // If currentUser authHeaders is empty or fails, use direct developer token
+          if (_directAccessToken != null && _directAccessToken!.isNotEmpty) {
+            return <String, String>{
+              'Authorization': 'Bearer $_directAccessToken',
+            };
+          }
+          return await _currentUser!.authHeaders;
+        },
+        onBeforeRequest: () async {
+          await ensureValidToken();
+        },
+      );
     }
 
     // 2. Direct developer OAuth token (for user's 5 TB account)

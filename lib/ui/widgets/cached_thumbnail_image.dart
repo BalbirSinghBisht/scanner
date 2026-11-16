@@ -38,19 +38,9 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
   @override
   void initState() {
     super.initState();
-    // Fast-path: local images are handled natively by Flutter's Image.file ONLY if file actually exists
-    if (!widget.isVideo && widget.filePath != null && widget.filePath!.isNotEmpty) {
-      try {
-        final f = File(widget.filePath!);
-        if (f.existsSync() && f.lengthSync() > 0) {
-          return;
-        }
-      } catch (_) {}
-    }
-
     _bytes = MediaScannerService.instance
         .getCachedThumbnail(widget.localId, size: widget.size);
-    if (_bytes == null) {
+    if (_bytes == null && (widget.isVideo || widget.filePath == null || widget.filePath!.isEmpty)) {
       _loadThumbnail();
     }
   }
@@ -63,17 +53,9 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
         oldWidget.size != widget.size ||
         oldWidget.isVideo != widget.isVideo) {
       _hasError = false;
-      if (!widget.isVideo && widget.filePath != null && widget.filePath!.isNotEmpty) {
-        try {
-          final f = File(widget.filePath!);
-          if (f.existsSync() && f.lengthSync() > 0) {
-            return;
-          }
-        } catch (_) {}
-      }
       _bytes = MediaScannerService.instance
           .getCachedThumbnail(widget.localId, size: widget.size);
-      if (_bytes == null) {
+      if (_bytes == null && (widget.isVideo || widget.filePath == null || widget.filePath!.isEmpty)) {
         _loadThumbnail();
       }
     }
@@ -123,34 +105,29 @@ class _CachedThumbnailImageState extends State<CachedThumbnailImage> {
   Widget build(BuildContext context) {
     final c = AppTheme.colors(context);
 
-    // 1. Direct hardware-decoded file rendering for images with verified local file path
+    // 1. Direct hardware-decoded file rendering for images with local file path
     if (!widget.isVideo && widget.filePath != null && widget.filePath!.isNotEmpty) {
-      try {
-        final file = File(widget.filePath!);
-        if (file.existsSync() && file.lengthSync() > 0) {
-          return Image.file(
-            file,
-            fit: widget.fit,
-            cacheWidth: widget.size,
-            filterQuality: FilterQuality.medium,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stackTrace) {
-              // If direct file access fails, fall back to memory bytes or placeholder
-              if (_bytes != null && _bytes!.isNotEmpty) {
-                return Image.memory(
-                  _bytes!,
-                  fit: widget.fit,
-                  filterQuality: FilterQuality.medium,
-                  gaplessPlayback: true,
-                  errorBuilder: (ctx, err, stack) => widget.placeholder,
-                );
-              }
-              _loadThumbnail();
-              return widget.placeholder;
-            },
-          );
-        }
-      } catch (_) {}
+      return Image.file(
+        File(widget.filePath!),
+        fit: widget.fit,
+        cacheWidth: widget.size,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) {
+          // If direct file access fails, fall back to memory bytes or placeholder
+          if (_bytes != null && _bytes!.isNotEmpty) {
+            return Image.memory(
+              _bytes!,
+              fit: widget.fit,
+              filterQuality: FilterQuality.medium,
+              gaplessPlayback: true,
+              errorBuilder: (ctx, err, stack) => widget.placeholder,
+            );
+          }
+          _loadThumbnail();
+          return widget.placeholder;
+        },
+      );
     }
 
     // 2. Video thumbnail or MediaStore asset from memory cache

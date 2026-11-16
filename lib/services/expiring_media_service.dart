@@ -13,6 +13,7 @@ class ExpiringMediaService extends ChangeNotifier {
   final Map<String, ExpiringMediaItem> _expiringMap = {};
   Timer? _countdownTimer;
   bool _isPurging = false;
+  void Function(String localId)? onItemPurged;
 
   Map<String, ExpiringMediaItem> get expiringMap => Map.unmodifiable(_expiringMap);
   int get count => _expiringMap.length;
@@ -108,6 +109,7 @@ class ExpiringMediaService extends ChangeNotifier {
             await _db.deleteMediaItem(localId);
             _expiringMap.remove(localId);
             purgedCount++;
+            onItemPurged?.call(localId);
             debugPrint('[ExpiringMediaService] Auto-purged expired clutter from local device: $localId (Drive cloud backup is completely preserved)');
           } catch (e) {
             debugPrint('[ExpiringMediaService] Error purging $localId: $e');

@@ -320,8 +320,14 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
 
           if (mounted && _currentIndex == index) {
             controller.setLooping(true);
+            bool lastPlaying = controller.value.isPlaying;
             controller.addListener(() {
-              if (mounted) setState(() {});
+              if (mounted && _videoController != null) {
+                if (_videoController!.value.isPlaying != lastPlaying) {
+                  lastPlaying = _videoController!.value.isPlaying;
+                  setState(() {});
+                }
+              }
             });
             setState(() {
               _videoController = controller;
@@ -527,6 +533,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
             _currentIndex = _items.length - 1;
           }
         });
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(_currentIndex);
+        }
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -545,31 +554,35 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
     if (_items.isEmpty) return;
     final item = _items[_currentIndex];
     final df = DateFormat('d MMMM yyyy, h:mm a');
-    final c = AppTheme.colors(context);
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (ctx) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-          child: Container(
-            decoration: BoxDecoration(
-              color: c.isDark ? const Color(0xE61C1C1E) : const Color(0xF2FFFFFF),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              border: Border.all(
-                color: c.glassBorderSubtle,
-                width: 0.5,
+      builder: (ctx) {
+        final c = AppTheme.colors(ctx);
+        final mq = MediaQuery.maybeOf(ctx);
+        final bottomPadding = (mq?.padding.bottom ?? 0.0) + 16;
+
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+            child: Container(
+              decoration: BoxDecoration(
+                color: c.isDark ? const Color(0xE61C1C1E) : const Color(0xF2FFFFFF),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                border: Border.all(
+                  color: c.glassBorderSubtle,
+                  width: 0.5,
+                ),
               ),
-            ),
-            padding: EdgeInsets.only(
-              top: 10,
-              left: 16,
-              right: 16,
-              bottom: MediaQuery.of(context).padding.bottom + 16,
-            ),
+              padding: EdgeInsets.only(
+                top: 10,
+                left: 16,
+                right: 16,
+                bottom: bottomPadding,
+              ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -865,7 +878,8 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
         ),
       ),
     ),
-  ),
+  );
+},
 );
 }
 
@@ -1202,47 +1216,52 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                 children: [
                   // Video Scrubber (if video is currently active)
                   if (isVideo && _isVideoInitialized && _videoController != null)
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: c.surfaceGlass,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: c.glassBorder, width: 0.5),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            _formatDuration(_videoController!.value.position),
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                    ValueListenableBuilder<VideoPlayerValue>(
+                      valueListenable: _videoController!,
+                      builder: (context, videoVal, _) {
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: c.surfaceGlass,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: c.glassBorder, width: 0.5),
                           ),
-                          Expanded(
-                            child: SliderTheme(
-                              data: SliderTheme.of(context).copyWith(
-                                activeTrackColor: c.primary,
-                                inactiveTrackColor: Colors.white24,
-                                thumbColor: Colors.white,
-                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                trackHeight: 3.0,
+                          child: Row(
+                            children: [
+                              Text(
+                                _formatDuration(videoVal.position),
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
                               ),
-                              child: Slider(
-                                value: _videoController!.value.position.inMilliseconds
-                                    .toDouble()
-                                    .clamp(0.0, _videoController!.value.duration.inMilliseconds.toDouble()),
-                                min: 0.0,
-                                max: _videoController!.value.duration.inMilliseconds.toDouble(),
-                                onChanged: (val) {
-                                  _videoController!.seekTo(Duration(milliseconds: val.toInt()));
-                                },
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    activeTrackColor: c.primary,
+                                    inactiveTrackColor: Colors.white24,
+                                    thumbColor: Colors.white,
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                    trackHeight: 3.0,
+                                  ),
+                                  child: Slider(
+                                    value: videoVal.position.inMilliseconds
+                                        .toDouble()
+                                        .clamp(0.0, videoVal.duration.inMilliseconds.toDouble()),
+                                    min: 0.0,
+                                    max: videoVal.duration.inMilliseconds.toDouble(),
+                                    onChanged: (val) {
+                                      _videoController?.seekTo(Duration(milliseconds: val.toInt()));
+                                    },
+                                  ),
+                                ),
                               ),
-                            ),
+                              Text(
+                                _formatDuration(videoVal.duration),
+                                style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 11),
+                              ),
+                            ],
                           ),
-                          Text(
-                            _formatDuration(_videoController!.value.duration),
-                            style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 11),
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
 
                   // Floating Rounded Glassmorphic Action Navbar
