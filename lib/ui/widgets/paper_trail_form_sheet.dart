@@ -25,6 +25,7 @@ class PaperTrailFormSheet extends StatefulWidget {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => PaperTrailFormSheet(
         item: item,
@@ -191,10 +192,13 @@ class _PaperTrailFormSheetState extends State<PaperTrailFormSheet> {
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
         child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.90,
+          ),
           decoration: BoxDecoration(
-            color: c.isDark ? const Color(0xE61C1C1E) : const Color(0xF2FFFFFF),
+            color: c.isDark ? const Color(0xF51C1C1E) : const Color(0xF8FFFFFF),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             border: Border.all(color: c.glassBorderSubtle, width: 0.5),
           ),

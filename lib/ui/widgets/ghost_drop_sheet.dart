@@ -16,6 +16,7 @@ class GhostDropSheet extends StatefulWidget {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => GhostDropSheet(items: items),
     );
@@ -55,24 +56,31 @@ class _GhostDropSheetState extends State<GhostDropSheet> {
         return ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
             child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.90,
+              ),
               decoration: BoxDecoration(
                 color: c.isDark
-                    ? const Color(0xE6141416)
-                    : const Color(0xF2F7F7F8),
+                    ? const Color(0xF5141416)
+                    : const Color(0xF8F7F7F8),
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                 border: Border.all(color: c.glassBorderSubtle, width: 0.5),
               ),
-              padding: EdgeInsets.only(
-                top: 12,
-                left: 20,
-                right: 20,
-                bottom: MediaQuery.of(context).padding.bottom + 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    top: 12,
+                    left: 20,
+                    right: 20,
+                    bottom: MediaQuery.of(context).padding.bottom + 20,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                   // Handle
                   Center(
                     child: Container(
@@ -309,9 +317,11 @@ class _GhostDropSheetState extends State<GhostDropSheet> {
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
+  },
+);
   }
 }
 

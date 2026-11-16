@@ -16,39 +16,48 @@ class SetExpiryDialog {
 
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
           child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.88,
+            ),
             decoration: BoxDecoration(
               color: c.isDark
-                  ? const Color(0xE61C1C1E)
-                  : const Color(0xF2FFFFFF),
+                  ? const Color(0xF51C1C1E)
+                  : const Color(0xF8FFFFFF),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
               border: Border.all(color: c.glassBorderSubtle, width: 0.5),
             ),
-            padding: EdgeInsets.only(
-              top: 12,
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(context).padding.bottom + 18,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 38,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: c.textTertiary.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(2.5),
-                    ),
-                  ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.only(
+                  top: 12,
+                  left: 20,
+                  right: 20,
+                  bottom: MediaQuery.of(context).padding.bottom + 18,
                 ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: c.textTertiary.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(2.5),
+                        ),
+                      ),
+                    ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -209,7 +218,9 @@ class SetExpiryDialog {
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 
   static Widget _buildOptionTile(
