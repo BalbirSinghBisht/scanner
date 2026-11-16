@@ -52,41 +52,8 @@ class DatabaseHelper {
       onUpgrade: _onUpgradeDB,
     );
 
-    // Automatically ensure indexes exist for fast scans and deduplication
-    try {
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_file_name ON ${AppConstants.manifestTableName} (file_name)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_local_file_path ON ${AppConstants.manifestTableName} (local_file_path)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_upload_state_created_at ON ${AppConstants.manifestTableName} (upload_state, created_at DESC)');
-
-      // Ensure Expiring Media & Paper Trail tables exist
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS expiring_media (
-          local_id TEXT PRIMARY KEY,
-          expires_at INTEGER NOT NULL,
-          created_at INTEGER NOT NULL,
-          duration_seconds INTEGER NOT NULL
-        )
-      ''');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_expiring_expires_at ON expiring_media (expires_at)');
-
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS paper_trail_docs (
-          id TEXT PRIMARY KEY,
-          local_id TEXT NOT NULL,
-          title TEXT NOT NULL,
-          category TEXT NOT NULL,
-          purchase_date INTEGER NOT NULL,
-          warranty_expiry_date INTEGER,
-          amount REAL,
-          currency TEXT,
-          store_name TEXT,
-          notes TEXT,
-          created_at INTEGER NOT NULL
-        )
-      ''');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_paper_trail_local_id ON paper_trail_docs (local_id)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_paper_trail_warranty ON paper_trail_docs (warranty_expiry_date)');
-    } catch (_) {}
+    // Guarantee all tables and indexes exist unconditionally
+    await _ensureTables(db);
 
     // Automatically purge any indexed items originating from .thumbnail / .thumbnails folders
     try {
@@ -128,8 +95,12 @@ class DatabaseHelper {
   }
 
   Future<void> _createDB(Database db, int version) async {
+    await _ensureTables(db);
+  }
+
+  Future<void> _ensureTables(Database db) async {
     await db.execute('''
-      CREATE TABLE ${AppConstants.manifestTableName} (
+      CREATE TABLE IF NOT EXISTS ${AppConstants.manifestTableName} (
         local_id TEXT PRIMARY KEY,
         file_name TEXT NOT NULL,
         media_type TEXT NOT NULL,
@@ -154,21 +125,28 @@ class DatabaseHelper {
       )
     ''');
 
+    // Ensure folder_name column exists if database table already existed from v1
+    try {
+      await db.execute(
+        'ALTER TABLE ${AppConstants.manifestTableName} ADD COLUMN folder_name TEXT',
+      );
+    } catch (_) {}
+
     // Indices for performance
     await db.execute(
-      'CREATE INDEX idx_upload_state ON ${AppConstants.manifestTableName} (upload_state)',
+      'CREATE INDEX IF NOT EXISTS idx_upload_state ON ${AppConstants.manifestTableName} (upload_state)',
     );
     await db.execute(
-      'CREATE INDEX idx_media_type ON ${AppConstants.manifestTableName} (media_type)',
+      'CREATE INDEX IF NOT EXISTS idx_media_type ON ${AppConstants.manifestTableName} (media_type)',
     );
     await db.execute(
-      'CREATE INDEX idx_content_hash ON ${AppConstants.manifestTableName} (content_hash)',
+      'CREATE INDEX IF NOT EXISTS idx_content_hash ON ${AppConstants.manifestTableName} (content_hash)',
     );
     await db.execute(
-      'CREATE INDEX idx_created_at ON ${AppConstants.manifestTableName} (created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_created_at ON ${AppConstants.manifestTableName} (created_at)',
     );
     await db.execute(
-      'CREATE INDEX idx_folder_name ON ${AppConstants.manifestTableName} (folder_name)',
+      'CREATE INDEX IF NOT EXISTS idx_folder_name ON ${AppConstants.manifestTableName} (folder_name)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_file_name ON ${AppConstants.manifestTableName} (file_name)',
