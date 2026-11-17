@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -19,7 +20,6 @@ import '../widgets/create_album_dialog.dart';
 import '../widgets/haikei_background.dart';
 import '../../services/expiring_media_service.dart';
 import '../../services/paper_trail_service.dart';
-import '../widgets/ghost_drop_sheet.dart';
 import '../widgets/media_folder_card.dart';
 import '../widgets/media_item_tile.dart';
 import '../widgets/memories_showcase.dart';
@@ -733,7 +733,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               backgroundColor: c.bg,
               body: Builder(
                 builder: (context) {
-                  final bottomInset = MediaQuery.of(context).padding.bottom;
+                  final mq = MediaQuery.of(context);
+                  final bottomInset = mq.padding.bottom;
+                  // Dynamic notch & display cutout height: handles punch holes, teardrop notches, and Dynamic Islands
+                  final rawTop = math.max(mq.padding.top, mq.viewPadding.top);
+                  final safeTop = rawTop > 0 ? rawTop : 28.0;
+                  final topClearance = safeTop + 58 + (_isSearchOpen ? 52 : 0);
+
                   return Stack(
                     children: [
                       // Haikei-inspired Animated Organic Fluid Background
@@ -741,44 +747,75 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         child: HaikeiBackground(),
                       ),
 
-                      // Main Content View bounded strictly above the system navigation bar
+                      // Main Content View (Edge-to-edge scroll behind floating header)
                       Positioned.fill(
                         bottom: bottomInset,
-                        child: SafeArea(
-                          bottom: false,
-                          child: Column(
-                            children: [
-                              // Top Frosted Glass App Bar / Selection Header
-                              _buildTopBar(
-                                  backup, currentMediaPool, groupedFolders, favService, c),
+                        child: _buildCurrentTabContent(
+                          backup,
+                          groupedFolders,
+                          sortedFolderNames,
+                          currentMediaPool,
+                          c,
+                          favService,
+                          visibleMediaItems,
+                          topClearance: topClearance,
+                        ),
+                      ),
 
-                              // Animated Search Bar
-                              if (_isSearchOpen) _buildSearchBar(c),
-
-                              // Motion Primitives Category Filter Strip
-                              if (_openedFolder != null || _currentTabIndex != 1)
-                                _buildCategoryPillStrip(favService, c),
-
-                              // Background Optimization Banner (if permissions missing)
-                              if (!_isBackgroundOptimized)
-                                _buildBackgroundOptimizationBanner(c),
-
-                              // Main Content Body
-                              Expanded(
-                                child: _buildCurrentTabContent(
-                                  backup,
-                                  groupedFolders,
-                                  sortedFolderNames,
-                                  currentMediaPool,
-                                  c,
-                                  favService,
-                                  visibleMediaItems,
-                                ),
+                      // Apple Status Bar & Display Notch Protection Vignette
+                      // 100% solid in the physical notch zone so photos never bleed into clock/cutout/battery;
+                      // then seamlessly dissolves into the gallery above the floating header.
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: safeTop + 20,
+                        child: IgnorePointer(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  c.bg,
+                                  c.bg,
+                                  c.bg.withOpacity(0.85),
+                                  Colors.transparent,
+                                ],
+                                stops: [
+                                  0.0,
+                                  safeTop / (safeTop + 20),
+                                  (safeTop + 8) / (safeTop + 20),
+                                  1.0,
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
+
+                      // Floating Apple Glass Capsule Header (Clear of all notch cutouts)
+                      Positioned(
+                        top: safeTop + 6,
+                        left: 14,
+                        right: 14,
+                        child: _buildFloatingCapsuleHeader(
+                          backup,
+                          currentMediaPool,
+                          groupedFolders,
+                          favService,
+                          c,
+                        ),
+                      ),
+
+                      // Animated Dark Frosted Search Capsule
+                      if (_isSearchOpen)
+                        Positioned(
+                          top: safeTop + 6 + 46 + 6,
+                          left: 14,
+                          right: 14,
+                          child: _buildSearchBar(c),
+                        ),
 
                       // Motion Primitives Floating Rounded Bottom Navigation / Batch Bar
                       Positioned(
@@ -814,424 +851,583 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     );
   }
 
-  /// 3D Glassmorphic Top Bar with Realtime Colors & Specular Light Sheen
-  Widget _buildTopBar(
+  /// Authentic Apple Floating Frosted Capsule Header
+  Widget _buildFloatingCapsuleHeader(
     BackupProvider backup,
     List<MediaItem> currentPool,
     Map<String, List<MediaItem>> groupedFolders,
     FavoritesService favService,
     AppThemeColors c,
   ) {
-    if (_isSelectionMode) {
-      return ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: AppTheme.appleBlurBar(context: context),
-            child: Row(
-              children: [
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minSize: 0,
-                  onPressed: _exitSelectionMode,
-                  child: Text(
-                    'Cancel',
-                    style: TextStyle(
-                      color: c.primary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    '${_selectedIds.length} Selected',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: c.textPrimary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minSize: 0,
-                  onPressed: () => _selectAll(currentPool),
-                  child: Text(
-                    _selectedIds.length == currentPool.length
-                        ? 'Deselect All'
-                        : 'Select All',
-                    style: TextStyle(
-                      color: c.primary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    String titleText = 'Library';
-    if (_openedFolder != null) {
-      titleText = _openedFolder!;
-    } else if (_currentTabIndex == 1) {
-      titleText = 'Albums';
-    } else if (_currentTabIndex == 2) {
-      titleText = 'Favorites';
-    }
-
-    return ClipRect(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(26),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-          decoration: AppTheme.appleBlurBar(context: context),
-          child: Row(
-            children: [
-              // Back button if folder opened
-              if (_openedFolder != null) ...[
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minSize: 0,
-                  onPressed: _closeOpenedFolder,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(CupertinoIcons.chevron_back,
-                          color: c.primary, size: 21),
-                      Text('Albums',
-                          style: TextStyle(color: c.primary, fontSize: 16)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-
-              // Title in Bold Apple Typography
-              Expanded(
-                child: Text(
-                  titleText,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: c.textPrimary,
-                    letterSpacing: -0.5,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-
-              // Search Button
-              CupertinoButton(
-                padding: const EdgeInsets.all(5),
-                minSize: 0,
-                onPressed: () {
-                  setState(() {
-                    _isSearchOpen = !_isSearchOpen;
-                    if (!_isSearchOpen) {
-                      _searchQuery = '';
-                      _searchController.clear();
-                    }
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: _isSearchOpen
-                        ? c.primary.withOpacity(0.18)
-                        : (c.isDark
-                            ? Colors.white.withOpacity(0.08)
-                            : Colors.black.withOpacity(0.04)),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _isSearchOpen
-                        ? CupertinoIcons.clear
-                        : CupertinoIcons.search,
-                    color: _isSearchOpen ? c.primary : c.textSecondary,
-                    size: 17,
-                  ),
-                ),
-              ),
-
-              // Density Switcher
-              if (_currentTabIndex != 1 || _openedFolder != null)
-                CupertinoButton(
-                  padding: const EdgeInsets.all(5),
-                  minSize: 0,
-                  onPressed: () {
-                    setState(() {
-                      _gridColumns = _gridColumns == 2
-                          ? 3
-                          : (_gridColumns == 3 ? 4 : 2);
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: c.isDark
-                          ? Colors.white.withOpacity(0.08)
-                          : Colors.black.withOpacity(0.04),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _gridColumns == 2
-                          ? CupertinoIcons.square_grid_2x2
-                          : (_gridColumns == 3
-                              ? CupertinoIcons.rectangle_grid_3x2
-                              : CupertinoIcons.circle_grid_hex),
-                      color: c.primary,
-                      size: 17,
-                    ),
-                  ),
-                ),
-
-              // Sort Options Button
-              CupertinoButton(
-                padding: const EdgeInsets.all(5),
-                minSize: 0,
-                onPressed: _showSortOptionsDialog,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: c.isDark
-                        ? Colors.white.withOpacity(0.08)
-                        : Colors.black.withOpacity(0.04),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    CupertinoIcons.arrow_up_arrow_down,
-                    color: c.primary,
-                    size: 16,
-                  ),
-                ),
-              ),
-
-              // Select Button (Apple Photos standard text button)
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                minSize: 0,
-                onPressed: () {
-                  setState(() => _isSelectionMode = true);
-                },
-                child: Text(
-                  'Select',
-                  style: TextStyle(
-                    color: c.primary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: -0.2,
-                  ),
-                ),
+          height: 46,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: c.isDark
+                ? const Color(0xE016161A)
+                : const Color(0xF2FFFFFF),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: c.isDark
+                  ? Colors.white.withOpacity(0.14)
+                  : Colors.black.withOpacity(0.08),
+              width: 0.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(c.isDark ? 0.45 : 0.12),
+                blurRadius: 18,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
+          child: _isSelectionMode
+              ? Row(
+                  children: [
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minSize: 0,
+                      onPressed: _exitSelectionMode,
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: c.primary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${_selectedIds.length} Selected',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: c.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minSize: 0,
+                      onPressed: () => _selectAll(currentPool),
+                      child: Text(
+                        _selectedIds.length == currentPool.length
+                            ? 'Deselect All'
+                            : 'Select All',
+                        style: TextStyle(
+                          color: c.primary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    // Back button if in opened folder
+                    if (_openedFolder != null)
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minSize: 0,
+                        onPressed: _closeOpenedFolder,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              CupertinoIcons.chevron_back,
+                              color: c.primary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 4),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 120),
+                              child: Text(
+                                _openedFolder!,
+                                style: TextStyle(
+                                  color: c.textPrimary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.2,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _activeFilter != MediaFilter.all
+                                  ? c.accentAmber
+                                  : c.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Text(
+                            _getHeaderTitle(),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: c.textPrimary,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          if (_activeFilter != MediaFilter.all) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6.5,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: c.primary.withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: c.primary.withOpacity(0.35),
+                                  width: 0.6,
+                                ),
+                              ),
+                              child: Text(
+                                _filterDisplayName(_activeFilter),
+                                style: TextStyle(
+                                  color: c.primary,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.1,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+
+                    const Spacer(),
+
+                    // Action buttons
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Search Button
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minSize: 0,
+                          onPressed: () {
+                            setState(() {
+                              _isSearchOpen = !_isSearchOpen;
+                              if (!_isSearchOpen) {
+                                _searchQuery = '';
+                                _searchController.clear();
+                              }
+                            });
+                          },
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _isSearchOpen
+                                  ? c.primary.withOpacity(0.25)
+                                  : (c.isDark
+                                      ? Colors.white.withOpacity(0.10)
+                                      : Colors.black.withOpacity(0.06)),
+                            ),
+                            child: Icon(
+                              _isSearchOpen
+                                  ? CupertinoIcons.clear
+                                  : CupertinoIcons.search,
+                              size: 15,
+                              color: _isSearchOpen
+                                  ? c.primary
+                                  : c.textSecondary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+
+                        // 3-Dot Options & Filter Menu
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minSize: 0,
+                          onPressed: () =>
+                              _showFilterAndOptionsSheet(context, favService),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 30,
+                                height: 30,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: c.isDark
+                                      ? Colors.white.withOpacity(0.10)
+                                      : Colors.black.withOpacity(0.06),
+                                ),
+                                child: Icon(
+                                  CupertinoIcons.ellipsis,
+                                  size: 16,
+                                  color: c.textSecondary,
+                                ),
+                              ),
+                              if (_activeFilter != MediaFilter.all)
+                                Positioned(
+                                  top: -1,
+                                  right: -1,
+                                  child: Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: c.primary,
+                                      border: Border.all(
+                                        color: c.isDark
+                                            ? Colors.black
+                                            : Colors.white,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // Select Button
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minSize: 0,
+                          onPressed: () {
+                            setState(() => _isSelectionMode = true);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: c.primary,
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: c.primary.withOpacity(0.35),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 1.5),
+                                ),
+                              ],
+                            ),
+                            child: const Text(
+                              'Select',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
         ),
       ),
     );
   }
 
-  /// Apple Photos Animated Search Bar
-  Widget _buildSearchBar(AppThemeColors c) {
-    return AnimatedContainer(
-      duration: AppTheme.motionFast,
-      curve: Curves.easeOutCubic,
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: c.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFE5E5EA),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(CupertinoIcons.search, color: c.textSecondary, size: 15),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              autofocus: true,
-              style: TextStyle(color: c.textPrimary, fontSize: 15),
-              decoration: InputDecoration(
-                hintText: 'Search photos, videos, albums',
-                hintStyle: TextStyle(color: c.textSecondary, fontSize: 15),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-              onChanged: (val) {
-                setState(() => _searchQuery = val);
-              },
+  String _getHeaderTitle() {
+    if (_openedFolder != null) return _openedFolder!;
+    if (_currentTabIndex == 1) return 'Albums';
+    if (_currentTabIndex == 2) return 'Favorites';
+    return 'Photos';
+  }
+
+  String _filterDisplayName(MediaFilter filter) {
+    switch (filter) {
+      case MediaFilter.photos:
+        return 'Photos';
+      case MediaFilter.videos:
+        return 'Videos';
+      case MediaFilter.favorites:
+        return 'Favorites';
+      case MediaFilter.expiring:
+        return 'Expiring';
+      case MediaFilter.all:
+        return 'All';
+    }
+  }
+
+  /// Apple 3-Dot Filter & Gallery View Options Action Sheet
+  void _showFilterAndOptionsSheet(
+      BuildContext context, FavoritesService favService) {
+    final c = AppTheme.colors(context);
+    final expiringCount = ExpiringMediaService.instance.count;
+
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (BuildContext sheetCtx) {
+        return CupertinoActionSheet(
+          title: Text(
+            'Gallery Options',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: c.textSecondary,
             ),
           ),
-          if (_searchQuery.isNotEmpty)
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              minSize: 0,
+          actions: [
+            // Filter options
+            CupertinoActionSheetAction(
               onPressed: () {
-                _searchController.clear();
-                setState(() => _searchQuery = '');
+                Navigator.pop(sheetCtx);
+                setState(() => _activeFilter = MediaFilter.all);
               },
-              child: Icon(CupertinoIcons.clear_circled_solid,
-                  color: c.textSecondary, size: 15),
+              child: _buildActionSheetRow(
+                'All Items',
+                CupertinoIcons.square_grid_2x2,
+                _activeFilter == MediaFilter.all,
+                c,
+              ),
             ),
-        ],
-      ),
-    );
-  }
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(sheetCtx);
+                setState(() => _activeFilter = MediaFilter.photos);
+              },
+              child: _buildActionSheetRow(
+                'Photos Only',
+                CupertinoIcons.photo,
+                _activeFilter == MediaFilter.photos,
+                c,
+              ),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(sheetCtx);
+                setState(() => _activeFilter = MediaFilter.videos);
+              },
+              child: _buildActionSheetRow(
+                'Videos Only',
+                CupertinoIcons.videocam,
+                _activeFilter == MediaFilter.videos,
+                c,
+              ),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(sheetCtx);
+                setState(() => _activeFilter = MediaFilter.favorites);
+              },
+              child: _buildActionSheetRow(
+                'Favorites Only (${favService.count})',
+                CupertinoIcons.heart_fill,
+                _activeFilter == MediaFilter.favorites,
+                c,
+              ),
+            ),
+            if (expiringCount > 0)
+              CupertinoActionSheetAction(
+                onPressed: () {
+                  Navigator.pop(sheetCtx);
+                  setState(() => _activeFilter = MediaFilter.expiring);
+                },
+                child: _buildActionSheetRow(
+                  'Expiring Clutter ($expiringCount)',
+                  CupertinoIcons.timer,
+                  _activeFilter == MediaFilter.expiring,
+                  c,
+                ),
+              ),
 
-  Widget _buildBackgroundOptimizationBanner(AppThemeColors c) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: c.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: c.glassBorderSubtle,
-          width: 0.5,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            CupertinoIcons.sparkles,
-            color: c.accentAmber,
-            size: 15,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Background setup recommended to sync new media automatically.',
-              style: TextStyle(
-                color: c.textPrimary,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            minSize: 0,
-            onPressed: () {
-              UnrestrictedBackgroundSheet.show(context, onSettingsChanged: () {
-                _checkBackgroundOptimizationStatus();
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: c.primary,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Text(
-                'Setup',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+            // Grid density switcher
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(sheetCtx);
+                setState(() {
+                  _gridColumns = _gridColumns == 2
+                      ? 3
+                      : (_gridColumns == 3 ? 4 : 2);
+                });
+              },
+              child: _buildActionSheetRow(
+                _gridColumns == 2
+                    ? 'Grid: 2 Columns (Cinematic)'
+                    : (_gridColumns == 3
+                        ? 'Grid: 3 Columns (Standard)'
+                        : 'Grid: 4 Columns (Compact)'),
+                _gridColumns == 2
+                    ? CupertinoIcons.square_grid_2x2
+                    : (_gridColumns == 3
+                        ? CupertinoIcons.rectangle_grid_3x2
+                        : CupertinoIcons.circle_grid_hex),
+                false,
+                c,
+                trailing: Text(
+                  'Switch',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: c.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  /// Apple Photos Segmented Category Filter Strip
-  Widget _buildCategoryPillStrip(FavoritesService favService, AppThemeColors c) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Row(
-        children: [
-          _buildFilterChip('All', CupertinoIcons.square_grid_2x2,
-              MediaFilter.all, c),
-          _buildFilterChip('Photos', CupertinoIcons.photo,
-              MediaFilter.photos, c),
-          _buildFilterChip('Videos', CupertinoIcons.videocam,
-              MediaFilter.videos, c),
-          _buildFilterChip(
-            'Favorites (${favService.count})',
-            CupertinoIcons.heart_fill,
-            MediaFilter.favorites,
-            c,
-          ),
-          if (ExpiringMediaService.instance.count > 0)
-            _buildFilterChip(
-              'Expiring (${ExpiringMediaService.instance.count})',
-              CupertinoIcons.timer,
-              MediaFilter.expiring,
-              c,
+            // Sort options
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(sheetCtx);
+                _showSortOptionsDialog();
+              },
+              child: _buildActionSheetRow(
+                'Sort Gallery...',
+                CupertinoIcons.arrow_up_arrow_down,
+                false,
+                c,
+              ),
             ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildFilterChip(
-    String label,
-    IconData icon,
-    MediaFilter filter,
-    AppThemeColors c,
-  ) {
-    final isSelected = _activeFilter == filter;
-    return GestureDetector(
-      onTap: () {
-        setState(() => _activeFilter = filter);
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? c.primary
-              : (c.isDark ? const Color(0xFF1C1C1E) : const Color(0xFFE5E5EA)),
-          borderRadius: BorderRadius.circular(20),
-          border: isSelected
-              ? Border.all(color: Colors.transparent, width: 0.5)
-              : Border.all(color: c.glassBorderSubtle, width: 0.5),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: c.primary.withOpacity(0.30),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 13,
-              color: isSelected ? Colors.white : c.textSecondary,
-            ),
-            const SizedBox(width: 5.5),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : c.textPrimary,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                fontSize: 13,
-                letterSpacing: -0.1,
+            // Toggle Featured Moments Coverflow
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(sheetCtx);
+                _toggleFeaturedMoments(!_showFeaturedShowcase);
+              },
+              child: _buildActionSheetRow(
+                _showFeaturedShowcase
+                    ? 'Hide Featured Moments'
+                    : 'Show Featured Moments',
+                CupertinoIcons.sparkles,
+                false,
+                c,
               ),
             ),
           ],
+          cancelButton: CupertinoActionSheetAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(sheetCtx),
+            child: const Text('Done'),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildActionSheetRow(
+    String title,
+    IconData icon,
+    bool isSelected,
+    AppThemeColors c, {
+    Widget? trailing,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 19,
+            color: isSelected ? c.primary : c.textSecondary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                color: isSelected ? c.primary : c.textPrimary,
+              ),
+            ),
+          ),
+          if (trailing != null)
+            trailing
+          else if (isSelected)
+            Icon(CupertinoIcons.checkmark, color: c.primary, size: 16),
+        ],
+      ),
+    );
+  }
+
+  /// Dark Frosted Apple Search Capsule
+  Widget _buildSearchBar(AppThemeColors c) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: c.isDark ? const Color(0xF01A1A20) : const Color(0xF0F2F2F7),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: c.isDark
+                  ? Colors.white.withOpacity(0.12)
+                  : Colors.black.withOpacity(0.08),
+              width: 0.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.35),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(CupertinoIcons.search, color: c.primary, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  style: TextStyle(color: c.textPrimary, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Search photos, locations, dates...',
+                    hintStyle: TextStyle(color: c.textTertiary, fontSize: 14),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (val) {
+                    setState(() => _searchQuery = val);
+                  },
+                ),
+              ),
+              if (_searchQuery.isNotEmpty)
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minSize: 0,
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                  child: Icon(
+                    CupertinoIcons.clear_circled_solid,
+                    color: c.textTertiary,
+                    size: 16,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1244,10 +1440,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     List<MediaItem> currentPool,
     AppThemeColors c,
     FavoritesService favService,
-    List<MediaItem> visibleMediaItems,
-  ) {
+    List<MediaItem> visibleMediaItems, {
+    required double topClearance,
+  }) {
     if (_openedFolder != null) {
-      return _buildFolderMediaView(backup, groupedFolders, c);
+      return _buildFolderMediaView(backup, groupedFolders, c, topClearance: topClearance);
     }
 
     final favoritesPool = visibleMediaItems
@@ -1275,6 +1472,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             c,
             emptyMessage: 'No photos or videos',
             storageKey: 'library_timeline_scroll',
+            topClearance: topClearance,
           ),
         ),
         // Tab 1: Albums Tab (3D Stacks + Featured Moments)
@@ -1284,6 +1482,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             groupedFolders,
             sortedFolderNames,
             c,
+            topClearance: topClearance,
           ),
         ),
         // Tab 2: Favorites Tab
@@ -1294,6 +1493,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             c,
             emptyMessage: 'No favorite items yet',
             storageKey: 'favorites_timeline_scroll',
+            topClearance: topClearance,
           ),
         ),
       ],
@@ -1307,38 +1507,45 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     AppThemeColors c, {
     String emptyMessage = 'No media found',
     String? storageKey,
+    required double topClearance,
   }) {
     final filtered = _filterAndSortItems(rawItems);
 
     if (filtered.isEmpty) {
       if (backup.mediaItems.isEmpty) {
-        return _buildEmptyState(backup, c);
+        return Padding(
+          padding: EdgeInsets.only(top: topClearance),
+          child: _buildEmptyState(backup, c),
+        );
       }
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: c.surfaceGlass,
-                border: Border.all(color: c.glassBorder),
+      return Padding(
+        padding: EdgeInsets.only(top: topClearance),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: c.surfaceGlass,
+                  border: Border.all(color: c.glassBorder),
+                ),
+                child: Icon(Icons.photo_library_outlined,
+                    size: 44, color: c.textTertiary),
               ),
-              child: Icon(Icons.photo_library_outlined,
-                  size: 44, color: c.textTertiary),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _searchQuery.isNotEmpty
-                  ? 'No results for "$_searchQuery"'
-                  : emptyMessage,
-              style: TextStyle(
-                  fontSize: 15,
-                  color: c.textSecondary,
-                  fontWeight: FontWeight.w600),
-            ),
-          ],
+              const SizedBox(height: 16),
+              Text(
+                _searchQuery.isNotEmpty
+                    ? 'No results for "$_searchQuery"'
+                    : emptyMessage,
+                style: TextStyle(
+                    fontSize: 15,
+                    color: c.textSecondary,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1360,6 +1567,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         cacheExtent: 250,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
+          // Top breathing room clearance for floating capsule header & search bar
+          SliverToBoxAdapter(
+            child: SizedBox(height: topClearance),
+          ),
           if (memories.isNotEmpty)
             SliverToBoxAdapter(
               child: MemoriesShowcase(memories: memories),
@@ -1477,7 +1688,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             ),
           ],
 
-          // Library Status Footer
+          // Pristine Apple Library Status Footer (Zero Drive/Backup clutter)
           SliverToBoxAdapter(
             child: _buildLibraryStatusFooter(backup, rawItems, c),
           ),
@@ -1508,24 +1719,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               letterSpacing: -0.2,
             ),
           ),
-          if (backup.isScanning) ...[
-            const SizedBox(height: 6),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CupertinoActivityIndicator(radius: 6, color: c.textSecondary),
-                const SizedBox(width: 6),
-                Text(
-                  'Updating Library...',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    color: c.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ],
           const SizedBox(height: 105), // Room for floating bottom nav
         ],
       ),
@@ -1537,8 +1730,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     BackupProvider backup,
     Map<String, List<MediaItem>> groupedFolders,
     List<String> sortedFolderNames,
-    AppThemeColors c,
-  ) {
+    AppThemeColors c, {
+    required double topClearance,
+  }) {
     final visibleItems = backup.mediaItems
         .where((it) =>
             !it.isLockedFolder &&
@@ -1557,6 +1751,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         cacheExtent: 250,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
+          // Top breathing room clearance for floating capsule header & search bar
+          SliverToBoxAdapter(
+            child: SizedBox(height: topClearance),
+          ),
           // 3D Featured Showcase Carousel
           if (_showFeaturedShowcase &&
               _searchQuery.isEmpty &&
@@ -1786,8 +1984,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   Widget _buildFolderMediaView(
     BackupProvider backup,
     Map<String, List<MediaItem>> groupedFolders,
-    AppThemeColors c,
-  ) {
+    AppThemeColors c, {
+    required double topClearance,
+  }) {
     final List<MediaItem> rawItems;
     if (_openedFolder == 'All Photos & Videos') {
       rawItems = backup.mediaItems;
@@ -1798,34 +1997,37 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final items = _filterAndSortItems(rawItems);
 
     if (items.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: c.surfaceGlass,
-                border: Border.all(color: c.glassBorder),
+      return Padding(
+        padding: EdgeInsets.only(top: topClearance),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: c.surfaceGlass,
+                  border: Border.all(color: c.glassBorder),
+                ),
+                child: Icon(Icons.perm_media_outlined,
+                    size: 48, color: c.textTertiary),
               ),
-              child: Icon(Icons.perm_media_outlined,
-                  size: 48, color: c.textTertiary),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _searchQuery.isNotEmpty
-                  ? 'No results matching "$_searchQuery"'
-                  : (_activeFilter == MediaFilter.favorites
-                      ? 'No favorite items in this album'
-                      : 'No media in "$_openedFolder"'),
-              style: TextStyle(
-                fontSize: 15,
-                color: c.textSecondary,
-                fontWeight: FontWeight.w600,
+              const SizedBox(height: 16),
+              Text(
+                _searchQuery.isNotEmpty
+                    ? 'No results matching "$_searchQuery"'
+                    : (_activeFilter == MediaFilter.favorites
+                        ? 'No favorite items in this album'
+                        : 'No media in "$_openedFolder"'),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: c.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -1837,7 +2039,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       child: GridView.builder(
         cacheExtent: 250,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(2, 4, 2, 110),
+        padding: EdgeInsets.fromLTRB(2, topClearance, 2, 110),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: _gridColumns,
           crossAxisSpacing: 2,
@@ -1900,7 +2102,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           decoration: AppTheme.floatingNavbarDecoration(context: context),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final tabWidth = constraints.maxWidth / 3;
+              final tabWidth = constraints.maxWidth / 4;
 
               return AnimatedBuilder(
                 animation: _tabPageController,
@@ -1915,9 +2117,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   return Stack(
                     children: [
                       // Smooth Sliding Spring Indicator Capsule
-                      if (!isFolderOpen)
+                      if (!isFolderOpen && page <= 2.2)
                         Positioned(
-                          left: page * tabWidth + 3,
+                          left: page.clamp(0.0, 2.0) * tabWidth + 3,
                           top: 2,
                           bottom: 2,
                           width: tabWidth - 6,
@@ -1942,7 +2144,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           ),
                         ),
 
-                      // Animated Interactive Tab Items
+                      // Animated Interactive Tab Items (Library, Albums, Favorites, Vault)
                       Row(
                         children: [
                           _buildAnimatedAppleTabItem(
@@ -1972,6 +2174,16 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                             c,
                             favCount,
                           ),
+                          _buildAnimatedAppleTabItem(
+                            3,
+                            'Vault',
+                            CupertinoIcons.lock,
+                            CupertinoIcons.lock_fill,
+                            page,
+                            c,
+                            0,
+                            onTapOverride: _openPrivateFolder,
+                          ),
                         ],
                       ),
                     ],
@@ -1992,10 +2204,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     IconData selectedIcon,
     double currentPage,
     AppThemeColors c,
-    int badgeCount,
-  ) {
+    int badgeCount, {
+    VoidCallback? onTapOverride,
+  }) {
     final isFolderOpen = _openedFolder != null;
-    final double proximity = isFolderOpen
+    final double proximity = (isFolderOpen || index >= 3)
         ? 0.0
         : (1.0 - (currentPage - index).abs()).clamp(0.0, 1.0);
     final isSelected = proximity > 0.5;
@@ -2009,19 +2222,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       child: CupertinoButton(
         padding: EdgeInsets.zero,
         minSize: 0,
-        onPressed: () {
-          setState(() {
-            _currentTabIndex = index;
-            _openedFolder = null;
-          });
-          if (_tabPageController.hasClients) {
-            _tabPageController.animateToPage(
-              index,
-              duration: const Duration(milliseconds: 320),
-              curve: Curves.easeOutCubic,
-            );
-          }
-        },
+        onPressed: onTapOverride ??
+            () {
+              setState(() {
+                _currentTabIndex = index;
+                _openedFolder = null;
+              });
+              if (_tabPageController.hasClients) {
+                _tabPageController.animateToPage(
+                  index,
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutCubic,
+                );
+              }
+            },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Transform.scale(
@@ -2125,32 +2339,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         color: c.primary,
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                minSize: 0,
-                onPressed: () {
-                  final selected =
-                      allItems.where((it) => _selectedIds.contains(it.localId)).toList();
-                  if (selected.isNotEmpty) {
-                    GhostDropSheet.show(context, items: selected);
-                  }
-                },
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.bolt, color: c.primary, size: 19),
-                    const SizedBox(height: 3),
-                    Text(
-                      'GhostDrop',
-                      style: TextStyle(
-                        color: c.primary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],

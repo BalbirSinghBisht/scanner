@@ -82,35 +82,84 @@ class GoogleDriveService {
     return await getOrCreateFolderPath([rootFolderName]);
   }
 
-  /// Thread-safe and parallel resolution of folder paths with persistent caching in SharedPreferences.
-  /// Parallel calls for different folders run concurrently, while calls for the same folder coalesce.
-  Future<String> getOrCreateFolderPath(List<String> pathSegments) async {
-    final pathKey = pathSegments.join('/');
+  /// Ensures the device backup folder (PhoneBackup/`deviceFolder`) exists once on Google Drive.
+  /// Consolidates any pre-existing duplicates and returns the canonical folder ID.
+  Future<String> ensureDeviceBackupFolder() async {
+    final deviceFolder =
+        await DeviceStateService.instance.getDeviceBackupFolderName();
+    final folderId = await getOrCreateFolderPath([rootFolderName, deviceFolder]);
+    await cleanDuplicateDriveFolders();
+    return folderId;
+  }
 
-    // Fast-path 1: in-memory cache hit
-    final cached = _folderCache[pathKey];
+  /// Thread-safe resolution of folder paths with per-segment coalescing locks.
+  /// Resolves path segments sequentially from root down to leaf, ensuring that intermediate
+  /// folders (like PhoneBackup and PhoneBackup/`DeviceModel`) are resolved and created only once.
+  Future<String> getOrCreateFolderPath(List<String> pathSegments) async {
+    final fullPathKey = pathSegments.join('/');
+
+    // Fast-path: in-memory cache hit for full path
+    final cached = _folderCache[fullPathKey];
     if (cached != null && cached.isNotEmpty) {
       return cached;
     }
 
-    // Fast-path 2: coalescing identical in-flight folder requests
-    if (_inFlightFolderResolutions.containsKey(pathKey)) {
-      return await _inFlightFolderResolutions[pathKey]!.future;
+    String currentParentId = sharedDriveRootId;
+    final accumulatedPath = <String>[];
+
+    for (int i = 0; i < pathSegments.length; i++) {
+      final segment = pathSegments[i];
+      accumulatedPath.add(segment);
+      final segmentKey = accumulatedPath.join('/');
+      final isRoot = segment == rootFolderName;
+
+      currentParentId = await _getOrCreateSingleFolderSegment(
+        segmentName: segment,
+        segmentPathKey: segmentKey,
+        parentId: currentParentId,
+        isRoot: isRoot,
+      );
+    }
+
+    _folderCache[fullPathKey] = currentParentId;
+    return currentParentId;
+  }
+
+  Future<String> _getOrCreateSingleFolderSegment({
+    required String segmentName,
+    required String segmentPathKey,
+    required String parentId,
+    required bool isRoot,
+  }) async {
+    // 1. Fast-path in-memory cache
+    final cached = _folderCache[segmentPathKey];
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+
+    // 2. Coalescing: if another concurrent task is currently resolving this exact segment, wait for it!
+    if (_inFlightFolderResolutions.containsKey(segmentPathKey)) {
+      return await _inFlightFolderResolutions[segmentPathKey]!.future;
     }
 
     final completer = Completer<String>();
-    _inFlightFolderResolutions[pathKey] = completer;
+    _inFlightFolderResolutions[segmentPathKey] = completer;
 
     try {
-      final resolvedId = await _resolveFolderPathLocked(pathSegments);
-      _folderCache[pathKey] = resolvedId;
+      final resolvedId = await _resolveSingleFolderLocked(
+        segmentName: segmentName,
+        segmentPathKey: segmentPathKey,
+        parentId: parentId,
+        isRoot: isRoot,
+      );
+      _folderCache[segmentPathKey] = resolvedId;
       completer.complete(resolvedId);
       return resolvedId;
     } catch (e) {
       completer.completeError(e);
       rethrow;
     } finally {
-      _inFlightFolderResolutions.remove(pathKey);
+      _inFlightFolderResolutions.remove(segmentPathKey);
     }
   }
 
@@ -120,7 +169,7 @@ class GoogleDriveService {
     // Folders are created strictly JIT when media files are being uploaded.
   }
 
-  /// Deletes any empty child folders under PhoneBackup/<deviceFolder> that do not contain any files.
+  /// Deletes any empty child folders under PhoneBackup/`deviceFolder` that do not contain any files.
   /// Ensures only folders containing actual uploaded data exist on Google Drive.
   Future<int> deleteEmptyDriveFolders({Set<String>? keepFolderNames}) async {
     int deleted = 0;
@@ -205,136 +254,176 @@ class GoogleDriveService {
     return deleted;
   }
 
-  Future<String> _resolveFolderPathLocked(List<String> pathSegments) async {
+  Future<String> _resolveSingleFolderLocked({
+    required String segmentName,
+    required String segmentPathKey,
+    required String parentId,
+    required bool isRoot,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final api = await _getDriveApi();
-    String currentParentId = sharedDriveRootId;
-    final currentAccumulatedPath = <String>[];
+    final prefKey = 'gdrive_folder_id_${segmentPathKey.replaceAll(RegExp(r'[^\w]'), '_')}';
 
-    for (int i = 0; i < pathSegments.length; i++) {
-      final segment = pathSegments[i];
-      final isRoot = segment == rootFolderName;
-      currentAccumulatedPath.add(segment);
-      final partialPath = currentAccumulatedPath.join('/');
-      final prefKey = 'gdrive_folder_id_${partialPath.replaceAll(RegExp(r'[^\w]'), '_')}';
+    String? resolvedFolderId;
 
-      String? resolvedFolderId;
+    // 1. Check cached folder ID from prefs or canonical ID
+    final cachedId = prefs.getString(prefKey);
+    final candidateId = cachedId ?? (isRoot ? canonicalRootFolderId : null);
 
-      // 1. Check cached folder ID
-      final cachedId = _folderCache[partialPath] ?? prefs.getString(prefKey);
-      final candidateId = cachedId ?? (isRoot ? canonicalRootFolderId : null);
-
-      if (candidateId != null && candidateId.isNotEmpty) {
-        try {
-          final existing = await api.files.get(
-            candidateId,
-            supportsAllDrives: true,
-            $fields: 'id, name, parents, trashed',
-          );
-          if (existing is drive.File && existing.trashed != true) {
-            final parents = existing.parents ?? [];
-            if (isRoot) {
-              resolvedFolderId = candidateId;
-            } else if (parents.contains(currentParentId)) {
-              resolvedFolderId = candidateId;
-            } else {
-              // Orphaned folder sitting outside currentParentId.
-              // Relocate it directly into currentParentId.
-              try {
-                final prevParents = parents.join(',');
-                await api.files.update(
-                  drive.File(),
-                  candidateId,
-                  addParents: currentParentId,
-                  removeParents: prevParents.isNotEmpty ? prevParents : null,
-                  supportsAllDrives: true,
-                );
-                resolvedFolderId = candidateId;
-                debugPrint('Relocated orphaned folder $segment into parent $currentParentId');
-              } catch (_) {
-                resolvedFolderId = null;
-              }
-            }
-          } else {
-            // Folder is in trash or was deleted on Drive! Evict stale cached ID
-            resolvedFolderId = null;
-            _folderCache.remove(partialPath);
-            await prefs.remove(prefKey);
-            if (isRoot) {
-              await clearFolderCache();
-            }
-          }
-        } catch (_) {
-          resolvedFolderId = null;
-          _folderCache.remove(partialPath);
-          await prefs.remove(prefKey);
-          if (isRoot) {
-            await clearFolderCache();
-          }
-        }
-      }
-
-      // 2. Query Drive under currentParentId if not resolved via cache
-      if (resolvedFolderId == null) {
-        final escapedSegment = segment.replaceAll("'", "\\'");
-        final String query;
-        if (isRoot) {
-          query =
-              "name = '$escapedSegment' and "
-              "mimeType = 'application/vnd.google-apps.folder' and "
-              "trashed = false";
-        } else {
-          query =
-              "name = '$escapedSegment' and "
-              "mimeType = 'application/vnd.google-apps.folder' and "
-              "'$currentParentId' in parents and "
-              "trashed = false";
-        }
-
-        final fileList = await api.files.list(
-          q: query,
-          spaces: 'drive',
+    if (candidateId != null && candidateId.isNotEmpty) {
+      try {
+        final existing = await api.files.get(
+          candidateId,
           supportsAllDrives: true,
-          includeItemsFromAllDrives: true,
-          $fields: 'files(id, name, parents)',
-          pageSize: 10,
+          $fields: 'id, name, parents, trashed',
         );
-
-        if (fileList.files != null && fileList.files!.isNotEmpty) {
-          // Always pick first match to prevent folder duplicates
-          resolvedFolderId = fileList.files!.first.id;
-        } else {
-          // Create new folder under currentParentId (or sharedDriveRootId if root)
-          final folderMetadata = drive.File()
-            ..name = segment
-            ..mimeType = 'application/vnd.google-apps.folder';
-
-          if (isRoot) {
-            folderMetadata.parents = [sharedDriveRootId];
+        if (existing is drive.File && existing.trashed != true) {
+          final parents = existing.parents ?? [];
+          if (isRoot || parents.contains(parentId)) {
+            resolvedFolderId = candidateId;
           } else {
-            folderMetadata.parents = [currentParentId];
+            // Relocate orphaned folder into parentId
+            try {
+              final prevParents = parents.join(',');
+              await api.files.update(
+                drive.File(),
+                candidateId,
+                addParents: parentId,
+                removeParents: prevParents.isNotEmpty ? prevParents : null,
+                supportsAllDrives: true,
+              );
+              resolvedFolderId = candidateId;
+              debugPrint('Relocated orphaned folder $segmentName into parent $parentId');
+            } catch (_) {
+              resolvedFolderId = null;
+            }
           }
-
-          final created = await api.files.create(
-            folderMetadata,
-            supportsAllDrives: true,
-            $fields: 'id, name',
-          );
-          resolvedFolderId = created.id!;
-          debugPrint('Created folder "$segment" (id: $resolvedFolderId) under parent: $currentParentId');
+        } else {
+          resolvedFolderId = null;
+          _folderCache.remove(segmentPathKey);
+          await prefs.remove(prefKey);
+          if (isRoot) await clearFolderCache();
         }
+      } catch (_) {
+        resolvedFolderId = null;
+        _folderCache.remove(segmentPathKey);
+        await prefs.remove(prefKey);
+        if (isRoot) await clearFolderCache();
       }
-
-      if (resolvedFolderId == null || resolvedFolderId.isEmpty) {
-        throw BackupException('Failed to resolve or create Drive folder: $segment');
-      }
-
-      _folderCache[partialPath] = resolvedFolderId;
-      await prefs.setString(prefKey, resolvedFolderId);
-      currentParentId = resolvedFolderId;
     }
 
-    return currentParentId;
+    // 2. Query Drive under parentId if not resolved via cache
+    if (resolvedFolderId == null) {
+      final escapedSegment = segmentName.replaceAll("'", "\\'");
+      final String query;
+      if (isRoot) {
+        query =
+            "name = '$escapedSegment' and "
+            "mimeType = 'application/vnd.google-apps.folder' and "
+            "trashed = false";
+      } else {
+        query =
+            "name = '$escapedSegment' and "
+            "mimeType = 'application/vnd.google-apps.folder' and "
+            "'$parentId' in parents and "
+            "trashed = false";
+      }
+
+      final fileList = await api.files.list(
+        q: query,
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        $fields: 'files(id, name, parents)',
+        pageSize: 10,
+      );
+
+      if (fileList.files != null && fileList.files!.isNotEmpty) {
+        // Always pick first match as canonical folder
+        resolvedFolderId = fileList.files!.first.id;
+
+        // If duplicate folders exist with the same name, consolidate them into the canonical folder immediately!
+        if (fileList.files!.length > 1) {
+          final canonicalId = resolvedFolderId!;
+          for (int d = 1; d < fileList.files!.length; d++) {
+            final dupFolder = fileList.files![d];
+            final dupId = dupFolder.id;
+            if (dupId != null && dupId != canonicalId) {
+              _consolidateAndDeleteDuplicateFolder(
+                api: api,
+                canonicalFolderId: canonicalId,
+                duplicateFolderId: dupId,
+              );
+            }
+          }
+        }
+      } else {
+        // Create new folder under parentId (or sharedDriveRootId if root)
+        final folderMetadata = drive.File()
+          ..name = segmentName
+          ..mimeType = 'application/vnd.google-apps.folder';
+
+        if (isRoot) {
+          folderMetadata.parents = [sharedDriveRootId];
+        } else {
+          folderMetadata.parents = [parentId];
+        }
+
+        final created = await api.files.create(
+          folderMetadata,
+          supportsAllDrives: true,
+          $fields: 'id, name',
+        );
+        resolvedFolderId = created.id!;
+        debugPrint('[GoogleDriveService] Created folder "$segmentName" (id: $resolvedFolderId) under parent: $parentId');
+      }
+    }
+
+    if (resolvedFolderId == null || resolvedFolderId.isEmpty) {
+      throw BackupException('Failed to resolve or create Drive folder: $segmentName');
+    }
+
+    _folderCache[segmentPathKey] = resolvedFolderId;
+    await prefs.setString(prefKey, resolvedFolderId);
+    return resolvedFolderId;
+  }
+
+  Future<void> _consolidateAndDeleteDuplicateFolder({
+    required drive.DriveApi api,
+    required String canonicalFolderId,
+    required String duplicateFolderId,
+  }) async {
+    try {
+      final children = await api.files.list(
+        q: "'$duplicateFolderId' in parents and trashed = false",
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        $fields: 'files(id, name)',
+        pageSize: 500,
+      );
+      if (children.files != null) {
+        for (final child in children.files!) {
+          if (child.id != null) {
+            try {
+              await api.files.update(
+                drive.File(),
+                child.id!,
+                addParents: canonicalFolderId,
+                removeParents: duplicateFolderId,
+                supportsAllDrives: true,
+              );
+            } catch (e) {
+              debugPrint('[GoogleDriveService] Child move warning: $e');
+            }
+          }
+        }
+      }
+      await api.files.delete(duplicateFolderId, supportsAllDrives: true);
+      debugPrint('[GoogleDriveService] Consolidated duplicate folder $duplicateFolderId into $canonicalFolderId');
+    } catch (e) {
+      debugPrint('[GoogleDriveService] Error consolidating duplicate folder $duplicateFolderId: $e');
+    }
   }
 
   /// Checks if file already exists in target folder or on Drive by name, contentHash, or localId
@@ -571,15 +660,44 @@ class GoogleDriveService {
       final deviceFolderId = devList.files!.first.id;
       if (deviceFolderId == null) return 0;
 
-      // If duplicate device folders exist, remove extra empty ones
+      // If duplicate device folders exist, consolidate and remove extra ones
       if (devList.files!.length > 1) {
         for (int i = 1; i < devList.files!.length; i++) {
           final dupDevId = devList.files![i].id;
-          if (dupDevId != null) {
+          if (dupDevId != null && dupDevId != deviceFolderId) {
             try {
+              // Move all child albums and files from the duplicate device folder to the canonical device folder
+              final dupChildren = await api.files.list(
+                q: "'$dupDevId' in parents and trashed = false",
+                spaces: 'drive',
+                supportsAllDrives: true,
+                includeItemsFromAllDrives: true,
+                $fields: 'files(id, name)',
+                pageSize: 500,
+              );
+              if (dupChildren.files != null) {
+                for (final child in dupChildren.files!) {
+                  if (child.id != null) {
+                    try {
+                      await api.files.update(
+                        drive.File(),
+                        child.id!,
+                        addParents: deviceFolderId,
+                        removeParents: dupDevId,
+                        supportsAllDrives: true,
+                      );
+                    } catch (e) {
+                      debugPrint('[GoogleDriveService] Error moving child ${child.name} to canonical device folder: $e');
+                    }
+                  }
+                }
+              }
               await api.files.delete(dupDevId, supportsAllDrives: true);
               mergedOrDeleted++;
-            } catch (_) {}
+              debugPrint('[GoogleDriveService] Consolidated duplicate device folder $dupDevId into $deviceFolderId');
+            } catch (e) {
+              debugPrint('[GoogleDriveService] Error deleting duplicate device folder $dupDevId: $e');
+            }
           }
         }
       }
@@ -653,7 +771,7 @@ class GoogleDriveService {
     return mergedOrDeleted;
   }
 
-  /// Checks whether the device backup folder (PhoneBackup/<deviceFolder>) exists and is NOT trashed on Google Drive.
+  /// Checks whether the device backup folder (PhoneBackup/`deviceFolder`) exists and is NOT trashed on Google Drive.
   Future<bool> doesDeviceFolderExist() async {
     try {
       final api = await _getDriveApi();

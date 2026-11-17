@@ -275,6 +275,9 @@ class BackupSyncService {
           // Index background Sent media (e.g. WhatsApp Sent) for sync without showing in UI
           await _indexSentAndBackgroundMedia(settings);
 
+          // Pre-ensure root and device folder exist ONCE upfront before any parallel uploads start
+          await _drive.ensureDeviceBackupFolder();
+
           // Clean any duplicate or empty folders on Drive so only folders with actual data remain
           await _drive.cleanDuplicateDriveFolders();
           await _drive.deleteEmptyDriveFolders();

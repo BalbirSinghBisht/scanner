@@ -18,7 +18,6 @@ import '../../services/media_scanner_service.dart';
 import '../../services/vault_service.dart';
 import '../../services/expiring_media_service.dart';
 import '../../services/paper_trail_service.dart';
-import '../widgets/ghost_drop_sheet.dart';
 import '../widgets/move_to_folder_sheet.dart';
 import '../widgets/paper_trail_form_sheet.dart';
 import '../widgets/set_expiry_dialog.dart';
@@ -1083,7 +1082,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
                     padding: EdgeInsets.only(
-                      top: math.max(MediaQuery.of(context).padding.top, 32.0) + 8.0,
+                      top: math.max(math.max(MediaQuery.of(context).padding.top, MediaQuery.of(context).viewPadding.top), 32.0) + 8.0,
                       left: 10,
                       right: 14,
                       bottom: 12,
@@ -1157,7 +1156,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                   border: Border.all(color: c.glassBorder, width: 0.5),
                                 ),
                                 child: Icon(
-                                  _isCoverMode ? Icons.fit_screen_outlined : Icons.fullscreen_outlined,
+                                  _isCoverMode
+                                      ? CupertinoIcons.arrow_down_right_arrow_up_left
+                                      : CupertinoIcons.arrow_up_left_arrow_down_right,
                                   color: c.primary,
                                   size: 18,
                                 ),
@@ -1276,8 +1277,22 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                          decoration: AppTheme.floatingNavbarDecoration(context: context),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xE616161A),
+                            borderRadius: BorderRadius.circular(34),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.14),
+                              width: 0.8,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.55),
+                                blurRadius: 20,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
@@ -1286,14 +1301,6 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 minSize: 0,
                                 onPressed: _shareCurrentItem,
                                 child: Icon(CupertinoIcons.share, color: c.primary, size: 20),
-                              ),
-                              CupertinoButton(
-                                padding: const EdgeInsets.all(8),
-                                minSize: 0,
-                                onPressed: () {
-                                  GhostDropSheet.show(context, items: [currentItem]);
-                                },
-                                child: Icon(Icons.bolt, color: c.primary, size: 22),
                               ),
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),
@@ -1323,7 +1330,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 minSize: 0,
                                 onPressed: _moveCurrentItem,
                                 child: Icon(
-                                  Icons.drive_file_move_outlined,
+                                  CupertinoIcons.folder_badge_plus,
                                   color: c.primary,
                                   size: 20,
                                 ),
@@ -1332,7 +1339,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen>
                                 padding: const EdgeInsets.all(8),
                                 minSize: 0,
                                 onPressed: _showItemDetailsBottomSheet,
-                                child: Icon(CupertinoIcons.info, color: c.primary, size: 20),
+                                child: Icon(CupertinoIcons.info_circle, color: c.primary, size: 20),
                               ),
                               CupertinoButton(
                                 padding: const EdgeInsets.all(8),

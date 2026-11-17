@@ -150,6 +150,32 @@ class MediaItem {
     if (rawName != null && rawName.isNotEmpty) {
       if (rawName.toUpperCase() == 'DCIM') return 'Camera';
       if (rawName == 'Downloads') return 'Download';
+      if (rawName.toLowerCase() == 'sent' && localFilePath != null && localFilePath!.isNotEmpty) {
+        final parts = localFilePath!.split(RegExp(r'[\\/]'));
+        if (parts.length >= 3) {
+          final grandParent = parts[parts.length - 3];
+          if (grandParent.isNotEmpty &&
+              grandParent != '0' &&
+              grandParent != 'emulated' &&
+              grandParent != 'storage' &&
+              grandParent != 'sdcard') {
+            return '$grandParent Sent';
+          }
+        }
+      }
+      if (rawName.toLowerCase() == 'private' && localFilePath != null && localFilePath!.isNotEmpty) {
+        final parts = localFilePath!.split(RegExp(r'[\\/]'));
+        if (parts.length >= 3) {
+          final grandParent = parts[parts.length - 3];
+          if (grandParent.isNotEmpty &&
+              grandParent != '0' &&
+              grandParent != 'emulated' &&
+              grandParent != 'storage' &&
+              grandParent != 'sdcard') {
+            return '$grandParent Private';
+          }
+        }
+      }
       if (rawName.startsWith('.')) {
         final stripped = rawName.replaceFirst(RegExp(r'^\.+'), '');
         final sLower = stripped.toLowerCase();
