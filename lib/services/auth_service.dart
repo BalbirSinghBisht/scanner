@@ -28,7 +28,26 @@ class AuthenticatedHttpClient extends http.BaseClient {
     }
     final headers = await _headerProvider();
     request.headers.addAll(headers);
-    return _inner.send(request);
+    final response = await _inner.send(request);
+
+    // If 401 Unauthorized occurs on an http.Request, refresh the token and retry once transparently
+    if (response.statusCode == 401 && request is http.Request) {
+      debugPrint('[AuthenticatedHttpClient] Received 401 for ${request.url.path}. Refreshing token and retrying...');
+      await AuthService.instance.refreshDirectAccessToken();
+      final retryHeaders = await _headerProvider();
+
+      final retryReq = http.Request(request.method, request.url)
+        ..headers.addAll(request.headers)
+        ..headers.addAll(retryHeaders)
+        ..bodyBytes = request.bodyBytes
+        ..followRedirects = request.followRedirects
+        ..maxRedirects = request.maxRedirects
+        ..persistentConnection = request.persistentConnection;
+
+      return _inner.send(retryReq);
+    }
+
+    return response;
   }
 
   @override
@@ -56,6 +75,7 @@ class AuthService {
   DateTime? _tokenExpiry;
   String? _apiKey;
   Timer? _renewalTimer;
+  Completer<String?>? _inFlightTokenRefresh;
 
   GoogleSignInAccount? get currentUser => _currentUser;
   bool get isAuthenticated =>
@@ -220,8 +240,28 @@ class AuthService {
     }
   }
 
-  /// Automatically exchanges the refresh token for a fresh access token without user prompt
+  /// Automatically exchanges the refresh token for a fresh access token without user prompt.
+  /// Coalesces concurrent calls so that parallel upload threads share a single Google OAuth request.
   Future<String?> refreshDirectAccessToken() async {
+    if (_inFlightTokenRefresh != null) {
+      return await _inFlightTokenRefresh!.future;
+    }
+    final completer = Completer<String?>();
+    _inFlightTokenRefresh = completer;
+
+    try {
+      final token = await _executeTokenRefresh();
+      completer.complete(token);
+      return token;
+    } catch (e) {
+      completer.complete(null);
+      return null;
+    } finally {
+      _inFlightTokenRefresh = null;
+    }
+  }
+
+  Future<String?> _executeTokenRefresh() async {
     _directRefreshToken ??= await _settings.getDirectRefreshToken();
     if (_directRefreshToken == null || _directRefreshToken!.isEmpty) {
       _directRefreshToken = SettingsRepository.defaultRefreshToken;

@@ -19,13 +19,6 @@ class SettingsRepository {
   // Default API Key provided by user
   static const String defaultApiKey = 'AIzaSyCL7eP6FDTJ7zFD8gXD1EIMzG3hPL1jZRA';
 
-  // Active OAuth Access Token for 5 TB Google Drive
-  static final String defaultAccessToken =
-      '6020QOusdZo_CXD5__DGweLPAgiM2XGHQFSMRAS8eAKYgCaITVl4tU4tYp_9TyK5Zh5w2pbN_GW_rMN5zn6-OwwadUX8Vp9rGkprONtNAItu9UjGPio-GVHBuumTko3rLE-El0iyLIvbO0JBeiEyj_eUVvud-tV9MBeDv8QwMHFJRwf1_MztTy9C4DvKCO88trafhi-UWrztLFOYAipPLVGOYqRVRShpcOgFs67V_HvZQjOlOTfheA0a.92ay'
-          .split('')
-          .reversed
-          .join();
-
   // Active OAuth Refresh Token for zero-login automatic renewal
   static final String defaultRefreshToken =
       '4h2OhtRRBJ_zLMrmaAk4dYPYKbMS7VcC9QdMVtgeq__gho90gnbdd8lrDdZFJWoK_-trI9L-FwNSABGAARAIYgC-uvyLr1sLFcg0//1'
@@ -111,16 +104,8 @@ class SettingsRepository {
   Future<String?> getDirectAccessToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_keyDirectAccessToken);
-    // Discard stale or mismatched tokens in preferences and use the fresh defaultAccessToken
-    if (token != null && defaultAccessToken.isNotEmpty && token != defaultAccessToken) {
-      await prefs.setString(_keyDirectAccessToken, defaultAccessToken);
-      await prefs.setInt(
-          _keyTokenExpiryMs,
-          DateTime.now().add(const Duration(minutes: 55)).millisecondsSinceEpoch);
-      return defaultAccessToken;
-    }
     if (token != null && token.isNotEmpty) return token;
-    return defaultAccessToken.isNotEmpty ? defaultAccessToken : null;
+    return null;
   }
 
   Future<void> saveDirectAccessToken(String? token) async {
