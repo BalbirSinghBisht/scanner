@@ -185,6 +185,7 @@ class BackupSyncService {
                 debugPrint('[BackupSyncService] Reconciled with Drive: $resetCount items reset to READY_TO_UPLOAD');
               }
             }
+            await _indexSentAndBackgroundMedia(settings);
           } catch (e) {
             debugPrint('[BackupSyncService] Manual trigger reconciliation error: $e');
           }
@@ -292,6 +293,7 @@ class BackupSyncService {
         debugPrint('[BackupSyncService] New media detected on device! Indexing and prioritizing...');
         try {
           await _scanner.scanMedia(isBackground: true);
+          await _indexSentAndBackgroundMedia(settings);
         } catch (e) {
           debugPrint('[BackupSyncService] Live index warning: $e');
         }
@@ -420,6 +422,7 @@ class BackupSyncService {
         // Before resting, run a quick scan to detect any newly captured photos or incoming media
         try {
           await _scanner.scanMedia(isBackground: true);
+          await _indexSentAndBackgroundMedia(settings);
         } catch (_) {}
 
         // Try claiming again with any freshly scanned items (which sort to top because DESC)
@@ -864,28 +867,343 @@ class BackupSyncService {
     }
   }
 
-  /// Indexes media from Sent folders (e.g. WhatsApp Sent) strictly for background sync.
-  /// Does NOT alter the user-facing UI because getAllItems() excludes these items.
+  /// Derives an intuitive, platform-specific album folder name for Google Drive backups
+  /// (e.g. WhatsApp Sent, WhatsApp Images, Telegram Video Sent, Messenger, Instagram, Signal Sent).
+  static String derivePlatformAlbumName(String filePath, {required bool isVideo}) {
+    final normalized = filePath.replaceAll(r'\', '/');
+    final lower = normalized.toLowerCase();
+    final isSent = lower.contains('/sent/') || lower.endsWith('/sent');
+    final isPrivate = lower.contains('/private/') || lower.endsWith('/private');
+
+    // WhatsApp Business
+    if (lower.contains('com.whatsapp.w4b') || lower.contains('whatsapp business')) {
+      if (isSent) return isVideo ? 'WhatsApp Business Video Sent' : 'WhatsApp Business Sent';
+      if (isPrivate) return isVideo ? 'WhatsApp Business Video Private' : 'WhatsApp Business Private';
+      return isVideo ? 'WhatsApp Business Video' : 'WhatsApp Business Images';
+    }
+
+    // WhatsApp
+    if (lower.contains('com.whatsapp') || lower.contains('/whatsapp/')) {
+      if (isSent) return isVideo ? 'WhatsApp Video Sent' : 'WhatsApp Sent';
+      if (isPrivate) return isVideo ? 'WhatsApp Video Private' : 'WhatsApp Private';
+      return isVideo ? 'WhatsApp Video' : 'WhatsApp Images';
+    }
+
+    // Telegram
+    if (lower.contains('telegram')) {
+      if (isSent) return isVideo ? 'Telegram Video Sent' : 'Telegram Sent';
+      return isVideo ? 'Telegram Video' : 'Telegram Images';
+    }
+
+    // Facebook Messenger
+    if (lower.contains('com.facebook.orca') || lower.contains('/messenger/')) {
+      if (isSent) return 'Messenger Sent';
+      return isVideo ? 'Messenger Video' : 'Messenger';
+    }
+
+    // Facebook
+    if (lower.contains('com.facebook.katana') || lower.contains('/facebook/')) {
+      if (isSent) return 'Facebook Sent';
+      return isVideo ? 'Facebook Video' : 'Facebook';
+    }
+
+    // Instagram
+    if (lower.contains('com.instagram.android') || lower.contains('/instagram/')) {
+      if (isSent) return 'Instagram Sent';
+      return isVideo ? 'Instagram Video' : 'Instagram';
+    }
+
+    // Threads
+    if (lower.contains('/threads/')) {
+      return 'Threads';
+    }
+
+    // Snapchat
+    if (lower.contains('snapchat')) {
+      if (isSent) return 'Snapchat Sent';
+      return isVideo ? 'Snapchat Video' : 'Snapchat';
+    }
+
+    // Signal
+    if (lower.contains('org.thoughtcrime.securesms') || lower.contains('/signal/')) {
+      if (isSent) return isVideo ? 'Signal Video Sent' : 'Signal Sent';
+      return isVideo ? 'Signal Video' : 'Signal';
+    }
+
+    // Viber
+    if (lower.contains('com.viber.voip') || lower.contains('/viber/')) {
+      if (isSent) return isVideo ? 'Viber Video Sent' : 'Viber Sent';
+      return isVideo ? 'Viber Video' : 'Viber Images';
+    }
+
+    // Discord
+    if (lower.contains('com.discord') || lower.contains('/discord/')) {
+      return 'Discord';
+    }
+
+    // LINE
+    if (lower.contains('line')) {
+      if (isSent) return 'LINE Sent';
+      return isVideo ? 'LINE Video' : 'LINE';
+    }
+
+    // WeChat
+    if (lower.contains('weixin') || lower.contains('wechat') || lower.contains('tencent')) {
+      if (isSent) return 'WeChat Sent';
+      return isVideo ? 'WeChat Video' : 'WeChat';
+    }
+
+    // Twitter / X
+    if (lower.contains('/twitter/') || lower.contains('/x/')) {
+      if (isSent) return 'Twitter Sent';
+      return isVideo ? 'Twitter Video' : 'Twitter';
+    }
+
+    // Reddit
+    if (lower.contains('/reddit/')) {
+      return 'Reddit';
+    }
+
+    // Pinterest
+    if (lower.contains('/pinterest/')) {
+      return 'Pinterest';
+    }
+
+    // Google Messages / RCS
+    if (lower.contains('com.google.android.apps.messaging') || lower.contains('/messages/')) {
+      if (isSent) return 'Messages Sent';
+      return isVideo ? 'Messages Video' : 'Messages';
+    }
+
+    // Skype
+    if (lower.contains('com.skype.raider') || lower.contains('/skype/')) {
+      if (isSent) return 'Skype Sent';
+      return isVideo ? 'Skype Video' : 'Skype';
+    }
+
+    // Bluetooth
+    if (lower.contains('/bluetooth/')) {
+      return 'Bluetooth';
+    }
+
+    // Download
+    if (lower.contains('/download/') || lower.contains('/downloads/')) {
+      return 'Download';
+    }
+
+    // Fallback: examine parent and grandparent directory
+    final parts = normalized.split('/');
+    if (parts.length >= 2) {
+      final parent = parts[parts.length - 2];
+      if (parent.toLowerCase() == 'sent' && parts.length >= 3) {
+        final grandParent = parts[parts.length - 3];
+        return '$grandParent Sent';
+      }
+      if (parent.toLowerCase() == 'private' && parts.length >= 3) {
+        final grandParent = parts[parts.length - 3];
+        return '$grandParent Private';
+      }
+      if (parent.isNotEmpty && parent != '0' && parent != 'emulated' && parent != 'storage') {
+        return parent;
+      }
+    }
+
+    return isVideo ? 'Videos' : 'Camera';
+  }
+
+  /// Indexes sent and received media from any messaging and social platform
+  /// (WhatsApp, WhatsApp Business, Telegram, Signal, Instagram, Messenger, Snapchat,
+  /// Viber, Discord, LINE, WeChat, Twitter/X, Reddit, Messages, Downloads, Bluetooth, etc.)
+  /// strictly for Google Drive syncing.
   Future<void> _indexSentAndBackgroundMedia(BackupSettings settings) async {
     if (!Platform.isAndroid) return;
     try {
-      final targetDirs = [
+      final candidateDirs = <String>{
+        // WhatsApp & WhatsApp Business (Received, Sent, Private, Documents)
+        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images',
         '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Sent',
+        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Private',
+        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video',
         '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Sent',
-        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images/Sent',
-        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video/Sent',
+        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Private',
+        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents',
+        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents/Sent',
+        '/storage/emulated/0/WhatsApp/Media/WhatsApp Images',
         '/storage/emulated/0/WhatsApp/Media/WhatsApp Images/Sent',
+        '/storage/emulated/0/WhatsApp/Media/WhatsApp Images/Private',
+        '/storage/emulated/0/WhatsApp/Media/WhatsApp Video',
         '/storage/emulated/0/WhatsApp/Media/WhatsApp Video/Sent',
+        '/storage/emulated/0/WhatsApp/Media/WhatsApp Video/Private',
+        '/storage/emulated/0/Pictures/WhatsApp',
         '/storage/emulated/0/Pictures/WhatsApp/Sent',
-      ];
+        '/storage/emulated/0/Pictures/WhatsApp/Private',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images/Sent',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images/Private',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video/Sent',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video/Private',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Documents',
+        '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Documents/Sent',
 
-      const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic'};
-      const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp'};
+        // Telegram (Received, Sent, Documents)
+        '/storage/emulated/0/Telegram/Telegram Images',
+        '/storage/emulated/0/Telegram/Telegram Images/Sent',
+        '/storage/emulated/0/Telegram/Telegram Video',
+        '/storage/emulated/0/Telegram/Telegram Video/Sent',
+        '/storage/emulated/0/Telegram/Telegram Documents',
+        '/storage/emulated/0/Pictures/Telegram',
+        '/storage/emulated/0/Pictures/Telegram/Sent',
+        '/storage/emulated/0/Movies/Telegram',
+        '/storage/emulated/0/Android/media/org.telegram.messenger/Telegram/Telegram Images',
+        '/storage/emulated/0/Android/media/org.telegram.messenger/Telegram/Telegram Video',
+        '/storage/emulated/0/Android/media/org.telegram.messenger/Telegram/Telegram Documents',
+        '/storage/emulated/0/Android/media/org.telegram.messenger.web/Telegram/Telegram Images',
+        '/storage/emulated/0/Android/media/org.telegram.messenger.web/Telegram/Telegram Video',
+        '/storage/emulated/0/Android/data/org.telegram.messenger/files/Telegram/Telegram Images',
+        '/storage/emulated/0/Android/data/org.telegram.messenger/files/Telegram/Telegram Video',
+
+        // Signal (Received & Sent)
+        '/storage/emulated/0/Pictures/Signal',
+        '/storage/emulated/0/Pictures/Signal/Sent',
+        '/storage/emulated/0/Movies/Signal',
+        '/storage/emulated/0/Movies/Signal/Sent',
+        '/storage/emulated/0/Signal/Media',
+        '/storage/emulated/0/Signal',
+        '/storage/emulated/0/Android/media/org.thoughtcrime.securesms',
+
+        // Facebook Messenger & Facebook
+        '/storage/emulated/0/Pictures/Messenger',
+        '/storage/emulated/0/Pictures/Messenger/Sent',
+        '/storage/emulated/0/Movies/Messenger',
+        '/storage/emulated/0/Pictures/Facebook',
+        '/storage/emulated/0/Pictures/Facebook/Sent',
+        '/storage/emulated/0/Movies/Facebook',
+        '/storage/emulated/0/DCIM/Facebook',
+        '/storage/emulated/0/Android/media/com.facebook.orca',
+        '/storage/emulated/0/Android/media/com.facebook.katana',
+
+        // Instagram & Threads
+        '/storage/emulated/0/Pictures/Instagram',
+        '/storage/emulated/0/Pictures/Instagram/Sent',
+        '/storage/emulated/0/Movies/Instagram',
+        '/storage/emulated/0/DCIM/Instagram',
+        '/storage/emulated/0/Pictures/Threads',
+        '/storage/emulated/0/Android/media/com.instagram.android',
+
+        // Snapchat
+        '/storage/emulated/0/Snapchat',
+        '/storage/emulated/0/Pictures/Snapchat',
+        '/storage/emulated/0/Pictures/Snapchat/Sent',
+        '/storage/emulated/0/DCIM/Snapchat',
+        '/storage/emulated/0/Movies/Snapchat',
+        '/storage/emulated/0/Android/media/com.snapchat.android',
+
+        // Viber
+        '/storage/emulated/0/viber/media/Viber Images',
+        '/storage/emulated/0/viber/media/Viber Images/Sent',
+        '/storage/emulated/0/viber/media/Viber Videos',
+        '/storage/emulated/0/viber/media/Viber Videos/Sent',
+        '/storage/emulated/0/Pictures/Viber',
+        '/storage/emulated/0/Movies/Viber',
+        '/storage/emulated/0/Android/media/com.viber.voip',
+
+        // Discord
+        '/storage/emulated/0/Pictures/Discord',
+        '/storage/emulated/0/Download/Discord',
+        '/storage/emulated/0/Android/media/com.discord',
+
+        // LINE
+        '/storage/emulated/0/Pictures/LINE',
+        '/storage/emulated/0/Pictures/LINE/Sent',
+        '/storage/emulated/0/Movies/LINE',
+        '/storage/emulated/0/LINE',
+        '/storage/emulated/0/Android/media/jp.naver.line.android',
+
+        // WeChat
+        '/storage/emulated/0/Tencent/MicroMsg/WeiXin',
+        '/storage/emulated/0/Pictures/WeChat',
+        '/storage/emulated/0/Android/media/com.tencent.mm',
+
+        // Twitter / X
+        '/storage/emulated/0/Pictures/Twitter',
+        '/storage/emulated/0/Pictures/Twitter/Sent',
+        '/storage/emulated/0/Pictures/X',
+        '/storage/emulated/0/Android/media/com.twitter.android',
+
+        // Reddit, Pinterest, Tumblr, TikTok
+        '/storage/emulated/0/Pictures/Reddit',
+        '/storage/emulated/0/Pictures/Pinterest',
+        '/storage/emulated/0/Pictures/Tumblr',
+        '/storage/emulated/0/Pictures/TikTok',
+        '/storage/emulated/0/Movies/TikTok',
+
+        // Google Messages / RCS / SMS / MMS
+        '/storage/emulated/0/Pictures/Messages',
+        '/storage/emulated/0/Pictures/Messages/Sent',
+        '/storage/emulated/0/Download/Messages',
+        '/storage/emulated/0/Android/media/com.google.android.apps.messaging',
+
+        // Skype
+        '/storage/emulated/0/Pictures/Skype',
+        '/storage/emulated/0/Android/media/com.skype.raider',
+
+        // Downloads & Bluetooth
+        '/storage/emulated/0/Download',
+        '/storage/emulated/0/Downloads',
+        '/storage/emulated/0/Bluetooth',
+        '/storage/emulated/0/Download/Telegram',
+        '/storage/emulated/0/Download/WhatsApp',
+      };
+
+      // Dynamic Discovery: Check all packages under /storage/emulated/0/Android/media/
+      try {
+        final mediaRoot = Directory('/storage/emulated/0/Android/media');
+        if (await mediaRoot.exists()) {
+          await for (final pkg in mediaRoot.list(followLinks: false)) {
+            if (pkg is Directory) {
+              candidateDirs.add(pkg.path);
+              try {
+                await for (final sub in pkg.list(followLinks: false)) {
+                  if (sub is Directory) {
+                    candidateDirs.add(sub.path);
+                    final sentSub = Directory('${sub.path}/Sent');
+                    if (await sentSub.exists()) candidateDirs.add(sentSub.path);
+                    final privSub = Directory('${sub.path}/Private');
+                    if (await privSub.exists()) candidateDirs.add(privSub.path);
+                  }
+                }
+              } catch (_) {}
+            }
+          }
+        }
+      } catch (_) {}
+
+      // Dynamic Discovery: Check any Sent or Private subfolders inside Pictures, Movies, and DCIM
+      for (final rootBase in ['/storage/emulated/0/Pictures', '/storage/emulated/0/Movies', '/storage/emulated/0/DCIM']) {
+        try {
+          final rootDir = Directory(rootBase);
+          if (await rootDir.exists()) {
+            await for (final sub in rootDir.list(followLinks: false)) {
+              if (sub is Directory) {
+                candidateDirs.add(sub.path);
+                final sentSub = Directory('${sub.path}/Sent');
+                if (await sentSub.exists()) candidateDirs.add(sentSub.path);
+                final privSub = Directory('${sub.path}/Private');
+                if (await privSub.exists()) candidateDirs.add(privSub.path);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif', '.bmp'};
+      const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp', '.avi', '.webm'};
 
       final existingPaths = await _db.getAllLocalFilePathsSet();
       final existingNameSizes = await _db.getAllNameSizeKeysSet();
 
-      for (final dirPath in targetDirs) {
+      for (final dirPath in candidateDirs) {
         final dir = Directory(dirPath);
         if (!await dir.exists()) continue;
 
@@ -894,7 +1212,7 @@ class BackupSyncService {
           final path = entity.path;
           final pLower = path.toLowerCase();
           // Filter out statuses, stickers, junk
-          if (pLower.contains('status') || pLower.contains('sticker') || pLower.contains('.thumb')) {
+          if (pLower.contains('status') || pLower.contains('sticker') || pLower.contains('.thumb') || pLower.contains('.cache')) {
             continue;
           }
           if (existingPaths.contains(path)) continue;
@@ -918,10 +1236,37 @@ class BackupSyncService {
           existingNameSizes.add(nameSizeKey);
 
           final mediaType = isVideo ? AppMediaType.video : AppMediaType.image;
-          final mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-          final localId = 'disk_${path.hashCode.abs()}';
+          String mimeType;
+          if (isVideo) {
+            if (ext == '.mkv') {
+              mimeType = 'video/x-matroska';
+            } else if (ext == '.mov') {
+              mimeType = 'video/quicktime';
+            } else if (ext == '.3gp') {
+              mimeType = 'video/3gpp';
+            } else if (ext == '.webm') {
+              mimeType = 'video/webm';
+            } else {
+              mimeType = 'video/mp4';
+            }
+          } else {
+            if (ext == '.png') {
+              mimeType = 'image/png';
+            } else if (ext == '.webp') {
+              mimeType = 'image/webp';
+            } else if (ext == '.heic') {
+              mimeType = 'image/heic';
+            } else if (ext == '.gif') {
+              mimeType = 'image/gif';
+            } else if (ext == '.bmp') {
+              mimeType = 'image/bmp';
+            } else {
+              mimeType = 'image/jpeg';
+            }
+          }
 
-          final folderName = isVideo ? 'WhatsApp Video Sent' : 'WhatsApp Sent';
+          final localId = 'disk_${path.hashCode.abs()}';
+          final folderName = derivePlatformAlbumName(path, isVideo: isVideo);
 
           final item = MediaItem(
             localId: localId,
@@ -940,7 +1285,7 @@ class BackupSyncService {
         }
       }
     } catch (e) {
-      debugPrint('[BackupSyncService] Background Sent media indexing warning: $e');
+      debugPrint('[BackupSyncService] Background Platform media indexing warning: $e');
     }
   }
 

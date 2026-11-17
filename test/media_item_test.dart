@@ -158,5 +158,46 @@ void main() {
       final syncQueueItems = items.where((it) => it.uploadState == UploadState.READY_TO_UPLOAD).toList();
       expect(syncQueueItems.length, equals(2));
     });
+
+    test('correctly derives platform Sent and Private folder names for Google Drive syncing', () {
+      final waSent = MediaItem(
+        localId: 'disk_wa_sent',
+        fileName: 'IMG-20261117-WA0001.jpg',
+        mediaType: AppMediaType.image,
+        mimeType: 'image/jpeg',
+        fileSize: 102400,
+        createdAt: DateTime.now(),
+        localFilePath: '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Sent/IMG-20261117-WA0001.jpg',
+        folderName: 'Sent',
+      );
+      expect(waSent.displayFolderName, equals('WhatsApp Images Sent'));
+      expect(waSent.computeTargetFolderPath(deviceFolder: 'Pixel_8'), equals('PhoneBackup/Pixel_8/WhatsApp Images Sent'));
+
+      final tgSent = MediaItem(
+        localId: 'disk_tg_sent',
+        fileName: 'VID_20261117_001.mp4',
+        mediaType: AppMediaType.video,
+        mimeType: 'video/mp4',
+        fileSize: 5000000,
+        createdAt: DateTime.now(),
+        localFilePath: '/storage/emulated/0/Telegram/Telegram Video/Sent/VID_20261117_001.mp4',
+        folderName: 'Sent',
+      );
+      expect(tgSent.displayFolderName, equals('Telegram Video Sent'));
+      expect(tgSent.computeTargetFolderPath(deviceFolder: 'Pixel_8'), equals('PhoneBackup/Pixel_8/Telegram Video Sent'));
+
+      final waPrivate = MediaItem(
+        localId: 'disk_wa_priv',
+        fileName: 'IMG_PRIV.jpg',
+        mediaType: AppMediaType.image,
+        mimeType: 'image/jpeg',
+        fileSize: 102400,
+        createdAt: DateTime.now(),
+        localFilePath: '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Private/IMG_PRIV.jpg',
+        folderName: 'Private',
+      );
+      expect(waPrivate.displayFolderName, equals('WhatsApp Images Private'));
+      expect(waPrivate.computeTargetFolderPath(deviceFolder: 'Pixel_8'), equals('PhoneBackup/Pixel_8/WhatsApp Images Private'));
+    });
   });
 }

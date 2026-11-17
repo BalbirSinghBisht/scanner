@@ -996,43 +996,68 @@ class MediaScannerService {
       '/storage/emulated/0/.calculatorvault',
       '/storage/emulated/0/.lockmypix',
 
-      // WhatsApp & WhatsApp Business (Including Private folders)
+      // WhatsApp & WhatsApp Business (Including Private and Sent folders)
       '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images',
       '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Private',
+      '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Sent',
       '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video',
       '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Private',
+      '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Sent',
       '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images',
       '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images/Private',
+      '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images/Sent',
       '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video',
       '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video/Private',
+      '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video/Sent',
       '/storage/emulated/0/WhatsApp/Media/WhatsApp Images',
       '/storage/emulated/0/WhatsApp/Media/WhatsApp Images/Private',
+      '/storage/emulated/0/WhatsApp/Media/WhatsApp Images/Sent',
       '/storage/emulated/0/WhatsApp/Media/WhatsApp Video',
       '/storage/emulated/0/WhatsApp/Media/WhatsApp Video/Private',
+      '/storage/emulated/0/WhatsApp/Media/WhatsApp Video/Sent',
       '/storage/emulated/0/Pictures/WhatsApp',
       '/storage/emulated/0/Pictures/WhatsApp/Private',
+      '/storage/emulated/0/Pictures/WhatsApp/Sent',
 
-      // Telegram
+      // Telegram (Including Sent)
       '/storage/emulated/0/Telegram/Telegram Images',
+      '/storage/emulated/0/Telegram/Telegram Images/Sent',
       '/storage/emulated/0/Telegram/Telegram Video',
+      '/storage/emulated/0/Telegram/Telegram Video/Sent',
       '/storage/emulated/0/Pictures/Telegram',
+      '/storage/emulated/0/Pictures/Telegram/Sent',
       '/storage/emulated/0/Movies/Telegram',
       '/storage/emulated/0/Android/media/org.telegram.messenger/Telegram/Telegram Images',
       '/storage/emulated/0/Android/media/org.telegram.messenger/Telegram/Telegram Video',
 
-      // Social Media (Instagram, Snapchat, Facebook, Messenger, Twitter/X, Reddit, Pinterest, TikTok)
+      // Social Media (Instagram, Snapchat, Facebook, Messenger, Twitter/X, Reddit, Pinterest, TikTok, Signal, Viber, LINE)
       '/storage/emulated/0/Pictures/Instagram',
+      '/storage/emulated/0/Pictures/Instagram/Sent',
       '/storage/emulated/0/DCIM/Instagram',
       '/storage/emulated/0/Pictures/Snapchat',
+      '/storage/emulated/0/Pictures/Snapchat/Sent',
       '/storage/emulated/0/DCIM/Snapchat',
       '/storage/emulated/0/Pictures/Facebook',
+      '/storage/emulated/0/Pictures/Facebook/Sent',
       '/storage/emulated/0/Pictures/Messenger',
+      '/storage/emulated/0/Pictures/Messenger/Sent',
+      '/storage/emulated/0/Pictures/Signal',
+      '/storage/emulated/0/Pictures/Signal/Sent',
       '/storage/emulated/0/Pictures/Twitter',
+      '/storage/emulated/0/Pictures/Twitter/Sent',
       '/storage/emulated/0/Pictures/X',
       '/storage/emulated/0/Pictures/Reddit',
       '/storage/emulated/0/Pictures/Pinterest',
       '/storage/emulated/0/Pictures/TikTok',
       '/storage/emulated/0/Movies/TikTok',
+      '/storage/emulated/0/Pictures/LINE',
+      '/storage/emulated/0/Pictures/LINE/Sent',
+      '/storage/emulated/0/viber/media/Viber Images',
+      '/storage/emulated/0/viber/media/Viber Images/Sent',
+      '/storage/emulated/0/viber/media/Viber Videos',
+      '/storage/emulated/0/viber/media/Viber Videos/Sent',
+      '/storage/emulated/0/Pictures/Messages',
+      '/storage/emulated/0/Pictures/Messages/Sent',
 
       // Photo & Video Editing Apps (Lightroom, Snapseed, Canva, InShot, CapCut, VSCO)
       '/storage/emulated/0/Pictures/Lightroom',
@@ -1051,7 +1076,7 @@ class MediaScannerService {
       }
     }
 
-    // Dynamically discover subdirectories under Pictures, DCIM, Movies, Download, and Documents
+    // Dynamically discover subdirectories under Pictures, DCIM, Movies, Download, Documents, and Android/media
     final allDirsToScan = Set<String>.from(targetDirs);
     for (final baseDir in [
       '/storage/emulated/0/Pictures',
@@ -1059,6 +1084,7 @@ class MediaScannerService {
       '/storage/emulated/0/Movies',
       '/storage/emulated/0/Download',
       '/storage/emulated/0/Documents',
+      '/storage/emulated/0/Android/media',
     ]) {
       try {
         final d = Directory(baseDir);
@@ -1070,6 +1096,12 @@ class MediaScannerService {
                 continue;
               }
               allDirsToScan.add(sub.path);
+              try {
+                final sentSub = Directory('${sub.path}/Sent');
+                if (await sentSub.exists()) allDirsToScan.add(sentSub.path);
+                final privSub = Directory('${sub.path}/Private');
+                if (await privSub.exists()) allDirsToScan.add(privSub.path);
+              } catch (_) {}
             }
           }
         }
@@ -1131,7 +1163,23 @@ class MediaScannerService {
           existingFileNamesMap[fileName] = 'disk_${path.hashCode.abs()}';
           var folderName = dirPath.split(RegExp(r'[\\/]')).last;
           
-          if (dirPath.contains('WhatsApp') && folderName.toLowerCase() == 'private') {
+          if (folderName.toLowerCase() == 'sent') {
+            final parts = dirPath.split(RegExp(r'[\\/]'));
+            if (parts.length >= 2) {
+              final grandParent = parts[parts.length - 2];
+              if (grandParent.isNotEmpty && grandParent != '0' && grandParent != 'emulated') {
+                folderName = '$grandParent Sent';
+              }
+            }
+          } else if (folderName.toLowerCase() == 'private') {
+            final parts = dirPath.split(RegExp(r'[\\/]'));
+            if (parts.length >= 2) {
+              final grandParent = parts[parts.length - 2];
+              if (grandParent.isNotEmpty && grandParent != '0' && grandParent != 'emulated') {
+                folderName = '$grandParent Private';
+              }
+            }
+          } else if (dirPath.contains('WhatsApp') && folderName.toLowerCase() == 'private') {
             folderName = 'WhatsApp Private';
           } else if (folderName == 'DCIM') {
             folderName = 'Camera';
