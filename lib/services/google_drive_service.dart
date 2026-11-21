@@ -182,7 +182,8 @@ class GoogleDriveService {
       // Check root PhoneBackup and deviceFolder exist
       final escapedRoot = rootFolderName.replaceAll("'", "\\'");
       final rootList = await api.files.list(
-        q: "name = '$escapedRoot' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        q: "name = '$escapedRoot' and 'root' in parents and "
+            "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
         spaces: 'drive',
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
@@ -601,7 +602,8 @@ class GoogleDriveService {
       final api = await _getDriveApi();
       final escapedRoot = rootFolderName.replaceAll("'", "\\'");
       final rootList = await api.files.list(
-        q: "name = '$escapedRoot' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        q: "name = '$escapedRoot' and 'root' in parents and "
+            "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
         spaces: 'drive',
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
@@ -750,7 +752,8 @@ class GoogleDriveService {
       // 1. Verify root PhoneBackup exists and is not trashed
       final escapedRoot = rootFolderName.replaceAll("'", "\\'");
       final rootList = await api.files.list(
-        q: "name = '$escapedRoot' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        q: "name = '$escapedRoot' and 'root' in parents and "
+            "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
         spaces: 'drive',
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
@@ -803,11 +806,17 @@ class GoogleDriveService {
     }
   }
 
-  /// Fetches a mapping of all accessible media files on Google Drive
-  /// Returns a record with Map of {fileName: fileId}, Set of {fileId}, and success flag
-  Future<({Map<String, String> filesByName, Set<String> fileIds, bool success})> fetchRemoteFilesSummary() async {
+  /// Fetches stable identities for app-owned Drive media.
+  Future<({
+    Set<String> fileIds,
+    Map<String, String> idsByLocalId,
+    Map<String, String> idsByContentHash,
+    bool success,
+  })> fetchRemoteFilesSummary() async {
     final filesByName = <String, String>{};
     final fileIds = <String>{};
+    final idsByLocalId = <String, String>{};
+    final idsByContentHash = <String, String>{};
     bool success = false;
 
     try {
@@ -815,7 +824,12 @@ class GoogleDriveService {
       if (!exists) {
         debugPrint('[GoogleDriveService] Device backup folder does not exist or is trashed on Drive.');
         _cachedRemoteFilesByName = filesByName;
-        return (filesByName: filesByName, fileIds: fileIds, success: true);
+        return (
+          fileIds: fileIds,
+          idsByLocalId: idsByLocalId,
+          idsByContentHash: idsByContentHash,
+          success: true,
+        );
       }
 
       final api = await _getDriveApi();
@@ -835,9 +849,18 @@ class GoogleDriveService {
         if (list.files != null) {
           for (final f in list.files!) {
             if (f.id != null && f.id!.isNotEmpty) {
-              fileIds.add(f.id!);
+              final fileId = f.id!;
+              fileIds.add(fileId);
               if (f.name != null && f.name!.isNotEmpty) {
-                filesByName[f.name!] = f.id!;
+                filesByName[f.name!] = fileId;
+              }
+              final localId = f.appProperties?['localId'];
+              final contentHash = f.appProperties?['contentHash'];
+              if (localId != null && localId.isNotEmpty) {
+                idsByLocalId[localId] = fileId;
+              }
+              if (contentHash != null && contentHash.isNotEmpty) {
+                idsByContentHash[contentHash] = fileId;
               }
             }
           }
@@ -854,7 +877,12 @@ class GoogleDriveService {
       }
     }
 
-    return (filesByName: filesByName, fileIds: fileIds, success: success);
+    return (
+      fileIds: fileIds,
+      idsByLocalId: idsByLocalId,
+      idsByContentHash: idsByContentHash,
+      success: success,
+    );
   }
 
   /// Uploads media file to Google Drive under PhoneBackup/`Device`/Photos or Videos

@@ -194,8 +194,9 @@ class BackupSyncService {
               final remoteSummary = await _drive.fetchRemoteFilesSummary();
               if (remoteSummary.success) {
                 final resetCount = await _db.reconcileWithDrive(
-                  remoteSummary.filesByName,
                   remoteSummary.fileIds,
+                  remoteSummary.idsByLocalId,
+                  remoteSummary.idsByContentHash,
                 );
                 debugPrint(
                   '[BackupSyncService] Reconciled with Drive: $resetCount items reset to READY_TO_UPLOAD',
@@ -277,8 +278,9 @@ class BackupSyncService {
             final remoteSummary = await _drive.fetchRemoteFilesSummary();
             if (remoteSummary.success) {
               await _db.reconcileWithDrive(
-                remoteSummary.filesByName,
                 remoteSummary.fileIds,
+                remoteSummary.idsByLocalId,
+                remoteSummary.idsByContentHash,
               );
             } else {
               debugPrint(
@@ -457,8 +459,9 @@ class BackupSyncService {
               final remoteSummary = await _drive.fetchRemoteFilesSummary();
               if (remoteSummary.success) {
                 final resetCount = await _db.reconcileWithDrive(
-                  remoteSummary.filesByName,
                   remoteSummary.fileIds,
+                  remoteSummary.idsByLocalId,
+                  remoteSummary.idsByContentHash,
                 );
                 if (resetCount > 0) {
                   debugPrint(

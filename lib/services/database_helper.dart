@@ -235,14 +235,14 @@ class DatabaseHelper {
   /// 2. Any file marked UPLOADED locally that NO LONGER exists on Google Drive (e.g. user deleted it from Drive)
   ///    is reset to READY_TO_UPLOAD (automatically re-syncs to Drive without needing to clear app data).
   Future<int> reconcileWithDrive(
-    Map<String, String> remoteFilesByName,
     Set<String> remoteFileIds,
+    Map<String, String> remoteIdsByLocalId,
+    Map<String, String> remoteIdsByContentHash,
   ) async {
     final db = await database;
 
     // A. For any item currently marked UPLOADED in SQLite:
-    // If its driveFileId is NOT in remoteFileIds AND its fileName is NOT in remoteFilesByName,
-    // the user deleted it from Drive! Reset it to READY_TO_UPLOAD so it automatically re-syncs.
+    // If its stable Drive ID no longer exists, the user deleted it from Drive.
     final uploadedItems = await db.query(
       AppConstants.manifestTableName,
       where: 'upload_state = ?',
@@ -253,10 +253,7 @@ class DatabaseHelper {
     for (final map in uploadedItems) {
       final driveId = map['drive_file_id'] as String?;
       final localId = map['local_id'] as String;
-      final fileName = map['file_name'] as String;
-
-      if ((driveId == null || !remoteFileIds.contains(driveId)) &&
-          !remoteFilesByName.containsKey(fileName)) {
+      if (driveId == null || !remoteFileIds.contains(driveId)) {
         toResetIds.add(localId);
       }
     }
@@ -280,7 +277,7 @@ class DatabaseHelper {
     }
 
     // B. For any item in SQLite NOT marked UPLOADED:
-    // If it ALREADY exists on Google Drive, mark it UPLOADED with the remote ID!
+    // Mark pending media uploaded only when stable app metadata proves identity.
     final pendingItems = await db.query(
       AppConstants.manifestTableName,
       where: 'upload_state != ?',
@@ -289,10 +286,14 @@ class DatabaseHelper {
 
     final toMarkUploaded = <String, String>{};
     for (final map in pendingItems) {
-      final fileName = map['file_name'] as String;
       final localId = map['local_id'] as String;
-      if (remoteFilesByName.containsKey(fileName)) {
-        toMarkUploaded[localId] = remoteFilesByName[fileName]!;
+      final contentHash = map['content_hash'] as String?;
+      final remoteId = remoteIdsByLocalId[localId] ??
+          (contentHash == null || contentHash.isEmpty
+              ? null
+              : remoteIdsByContentHash[contentHash]);
+      if (remoteId != null) {
+        toMarkUploaded[localId] = remoteId;
       }
     }
 
