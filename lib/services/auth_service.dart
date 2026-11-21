@@ -363,7 +363,15 @@ class AuthService {
   void _startAutoRenewalTimer() {
     _renewalTimer?.cancel();
     _renewalTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
-      await ensureValidToken();
+      try {
+        await ensureValidToken();
+      } catch (e) {
+        // Offline/temporary OAuth failures must never escape an async timer.
+        // The stored refresh token remains intact for the next network cycle.
+        debugPrint(
+          '[AuthService] Silent token renewal deferred until connectivity returns: $e',
+        );
+      }
     });
   }
 

@@ -52,14 +52,23 @@ void onStartBackgroundService(ServiceInstance service) async {
   });
 
   // Instant trigger when network reconnects after being offline
-  Connectivity().onConnectivityChanged.listen((results) {
-    final hasConnection = results.isNotEmpty &&
-        !results.every((r) => r == ConnectivityResult.none);
-    if (hasConnection) {
-      debugPrint('[BackgroundSync] Network connected detected. Triggering immediate sync cycle...');
-      _runBackgroundSyncCycle(service);
-    }
-  });
+  Connectivity().onConnectivityChanged.listen(
+    (results) {
+      final hasConnection = results.isNotEmpty &&
+          !results.every((r) => r == ConnectivityResult.none);
+      if (hasConnection) {
+        debugPrint(
+          '[BackgroundSync] Network connected detected. Triggering immediate sync cycle...',
+        );
+        _runBackgroundSyncCycle(service);
+      }
+    },
+    onError: (Object error, StackTrace stackTrace) {
+      debugPrint(
+        '[BackgroundSync] Connectivity observer temporarily unavailable: $error',
+      );
+    },
+  );
 
   // Background check every 45 seconds to catch newly downloaded/saved media and sync pending items
   Timer.periodic(const Duration(seconds: 45), (timer) async {
