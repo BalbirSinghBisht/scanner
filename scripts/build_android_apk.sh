@@ -10,6 +10,9 @@ echo "=========================================================="
 OAUTH_ARGS=()
 if [ -f "oauth_secrets.json" ]; then
   OAUTH_ARGS+=("--dart-define-from-file=oauth_secrets.json")
+elif [ -n "$GITHUB_ACTIONS" ]; then
+  echo "ERROR: oauth_secrets.json is required for a GitHub release build."
+  exit 1
 fi
 
 if [ -n "$GITHUB_RUN_NUMBER" ]; then

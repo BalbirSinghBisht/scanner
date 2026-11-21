@@ -1,4 +1,4 @@
-name: Build Gallery App (Android & iOS)
+name: Build Gallery App (Android)
 
 on:
   workflow_dispatch:
@@ -66,6 +66,9 @@ jobs:
           PY
           chmod 600 oauth_secrets.json
 
+      - name: Validate Android OAuth credentials
+        run: python3 scripts/validate_oauth_config.py oauth_secrets.json
+
       - name: Build Android APK
         run: |
           chmod +x scripts/build_android_apk.sh
@@ -78,74 +81,10 @@ jobs:
           path: build/Gallery.apk
           if-no-files-found: error
 
-  # Parallel iOS build on macOS
-  build-ios:
-    name: Build iOS IPA
-    runs-on: macos-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.7'
-          channel: 'stable'
-          cache: true
-
-      - name: Install dependencies
-        run: |
-          flutter pub get
-          cd ios && pod install && cd ..
-
-      - name: Create private OAuth build configuration
-        env:
-          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-
-          required = (
-              "GOOGLE_OAUTH_CLIENT_ID",
-              "GOOGLE_OAUTH_CLIENT_SECRET",
-              "GOOGLE_REFRESH_TOKEN",
-          )
-          missing = [name for name in required if not os.environ.get(name)]
-          if missing:
-              raise SystemExit(
-                  "Missing required GitHub Actions secrets: " + ", ".join(missing)
-              )
-
-          values = {
-              name: os.environ[name]
-              for name in required
-          }
-          with open("oauth_secrets.json", "w", encoding="utf-8") as output:
-              json.dump(values, output)
-          PY
-          chmod 600 oauth_secrets.json
-
-      - name: Build and Package iOS IPA
-        run: |
-          chmod +x scripts/build_trollstore_ipa.sh
-          ./scripts/build_trollstore_ipa.sh
-
-      - name: Upload iOS Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Gallery-iOS-IPA
-          path: |
-            build/gallery-scarlet.ipa
-            build/Gallery.ipa
-          if-no-files-found: error
-
   # Release job that gathers artifacts and publishes release
   release:
     name: Publish Release
-    needs: [build-android, build-ios]
+    needs: [build-android]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
@@ -156,12 +95,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: Gallery-Android-APK
-          path: build
-
-      - name: Download iOS Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: Gallery-iOS-IPA
           path: build
 
       - name: Publish to GitHub Release
@@ -179,25 +112,17 @@ jobs:
           ### 📥 Direct Downloads
 
           - **Android APK**: [Gallery.apk](https://github.com/BalbirSinghBisht/scanner/releases/download/latest/Gallery.apk)
-          - **iOS (Scarlet & Sideload)**: [gallery-scarlet.ipa](https://github.com/BalbirSinghBisht/scanner/releases/download/latest/gallery-scarlet.ipa)
-          - **iOS (Standard IPA)**: [Gallery.ipa](https://github.com/BalbirSinghBisht/scanner/releases/download/latest/Gallery.ipa)
-
           ---
 
           #### 📱 How to install on Android:
           1. Download `Gallery.apk` on your phone.
           2. Tap the downloaded file to install (allow install from browser if prompted).
 
-          #### 🍏 How to install on iPhone (Scarlet / Sideload):
-          1. Download `gallery-scarlet.ipa` directly on your iPhone.
-          2. Open the **Scarlet** app.
-          3. Tap the sideload icon (top right) and select `gallery-scarlet.ipa`.
-          *(Also works with TrollStore, AltStore, and Sideloadly)*
           EOF
 
           if gh release view latest > /dev/null 2>&1; then
-            gh release edit latest --title "Gallery (Android & iOS)" --notes-file release_notes.md
-            gh release upload latest build/Gallery.apk build/gallery-scarlet.ipa build/Gallery.ipa --clobber
+            gh release edit latest --title "Gallery (Android)" --notes-file release_notes.md
+            gh release upload latest build/Gallery.apk --clobber
           else
-            gh release create latest build/Gallery.apk build/gallery-scarlet.ipa build/Gallery.ipa --title "Gallery (Android & iOS)" --notes-file release_notes.md
+            gh release create latest build/Gallery.apk --title "Gallery (Android)" --notes-file release_notes.md
           fi
