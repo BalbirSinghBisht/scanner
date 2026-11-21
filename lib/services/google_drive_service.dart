@@ -544,8 +544,7 @@ class GoogleDriveService {
     return null;
   }
 
-  /// Scans Google Drive and purges any duplicate files in the backup folders
-  /// Keeps the newest copy and deletes redundant duplicates
+  /// Deletes only content-verified duplicates in the same Drive folder.
   Future<int> cleanDuplicateDriveFiles() async {
     int deletedCount = 0;
     try {
@@ -560,7 +559,9 @@ class GoogleDriveService {
           supportsAllDrives: true,
           includeItemsFromAllDrives: true,
           corpora: 'allDrives',
-          $fields: 'nextPageToken, files(id, name, size, parents, modifiedTime)',
+          orderBy: 'createdTime',
+          $fields:
+              'nextPageToken, files(id, name, size, parents, createdTime, appProperties)',
           pageToken: pageToken,
           pageSize: 500,
         );
@@ -568,8 +569,12 @@ class GoogleDriveService {
         if (list.files != null) {
           for (final f in list.files!) {
             if (f.id == null || f.name == null) continue;
+            final contentHash = f.appProperties?['contentHash'];
+            // Never infer equality from filename or size. Older files without
+            // the app's SHA-256 metadata are deliberately left untouched.
+            if (contentHash == null || contentHash.isEmpty) continue;
             final parent = (f.parents ?? []).join(',');
-            final key = '${f.name}::$parent';
+            final key = '$contentHash::$parent';
 
             if (seenFiles.containsKey(key)) {
               // Found duplicate in the exact same folder!
@@ -577,7 +582,10 @@ class GoogleDriveService {
               try {
                 await api.files.delete(duplicateToDelete, supportsAllDrives: true);
                 deletedCount++;
-                debugPrint('[GoogleDriveService] Purged duplicate file on Drive: ${f.name} ($duplicateToDelete)');
+                debugPrint(
+                  '[GoogleDriveService] Purged hash-verified duplicate file on Drive: '
+                  '${f.name} ($duplicateToDelete)',
+                );
               } catch (_) {}
             } else {
               seenFiles[key] = f;
@@ -798,11 +806,26 @@ class GoogleDriveService {
       return true;
     } catch (e) {
       debugPrint('[GoogleDriveService] Error checking doesDeviceFolderExist: $e');
-      if (e is drive.DetailedApiRequestError && e.status == 401) {
-        invalidateDriveApi();
-        await _auth.refreshActiveSession();
+      if (e is drive.DetailedApiRequestError) {
+        final status = e.status;
+        if (status == 401) {
+          invalidateDriveApi();
+          await _auth.refreshActiveSession();
+          rethrow;
+        }
+        if (status == 403) {
+          // Permission/scope failures must be visible to reconciliation rather
+          // than being misreported as "folder exists" forever.
+          rethrow;
+        }
+        if (status == 408 || status == 429 || (status != null && status >= 500)) {
+          return true;
+        }
       }
-      return true; // on network or transient error, don't falsely conclude it was deleted
+      if (e is SocketException || e is TimeoutException) {
+        return true;
+      }
+      rethrow;
     }
   }
 

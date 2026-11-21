@@ -814,11 +814,21 @@ class DatabaseHelper {
       ];
       for (final term in privateTerms) {
         conditions.add(
+          "LOWER(COALESCE(folder_name, '')) != ? AND "
           "LOWER(COALESCE(folder_name, '')) NOT LIKE ? AND "
+          "LOWER(COALESCE(folder_name, '')) NOT LIKE ? AND "
+          "LOWER(COALESCE(folder_name, '')) NOT LIKE ? AND "
+          "LOWER(COALESCE(folder_name, '')) NOT LIKE ? AND "
+          "LOWER(COALESCE(local_file_path, '')) NOT LIKE ? AND "
           "LOWER(COALESCE(local_file_path, '')) NOT LIKE ?",
         );
-        args.add('%$term%');
-        args.add('%$term%');
+        args.add(term);
+        args.add('$term %');
+        args.add('% $term');
+        args.add('% $term %');
+        args.add('%($term)%');
+        args.add('%/$term/%');
+        args.add('%/.$term/%');
       }
     }
 
