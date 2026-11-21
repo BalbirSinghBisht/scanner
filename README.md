@@ -51,6 +51,44 @@ Mobile Device (Android / iOS)
 
 ## Google Cloud Console Setup
 
+### Credential security and long-lived access
+
+Never commit an access token, refresh token, OAuth client secret, API key, or
+service-account JSON. This repository reads private build values from an
+ignored `oauth_secrets.json` file and stores runtime tokens in Android Keystore
+or Apple Keychain.
+
+Google access tokens normally last about one hour; the app renews them with a
+refresh token. To avoid Google's seven-day refresh-token limit, change the
+OAuth consent screen publishing status from **Testing** to **In production**
+before generating the refresh token. A refresh token can still be revoked by
+the user or Google and therefore cannot be guaranteed to last forever.
+
+Create `oauth_secrets.json` locally from the tracked safe template (the real
+file is ignored by Git):
+
+```bash
+cp oauth_secrets.example.json oauth_secrets.json
+```
+
+```json
+{
+  "GOOGLE_OAUTH_CLIENT_ID": "your-client-id",
+  "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+  "GOOGLE_REFRESH_TOKEN": "your-production-refresh-token"
+}
+```
+
+The repository build scripts automatically use this file. For a direct Flutter
+build, pass it explicitly:
+
+```bash
+flutter build apk --release --dart-define-from-file=oauth_secrets.json
+```
+
+For CI, generate the JSON file from encrypted repository/environment secrets
+during the workflow; never add the generated file to Git.
+
 To test with your own Google account and Google Drive storage:
 
 ### 1. Create Google Cloud Project

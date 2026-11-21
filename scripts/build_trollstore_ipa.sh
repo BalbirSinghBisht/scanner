@@ -11,11 +11,16 @@ SCARLET_IPA="build/gallery-scarlet.ipa"
 rm -f "$OUTPUT_IPA" "$SCARLET_IPA" build/*.ipa
 
 # 2. Build iOS release without codesigning (with auto-incrementing build number in CI)
+OAUTH_ARGS=()
+if [ -f "oauth_secrets.json" ]; then
+  OAUTH_ARGS+=("--dart-define-from-file=oauth_secrets.json")
+fi
+
 if [ -n "$GITHUB_RUN_NUMBER" ]; then
   echo "Using CI build number: $GITHUB_RUN_NUMBER"
-  flutter build ios --release --no-codesign --build-number="$GITHUB_RUN_NUMBER"
+  flutter build ios --release --no-codesign --build-number="$GITHUB_RUN_NUMBER" "${OAUTH_ARGS[@]}"
 else
-  flutter build ios --release --no-codesign
+  flutter build ios --release --no-codesign "${OAUTH_ARGS[@]}"
 fi
 
 # 3. Package Runner.app into standard IPA Payload structure

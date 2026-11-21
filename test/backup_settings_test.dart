@@ -15,8 +15,8 @@ void main() {
       expect(settings.localOnlyMode, isFalse);
       expect(settings.syncLockedFolders, isTrue);
       expect(settings.customFolderPaths, isEmpty);
-      expect(settings.wifiOnlyForOldMedia, isTrue);
-      expect(settings.oldMediaMonthsThreshold, equals(6));
+      expect(settings.wifiOnlyForOldMedia, isFalse);
+      expect(settings.oldMediaMonthsThreshold, equals(2));
     });
 
     test('serializes and deserializes correctly', () {
@@ -32,8 +32,8 @@ void main() {
         localOnlyMode: true,
         syncLockedFolders: true,
         customFolderPaths: ['/storage/emulated/0/MyPrivateVault'],
-        wifiOnlyForOldMedia: true,
-        oldMediaMonthsThreshold: 6,
+        wifiOnlyForOldMedia: false,
+        oldMediaMonthsThreshold: 2,
       );
 
       final map = original.toMap();
@@ -48,54 +48,58 @@ void main() {
       expect(restored.maxVideoSizeBytes, equals(104857600));
       expect(restored.localOnlyMode, isTrue);
       expect(restored.syncLockedFolders, isTrue);
-      expect(restored.customFolderPaths, contains('/storage/emulated/0/MyPrivateVault'));
-      expect(restored.wifiOnlyForOldMedia, isTrue);
-      expect(restored.oldMediaMonthsThreshold, equals(6));
+      expect(
+        restored.customFolderPaths,
+        contains('/storage/emulated/0/MyPrivateVault'),
+      );
+      expect(restored.wifiOnlyForOldMedia, isFalse);
+      expect(restored.oldMediaMonthsThreshold, equals(2));
     });
 
-    test('correctly identifies media older and newer than threshold cutoff', () {
+    test(
+      'correctly identifies media older and newer than threshold cutoff',
+      () {
+        final now = DateTime.now();
+        const settings = BackupSettings(
+          wifiOnlyForOldMedia: false,
+          oldMediaMonthsThreshold: 2,
+        );
+
+        final cutoff = DateTime(
+          now.year,
+          now.month - settings.oldMediaMonthsThreshold,
+          now.day,
+          now.hour,
+          now.minute,
+          now.second,
+        );
+
+        final recentItem = MediaItem(
+          localId: 'recent_1',
+          fileName: 'recent.jpg',
+          mediaType: AppMediaType.image,
+          mimeType: 'image/jpeg',
+          fileSize: 1024,
+          createdAt: now.subtract(const Duration(days: 30)),
+        );
+
+        final oldItem = MediaItem(
+          localId: 'old_1',
+          fileName: 'old.jpg',
+          mediaType: AppMediaType.image,
+          mimeType: 'image/jpeg',
+          fileSize: 1024,
+          createdAt: now.subtract(const Duration(days: 220)),
+        );
+
+        expect(recentItem.createdAt.isAfter(cutoff), isTrue);
+        expect(oldItem.createdAt.isBefore(cutoff), isTrue);
+      },
+    );
+
+    test('only media inside the rolling two-month window is eligible', () {
       final now = DateTime.now();
-      const settings = BackupSettings(
-        wifiOnlyForOldMedia: true,
-        oldMediaMonthsThreshold: 6,
-      );
-
-      final cutoff = DateTime(
-        now.year,
-        now.month - settings.oldMediaMonthsThreshold,
-        now.day,
-        now.hour,
-        now.minute,
-        now.second,
-      );
-
-      final recentItem = MediaItem(
-        localId: 'recent_1',
-        fileName: 'recent.jpg',
-        mediaType: AppMediaType.image,
-        mimeType: 'image/jpeg',
-        fileSize: 1024,
-        createdAt: now.subtract(const Duration(days: 30)),
-      );
-
-      final oldItem = MediaItem(
-        localId: 'old_1',
-        fileName: 'old.jpg',
-        mediaType: AppMediaType.image,
-        mimeType: 'image/jpeg',
-        fileSize: 1024,
-        createdAt: now.subtract(const Duration(days: 220)),
-      );
-
-      expect(recentItem.createdAt.isAfter(cutoff), isTrue);
-      expect(oldItem.createdAt.isBefore(cutoff), isTrue);
-    });
-
-    test('prioritizes recent 6-month media in tier 1 before tier 2 older backlog', () {
-      final now = DateTime.now();
-      const settings = BackupSettings(
-        oldMediaMonthsThreshold: 6,
-      );
+      const settings = BackupSettings(oldMediaMonthsThreshold: 2);
 
       final cutoff = DateTime(
         now.year,
@@ -129,25 +133,32 @@ void main() {
           mediaType: AppMediaType.image,
           mimeType: 'image/jpeg',
           fileSize: 1024,
-          createdAt: now.subtract(const Duration(days: 90)),
+          createdAt: now.subtract(const Duration(days: 30)),
         ),
       ];
 
-      // Tier 1 items must strictly be >= cutoff
-      final tier1Items = queue.where((it) => it.createdAt.isAfter(cutoff) || it.createdAt.isAtSameMomentAs(cutoff)).toList();
-      tier1Items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final eligibleItems =
+          queue
+              .where(
+                (it) =>
+                    it.createdAt.isAfter(cutoff) ||
+                    it.createdAt.isAtSameMomentAs(cutoff),
+              )
+              .toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-      // Tier 2 items are older than cutoff
-      final tier2Items = queue.where((it) => it.createdAt.isBefore(cutoff)).toList();
+      final excludedItems = queue
+          .where((it) => it.createdAt.isBefore(cutoff))
+          .toList();
 
-      expect(tier1Items.length, equals(2));
-      expect(tier1Items.first.localId, equals('2')); // newest first
-      expect(tier1Items.last.localId, equals('3'));
-      expect(tier2Items.length, equals(1));
-      expect(tier2Items.first.localId, equals('1'));
+      expect(eligibleItems.length, equals(2));
+      expect(eligibleItems.first.localId, equals('2'));
+      expect(eligibleItems.last.localId, equals('3'));
+      expect(excludedItems.length, equals(1));
+      expect(excludedItems.first.localId, equals('1'));
     });
 
-    test('chunks 6-month media into 5 to 10 records per batch', () {
+    test('chunks eligible two-month media into Wi-Fi and mobile batches', () {
       final now = DateTime.now();
       final items = List.generate(
         23,
@@ -157,7 +168,7 @@ void main() {
           mediaType: AppMediaType.image,
           mimeType: 'image/jpeg',
           fileSize: 1024,
-          createdAt: now.subtract(Duration(days: i + 1)), // all within last 24 days (< 6 months)
+          createdAt: now.subtract(Duration(days: i + 1)),
         ),
       );
 
@@ -167,7 +178,9 @@ void main() {
 
       final wifiBatches = <List<MediaItem>>[];
       for (int i = 0; i < items.length; i += batchSizeWifi) {
-        wifiBatches.add(items.sublist(i, (i + batchSizeWifi).clamp(0, items.length)));
+        wifiBatches.add(
+          items.sublist(i, (i + batchSizeWifi).clamp(0, items.length)),
+        );
       }
 
       expect(wifiBatches.length, equals(3));
@@ -177,7 +190,9 @@ void main() {
 
       final mobileBatches = <List<MediaItem>>[];
       for (int i = 0; i < items.length; i += batchSizeMobile) {
-        mobileBatches.add(items.sublist(i, (i + batchSizeMobile).clamp(0, items.length)));
+        mobileBatches.add(
+          items.sublist(i, (i + batchSizeMobile).clamp(0, items.length)),
+        );
       }
 
       expect(mobileBatches.length, equals(5));

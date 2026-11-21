@@ -274,47 +274,26 @@ class AuthService {
       final clientId = await _settings.getCustomOAuthClientId();
       final clientSecret = await _settings.getCustomOAuthClientSecret();
 
-      http.Response response;
-      if (clientId != null &&
-          clientId.isNotEmpty &&
-          clientSecret != null &&
-          clientSecret.isNotEmpty) {
-        response = await http.post(
-          Uri.parse('https://oauth2.googleapis.com/token'),
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: {
-            'client_id': clientId,
-            'client_secret': clientSecret,
-            'refresh_token': _directRefreshToken!,
-            'grant_type': 'refresh_token',
-          },
+      if (clientId == null ||
+          clientId.isEmpty ||
+          clientSecret == null ||
+          clientSecret.isEmpty) {
+        debugPrint(
+          'Direct token refresh requires private OAuth build credentials.',
         );
-
-        if (response.statusCode != 200) {
-          try {
-            final playgroundResponse = await http.post(
-              Uri.parse('https://developers.google.com/oauthplayground/refreshAccessToken'),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'token_uri': 'https://oauth2.googleapis.com/token',
-                'refresh_token': _directRefreshToken,
-              }),
-            );
-            if (playgroundResponse.statusCode == 200) {
-              response = playgroundResponse;
-            }
-          } catch (_) {}
-        }
-      } else {
-        response = await http.post(
-          Uri.parse('https://developers.google.com/oauthplayground/refreshAccessToken'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'token_uri': 'https://oauth2.googleapis.com/token',
-            'refresh_token': _directRefreshToken,
-          }),
-        );
+        return null;
       }
+
+      final response = await http.post(
+        Uri.parse('https://oauth2.googleapis.com/token'),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {
+          'client_id': clientId,
+          'client_secret': clientSecret,
+          'refresh_token': _directRefreshToken!,
+          'grant_type': 'refresh_token',
+        },
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -334,20 +313,22 @@ class AuthService {
         }
       } else {
         debugPrint('Token auto-renewal failed with status ${response.statusCode}: ${response.body}');
-        if (response.body.contains('invalid_grant') || response.body.contains('expired or revoked')) {
-          if (_directRefreshToken != SettingsRepository.defaultRefreshToken &&
-              SettingsRepository.defaultRefreshToken.isNotEmpty) {
-            debugPrint('Falling back to default verified refresh token...');
-            _directRefreshToken = SettingsRepository.defaultRefreshToken;
-            await _settings.saveDirectRefreshToken(SettingsRepository.defaultRefreshToken);
-            return await refreshDirectAccessToken();
-          }
+        if (response.body.contains('invalid_grant') ||
+            response.body.contains('expired or revoked')) {
+          _hasExpiredDirectCredentials();
         }
       }
     } catch (e) {
       debugPrint('Error auto-renewing access token: $e');
     }
     return null;
+  }
+
+  void _hasExpiredDirectCredentials() {
+    debugPrint(
+      'Google refresh token is expired or revoked. Generate a new token from '
+      'an OAuth consent screen published to Production.',
+    );
   }
 
   /// Starts a periodic background timer that automatically renews the token before it expires

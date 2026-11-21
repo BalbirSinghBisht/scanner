@@ -1,10 +1,13 @@
 import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/backup_settings.dart';
 
 class SettingsRepository {
   static final SettingsRepository instance = SettingsRepository._init();
   SettingsRepository._init();
+
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
 
   static const String _keySettings = 'app_backup_settings';
   static const String _keyLastScan = 'app_last_scan_time';
@@ -16,21 +19,43 @@ class SettingsRepository {
   static const String _keyTokenExpiryMs = 'app_token_expiry_ms';
   static const String _keyServiceAccountJson = 'app_service_account_json';
 
-  // Default API Key provided by user
-  static const String defaultApiKey = 'AIzaSyCL7eP6FDTJ7zFD8gXD1EIMzG3hPL1jZRA';
-
-  // Active OAuth Refresh Token for zero-login automatic renewal
-  static final String defaultRefreshToken =
-      '4h2OhtRRBJ_zLMrmaAk4dYPYKbMS7VcC9QdMVtgeq__gho90gnbdd8lrDdZFJWoK_-trI9L-FwNSABGAARAIYgC-uvyLr1sLFcg0//1'
-          .split('')
-          .reversed
-          .join();
-
-  // OAuth Client ID & Secret from Google Cloud Project
+  // Build-time seeds are intentionally empty in source. Supply them through
+  // --dart-define-from-file=oauth_secrets.json for a private build. Tokens are
+  // persisted in Android Keystore / Apple Keychain after first launch.
+  static const String defaultApiKey =
+      String.fromEnvironment('GOOGLE_API_KEY');
+  static const String defaultRefreshToken =
+      String.fromEnvironment('GOOGLE_REFRESH_TOKEN');
   static const String defaultOAuthClientId =
-      '531769640142-tjrucpod4c11c6jam7apnmq0nlbsr9an.apps.googleusercontent.com';
+      String.fromEnvironment('GOOGLE_OAUTH_CLIENT_ID');
   static const String defaultOAuthClientSecret =
-      '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';
+      String.fromEnvironment('GOOGLE_OAUTH_CLIENT_SECRET');
+
+  Future<String?> _readSecureOrMigrate(String key) async {
+    final secureValue = await _secureStorage.read(key: key);
+    if (secureValue != null && secureValue.isNotEmpty) return secureValue;
+
+    // One-time migration for installations created before secure storage was
+    // enabled. Remove the plaintext SharedPreferences copy after migration.
+    final prefs = await SharedPreferences.getInstance();
+    final legacyValue = prefs.getString(key);
+    if (legacyValue != null && legacyValue.isNotEmpty) {
+      await _secureStorage.write(key: key, value: legacyValue);
+      await prefs.remove(key);
+      return legacyValue;
+    }
+    return null;
+  }
+
+  Future<void> _writeSecure(String key, String? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(key);
+    if (value != null && value.isNotEmpty) {
+      await _secureStorage.write(key: key, value: value);
+    } else {
+      await _secureStorage.delete(key: key);
+    }
+  }
 
   Future<BackupSettings> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -62,83 +87,63 @@ class SettingsRepository {
   }
 
   Future<String?> getCustomOAuthClientId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyOAuthClientId) ??
+    if (defaultOAuthClientId.isNotEmpty) {
+      await _writeSecure(_keyOAuthClientId, defaultOAuthClientId);
+      return defaultOAuthClientId;
+    }
+    return await _readSecureOrMigrate(_keyOAuthClientId) ??
         (defaultOAuthClientId.isNotEmpty ? defaultOAuthClientId : null);
   }
 
   Future<void> saveCustomOAuthClientId(String? clientId) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (clientId != null && clientId.isNotEmpty) {
-      await prefs.setString(_keyOAuthClientId, clientId);
-    } else {
-      await prefs.remove(_keyOAuthClientId);
-    }
+    await _writeSecure(_keyOAuthClientId, clientId);
   }
 
   Future<String?> getCustomOAuthClientSecret() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyOAuthClientSecret) ??
+    if (defaultOAuthClientSecret.isNotEmpty) {
+      await _writeSecure(_keyOAuthClientSecret, defaultOAuthClientSecret);
+      return defaultOAuthClientSecret;
+    }
+    return await _readSecureOrMigrate(_keyOAuthClientSecret) ??
         (defaultOAuthClientSecret.isNotEmpty ? defaultOAuthClientSecret : null);
   }
 
   Future<void> saveCustomOAuthClientSecret(String? secret) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (secret != null && secret.isNotEmpty) {
-      await prefs.setString(_keyOAuthClientSecret, secret);
-    } else {
-      await prefs.remove(_keyOAuthClientSecret);
-    }
+    await _writeSecure(_keyOAuthClientSecret, secret);
   }
 
   Future<String> getGoogleApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyGoogleApiKey) ?? defaultApiKey;
+    if (defaultApiKey.isNotEmpty) {
+      await _writeSecure(_keyGoogleApiKey, defaultApiKey);
+      return defaultApiKey;
+    }
+    return await _readSecureOrMigrate(_keyGoogleApiKey) ?? defaultApiKey;
   }
 
   Future<void> saveGoogleApiKey(String apiKey) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyGoogleApiKey, apiKey);
+    await _writeSecure(_keyGoogleApiKey, apiKey);
   }
 
   Future<String?> getDirectAccessToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(_keyDirectAccessToken);
-    if (token != null && token.isNotEmpty) return token;
-    return null;
+    return await _readSecureOrMigrate(_keyDirectAccessToken);
   }
 
   Future<void> saveDirectAccessToken(String? token) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (token != null && token.isNotEmpty) {
-      await prefs.setString(_keyDirectAccessToken, token);
-    } else {
-      await prefs.remove(_keyDirectAccessToken);
-    }
+    await _writeSecure(_keyDirectAccessToken, token);
   }
 
   Future<String?> getDirectRefreshToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(_keyDirectRefreshToken);
-    // Discard revoked or stale legacy tokens in preferences and automatically use the verified never-expiring defaultRefreshToken
-    if (token != null &&
-        (token.startsWith('1//04aU_FXDujX8N') ||
-         token.startsWith('1//0gxjYbmQaTSpeCgY') ||
-         (defaultRefreshToken.isNotEmpty && token != defaultRefreshToken))) {
-      await prefs.setString(_keyDirectRefreshToken, defaultRefreshToken);
+    if (defaultRefreshToken.isNotEmpty) {
+      await _writeSecure(_keyDirectRefreshToken, defaultRefreshToken);
       return defaultRefreshToken;
     }
+    final token = await _readSecureOrMigrate(_keyDirectRefreshToken);
     if (token != null && token.isNotEmpty) return token;
     return defaultRefreshToken.isNotEmpty ? defaultRefreshToken : null;
   }
 
   Future<void> saveDirectRefreshToken(String? token) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (token != null && token.isNotEmpty) {
-      await prefs.setString(_keyDirectRefreshToken, token);
-    } else {
-      await prefs.remove(_keyDirectRefreshToken);
-    }
+    await _writeSecure(_keyDirectRefreshToken, token);
   }
 
   Future<DateTime?> getTokenExpiry() async {
@@ -157,8 +162,7 @@ class SettingsRepository {
   }
 
   Future<Map<String, dynamic>?> getServiceAccountJson() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonStr = prefs.getString(_keyServiceAccountJson);
+    final jsonStr = await _readSecureOrMigrate(_keyServiceAccountJson);
     if (jsonStr != null) {
       try {
         return jsonDecode(jsonStr) as Map<String, dynamic>;
@@ -168,11 +172,9 @@ class SettingsRepository {
   }
 
   Future<void> saveServiceAccountJson(Map<String, dynamic>? jsonMap) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (jsonMap != null) {
-      await prefs.setString(_keyServiceAccountJson, jsonEncode(jsonMap));
-    } else {
-      await prefs.remove(_keyServiceAccountJson);
-    }
+    await _writeSecure(
+      _keyServiceAccountJson,
+      jsonMap == null ? null : jsonEncode(jsonMap),
+    );
   }
 }

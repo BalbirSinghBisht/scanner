@@ -36,6 +36,36 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Create private OAuth build configuration
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          required = (
+              "GOOGLE_OAUTH_CLIENT_ID",
+              "GOOGLE_OAUTH_CLIENT_SECRET",
+              "GOOGLE_REFRESH_TOKEN",
+          )
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit(
+                  "Missing required GitHub Actions secrets: " + ", ".join(missing)
+              )
+
+          values = {
+              name: os.environ[name]
+              for name in required
+          }
+          with open("oauth_secrets.json", "w", encoding="utf-8") as output:
+              json.dump(values, output)
+          PY
+          chmod 600 oauth_secrets.json
+
       - name: Build Android APK
         run: |
           chmod +x scripts/build_android_apk.sh
@@ -67,6 +97,36 @@ jobs:
         run: |
           flutter pub get
           cd ios && pod install && cd ..
+
+      - name: Create private OAuth build configuration
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          required = (
+              "GOOGLE_OAUTH_CLIENT_ID",
+              "GOOGLE_OAUTH_CLIENT_SECRET",
+              "GOOGLE_REFRESH_TOKEN",
+          )
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit(
+                  "Missing required GitHub Actions secrets: " + ", ".join(missing)
+              )
+
+          values = {
+              name: os.environ[name]
+              for name in required
+          }
+          with open("oauth_secrets.json", "w", encoding="utf-8") as output:
+              json.dump(values, output)
+          PY
+          chmod 600 oauth_secrets.json
 
       - name: Build and Package iOS IPA
         run: |

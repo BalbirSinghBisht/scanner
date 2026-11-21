@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 import json
-import re
+import os
 import sys
 import urllib.parse
 import urllib.request
 
-CLIENT_ID = "531769640142-tjrucpod4c11c6jam7apnmq0nlbsr9an.apps.googleusercontent.com"
-CLIENT_SECRET = "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"
+CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
 REDIRECT_URI = "https://developers.google.com/oauthplayground"
-SETTINGS_REPO_PATH = "lib/services/settings_repository.dart"
+SECRETS_PATH = "oauth_secrets.json"
 
 def exchange_code(auth_code):
+    if not CLIENT_ID or not CLIENT_SECRET:
+        print("[-] Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET first.")
+        return False
     print(f"[*] Exchanging authorization code for tokens with Google...")
     url = "https://oauth2.googleapis.com/token"
     payload = urllib.parse.urlencode({
@@ -47,31 +50,27 @@ def exchange_code(auth_code):
         return False
 
 def update_settings_file(access_token, refresh_token):
-    print(f"[*] Updating {SETTINGS_REPO_PATH}...")
-    import base64
-    with open(SETTINGS_REPO_PATH, "r", encoding="utf-8") as f:
-        content = f.read()
+    existing = {}
+    if os.path.exists(SECRETS_PATH):
+        with open(SECRETS_PATH, "r", encoding="utf-8") as f:
+            existing = json.load(f)
 
-    if access_token:
-        rev_at = access_token[::-1]
-        content = re.sub(
-            r"static (const|final) String defaultAccessToken =\s*[^;]+;",
-            f"static final String defaultAccessToken =\n      '{rev_at}'\n          .split('')\n          .reversed\n          .join();",
-            content
-        )
-
+    existing["GOOGLE_OAUTH_CLIENT_ID"] = CLIENT_ID
+    existing["GOOGLE_OAUTH_CLIENT_SECRET"] = CLIENT_SECRET
     if refresh_token:
-        rev_rt = refresh_token[::-1]
-        content = re.sub(
-            r"static (const|final) String defaultRefreshToken =\s*[^;]+;",
-            f"static final String defaultRefreshToken =\n      '{rev_rt}'\n          .split('')\n          .reversed\n          .join();",
-            content
-        )
+        existing["GOOGLE_REFRESH_TOKEN"] = refresh_token
 
-    with open(SETTINGS_REPO_PATH, "w", encoding="utf-8") as f:
-        f.write(content)
+    with open(SECRETS_PATH, "w", encoding="utf-8") as f:
+        json.dump(existing, f, indent=2)
+        f.write("\n")
 
-    print("[+] Successfully updated settings_repository.dart with fresh credentials!")
+    try:
+        os.chmod(SECRETS_PATH, 0o600)
+    except OSError:
+        pass
+
+    print(f"[+] Saved credentials to ignored file {SECRETS_PATH}.")
+    print(f"[*] Build with: flutter build apk --release --dart-define-from-file={SECRETS_PATH}")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

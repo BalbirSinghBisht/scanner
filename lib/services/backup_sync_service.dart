@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../core/constants/app_constants.dart';
 import '../core/errors/app_exceptions.dart';
 import '../models/backup_settings.dart';
@@ -106,7 +108,10 @@ class BackupSyncService {
   }
 
   /// Waits until network constraints are met, retrying every 15 seconds without pausing background sync.
-  Future<bool> _waitForNetwork(BackupSettings settings, SharedPreferences prefs) async {
+  Future<bool> _waitForNetwork(
+    BackupSettings settings,
+    SharedPreferences prefs,
+  ) async {
     var networkOk = await _device.isNetworkPermitted(settings);
     if (networkOk) {
       if (_isWaitingForNetwork) {
@@ -117,25 +122,29 @@ class BackupSyncService {
     }
 
     _isWaitingForNetwork = true;
-    debugPrint('Internet or Wi-Fi is off. Retrying in 15 seconds to check connection...');
+    debugPrint(
+      'Internet or Wi-Fi is off. Retrying in 15 seconds to check connection...',
+    );
 
     while (!networkOk && _isSyncing && !_isPaused) {
-      _progressController.add(UploadProgressEvent(
-        item: MediaItem(
-          localId: 'network_waiting',
-          fileName: 'Waiting for connection',
-          mediaType: AppMediaType.other,
-          mimeType: 'text/plain',
-          fileSize: 0,
-          createdAt: DateTime.now(),
+      _progressController.add(
+        UploadProgressEvent(
+          item: MediaItem(
+            localId: 'network_waiting',
+            fileName: 'Waiting for connection',
+            mediaType: AppMediaType.other,
+            mimeType: 'text/plain',
+            fileSize: 0,
+            createdAt: DateTime.now(),
+          ),
+          bytesSent: 0,
+          totalBytes: 0,
+          progress: 0.0,
+          statusMessage: settings.wifiOnly
+              ? 'Waiting for Wi-Fi (retrying every 15s)...'
+              : 'Waiting for internet (retrying every 15s)...',
         ),
-        bytesSent: 0,
-        totalBytes: 0,
-        progress: 0.0,
-        statusMessage: settings.wifiOnly
-            ? 'Waiting for Wi-Fi (retrying every 15s)...'
-            : 'Waiting for internet (retrying every 15s)...',
-      ));
+      );
 
       // Keep lock refreshed and count down 15 seconds before retrying
       for (int i = 0; i < 15 && _isSyncing && !_isPaused; i++) {
@@ -151,7 +160,9 @@ class BackupSyncService {
         debugPrint('Internet / Wi-Fi restored! Resuming backup sync...');
         return true;
       }
-      debugPrint('Internet / Wi-Fi still unavailable. Retrying again in 15 seconds...');
+      debugPrint(
+        'Internet / Wi-Fi still unavailable. Retrying again in 15 seconds...',
+      );
     }
 
     _isWaitingForNetwork = false;
@@ -165,12 +176,16 @@ class BackupSyncService {
   }) async {
     if (_inProcessSyncLock || _isSyncing) {
       if (isManualTrigger) {
-        debugPrint('[BackupSyncService] Manual sync trigger received while continuous sync is active. Re-checking Google Drive...');
+        debugPrint(
+          '[BackupSyncService] Manual sync trigger received while continuous sync is active. Re-checking Google Drive...',
+        );
         if (!settings.localOnlyMode && _auth.isAuthenticated) {
           try {
             final folderExists = await _drive.doesDeviceFolderExist();
             if (!folderExists) {
-              debugPrint('[BackupSyncService] Device folder removed on Drive! Resetting all items to READY_TO_UPLOAD...');
+              debugPrint(
+                '[BackupSyncService] Device folder removed on Drive! Resetting all items to READY_TO_UPLOAD...',
+              );
               await _drive.clearFolderCache();
               await _db.resetAllUploadedToReady();
               await _drive.deleteEmptyDriveFolders();
@@ -182,12 +197,16 @@ class BackupSyncService {
                   remoteSummary.filesByName,
                   remoteSummary.fileIds,
                 );
-                debugPrint('[BackupSyncService] Reconciled with Drive: $resetCount items reset to READY_TO_UPLOAD');
+                debugPrint(
+                  '[BackupSyncService] Reconciled with Drive: $resetCount items reset to READY_TO_UPLOAD',
+                );
               }
             }
             await _indexSentAndBackgroundMedia(settings);
           } catch (e) {
-            debugPrint('[BackupSyncService] Manual trigger reconciliation error: $e');
+            debugPrint(
+              '[BackupSyncService] Manual trigger reconciliation error: $e',
+            );
           }
         }
       } else {
@@ -247,7 +266,9 @@ class BackupSyncService {
         try {
           final folderExists = await _drive.doesDeviceFolderExist();
           if (!folderExists) {
-            debugPrint('[BackupSyncService] Device folder removed on Drive! Resetting all items to READY_TO_UPLOAD...');
+            debugPrint(
+              '[BackupSyncService] Device folder removed on Drive! Resetting all items to READY_TO_UPLOAD...',
+            );
             await _drive.clearFolderCache();
             await _db.resetAllUploadedToReady();
           } else {
@@ -260,7 +281,9 @@ class BackupSyncService {
                 remoteSummary.fileIds,
               );
             } else {
-              debugPrint('[BackupSyncService] Skipping Drive reconciliation: remote query failed or unauthenticated.');
+              debugPrint(
+                '[BackupSyncService] Skipping Drive reconciliation: remote query failed or unauthenticated.',
+              );
             }
           }
         } catch (e) {
@@ -283,14 +306,18 @@ class BackupSyncService {
           await _drive.cleanDuplicateDriveFolders();
           await _drive.deleteEmptyDriveFolders();
         } catch (e) {
-          debugPrint('[BackupSyncService] Upfront folder pre-creation warning: $e');
+          debugPrint(
+            '[BackupSyncService] Upfront folder pre-creation warning: $e',
+          );
         }
       }
 
       // 5. Continuous Library Observer:
       // Listens for any new photos/videos taken while syncing is active and immediately indexes them
       _scanner.startObservingLibraryChanges(() async {
-        debugPrint('[BackupSyncService] New media detected on device! Indexing and prioritizing...');
+        debugPrint(
+          '[BackupSyncService] New media detected on device! Indexing and prioritizing...',
+        );
         try {
           await _scanner.scanMedia(isBackground: true);
           await _indexSentAndBackgroundMedia(settings);
@@ -304,7 +331,9 @@ class BackupSyncService {
       final batchSize = isWifi
           ? AppConstants.batchSizeWifi
           : AppConstants.batchSizeMobile;
-      debugPrint('Starting continuous batched backup (batch size: $batchSize records, Wi-Fi: $isWifi, Order: DESC)...');
+      debugPrint(
+        'Starting continuous batched backup (batch size: $batchSize records, Wi-Fi: $isWifi, Order: DESC)...',
+      );
 
       await _runBatchedSync(settings, prefs);
     } catch (e) {
@@ -339,86 +368,57 @@ class BackupSyncService {
 
       final batteryOk = await _device.isBatteryPermitted(settings);
       if (!batteryOk) {
-        debugPrint('[BackupSyncService] Battery constraints not met. Waiting for charger without stopping sync...');
-        _progressController.add(UploadProgressEvent(
-          item: MediaItem(
-            localId: 'battery_waiting',
-            fileName: 'Waiting for battery constraint',
-            mediaType: AppMediaType.other,
-            mimeType: 'text/plain',
-            fileSize: 0,
-            createdAt: DateTime.now(),
+        debugPrint(
+          '[BackupSyncService] Battery constraints not met. Waiting for charger without stopping sync...',
+        );
+        _progressController.add(
+          UploadProgressEvent(
+            item: MediaItem(
+              localId: 'battery_waiting',
+              fileName: 'Waiting for battery constraint',
+              mediaType: AppMediaType.other,
+              mimeType: 'text/plain',
+              fileSize: 0,
+              createdAt: DateTime.now(),
+            ),
+            bytesSent: 0,
+            totalBytes: 0,
+            progress: 0.0,
+            statusMessage: 'Battery low / charging required by settings. Waiting for power...',
           ),
-          bytesSent: 0,
-          totalBytes: 0,
-          progress: 0.0,
-          statusMessage: 'Battery low / charging required by settings. Waiting for power...',
-        ));
+        );
         await Future.delayed(const Duration(seconds: 15));
         continue;
       }
 
       final isWifi = await _device.isWifiConnection();
       final batchSize = isWifi
-          ? AppConstants.batchSizeWifi // 10
+          ? AppConstants
+                .batchSizeWifi // 10
           : AppConstants.batchSizeMobile; // 5
 
       final now = DateTime.now();
-      final thresholdMonths = settings.oldMediaMonthsThreshold > 0
-          ? settings.oldMediaMonthsThreshold
-          : 6;
-      final recentCutoff = DateTime(
+      // Only media inside the rolling two-month window is eligible on either
+      // Wi-Fi or mobile data. Older media stays local and is never claimed.
+      final syncCutoff = DateTime(
         now.year,
-        now.month - thresholdMonths,
+        now.month - BackupSettings.driveSyncWindowMonths,
         now.day,
         now.hour,
         now.minute,
         now.second,
       );
 
-      // Latest media always syncs FIRST: query strictly by created_at DESC!
-      // If mobile data and wifiOnlyForOldMedia is enabled, constrain to recent cutoff.
-      // On Wi-Fi (or if wifiOnlyForOldMedia is false), no cutoff constraint: full descending order!
-      final DateTime? minDate = (!isWifi && settings.wifiOnlyForOldMedia) ? recentCutoff : null;
-
       List<MediaItem> batch = await _db.claimNextPendingUploadBatch(
         includePhotos: settings.backupPhotos,
         includeVideos: settings.backupVideos,
         maxVideoSizeBytes: settings.maxVideoSizeBytes,
-        minCreatedAt: minDate,
+        minCreatedAt: syncCutoff,
         batchSize: batchSize,
       );
 
       // If batch is empty, check for Wi-Fi wait, quick scan for incoming media, or continuous monitoring
       if (batch.isEmpty) {
-        if (!isWifi && settings.wifiOnlyForOldMedia) {
-          final countOldPending = await _db.countPendingUploads(
-            includePhotos: settings.backupPhotos,
-            includeVideos: settings.backupVideos,
-            maxVideoSizeBytes: settings.maxVideoSizeBytes,
-            maxCreatedAt: recentCutoff,
-          );
-          if (countOldPending > 0) {
-            _progressController.add(UploadProgressEvent(
-              item: MediaItem(
-                localId: 'wifi_waiting_for_old',
-                fileName: 'Older media waiting for Wi-Fi',
-                mediaType: AppMediaType.other,
-                mimeType: 'text/plain',
-                fileSize: 0,
-                createdAt: DateTime.now(),
-              ),
-              bytesSent: 0,
-              totalBytes: 0,
-              progress: 0.0,
-              statusMessage:
-                  'Recent media synced. $countOldPending older items waiting for Wi-Fi...',
-            ));
-            await Future.delayed(const Duration(seconds: 10));
-            continue;
-          }
-        }
-
         // Before resting, run a quick scan to detect any newly captured photos or incoming media
         try {
           await _scanner.scanMedia(isBackground: true);
@@ -430,7 +430,7 @@ class BackupSyncService {
           includePhotos: settings.backupPhotos,
           includeVideos: settings.backupVideos,
           maxVideoSizeBytes: settings.maxVideoSizeBytes,
-          minCreatedAt: minDate,
+          minCreatedAt: syncCutoff,
           batchSize: batchSize,
         );
 
@@ -440,10 +440,14 @@ class BackupSyncService {
             try {
               final folderExists = await _drive.doesDeviceFolderExist();
               if (!folderExists) {
-                debugPrint('[BackupSyncService] Device folder removed on Google Drive! Clearing folder cache and resetting all uploads...');
+                debugPrint(
+                  '[BackupSyncService] Device folder removed on Google Drive! Clearing folder cache and resetting all uploads...',
+                );
                 await _drive.clearFolderCache();
                 final count = await _db.resetAllUploadedToReady();
-                debugPrint('[BackupSyncService] Reset $count items to READY_TO_UPLOAD. Restarting upload...');
+                debugPrint(
+                  '[BackupSyncService] Reset $count items to READY_TO_UPLOAD. Restarting upload...',
+                );
                 await _drive.deleteEmptyDriveFolders();
                 continue; // Loop again, claim newly reset items, and start uploading immediately!
               }
@@ -455,7 +459,9 @@ class BackupSyncService {
                   remoteSummary.fileIds,
                 );
                 if (resetCount > 0) {
-                  debugPrint('[BackupSyncService] Detected $resetCount files removed from Drive! Immediately resuming sync...');
+                  debugPrint(
+                    '[BackupSyncService] Detected $resetCount files removed from Drive! Immediately resuming sync...',
+                  );
                   await _drive.clearFolderCache();
                   continue; // Loop again, claim newly reset items, and start uploading immediately!
                 }
@@ -466,20 +472,22 @@ class BackupSyncService {
           }
 
           // All existing media is up to date: keep continuous sync active and wait for new media
-          _progressController.add(UploadProgressEvent(
-            item: MediaItem(
-              localId: 'continuous_sync_active',
-              fileName: 'All media backed up. Continuous sync active...',
-              mediaType: AppMediaType.other,
-              mimeType: 'text/plain',
-              fileSize: 0,
-              createdAt: DateTime.now(),
+          _progressController.add(
+            UploadProgressEvent(
+              item: MediaItem(
+                localId: 'continuous_sync_active',
+                fileName: 'All media backed up. Continuous sync active...',
+                mediaType: AppMediaType.other,
+                mimeType: 'text/plain',
+                fileSize: 0,
+                createdAt: DateTime.now(),
+              ),
+              bytesSent: 0,
+              totalBytes: 0,
+              progress: 1.0,
+              statusMessage: 'Up to date. Continuous sync active (monitoring for new media)...',
             ),
-            bytesSent: 0,
-            totalBytes: 0,
-            progress: 1.0,
-            statusMessage: 'Up to date. Continuous sync active (monitoring for new media)...',
-          ));
+          );
 
           // Pause 5 seconds while keeping lock active, never terminating!
           for (int s = 0; s < 5 && _isSyncing && !_isPaused; s++) {
@@ -489,12 +497,12 @@ class BackupSyncService {
         }
       }
 
-      debugPrint('[BackupSyncService] Syncing batch of ${batch.length} items strictly DESC (Wi-Fi: $isWifi)...');
+      debugPrint(
+        '[BackupSyncService] Syncing batch of ${batch.length} items strictly DESC (Wi-Fi: $isWifi)...',
+      );
 
       // Process all 5-10 items in the batch concurrently in parallel!
-      await Future.wait(
-        batch.map((item) => _uploadBatchItem(item, settings)),
-      );
+      await Future.wait(batch.map((item) => _uploadBatchItem(item, settings)));
     }
   }
 
@@ -513,7 +521,8 @@ class BackupSyncService {
     }
 
     // Heavy file guard (>50MB): serialize with other large files to protect mobile RAM and CPU
-    final isLargeFile = item.fileSize > AppConstants.defaultLargeFileThresholdBytes;
+    final isLargeFile =
+        item.fileSize > AppConstants.defaultLargeFileThresholdBytes;
     if (isLargeFile) {
       while (_isLargeUploadInFlight && _isSyncing && !_isPaused) {
         await Future.delayed(const Duration(milliseconds: 300));
@@ -530,10 +539,15 @@ class BackupSyncService {
     }
   }
 
-  Future<void> _processSingleUpload(MediaItem item, BackupSettings settings) async {
+  Future<void> _processSingleUpload(
+    MediaItem item,
+    BackupSettings settings,
+  ) async {
     final fileKey = '${item.fileName}_${item.fileSize}';
     if (_activeUploadingFileKeys.contains(fileKey)) {
-      debugPrint('[BackupSyncService] Skipping duplicate in-flight upload for $fileKey');
+      debugPrint(
+        '[BackupSyncService] Skipping duplicate in-flight upload for $fileKey',
+      );
       return;
     }
     _activeUploadingFileKeys.add(fileKey);
@@ -547,13 +561,15 @@ class BackupSyncService {
       lastAttemptAt: DateTime.now(),
     );
 
-    _progressController.add(UploadProgressEvent(
-      item: item,
-      bytesSent: 0,
-      totalBytes: item.fileSize,
-      progress: 0.0,
-      statusMessage: 'Preparing ${item.fileName}...',
-    ));
+    _progressController.add(
+      UploadProgressEvent(
+        item: item,
+        bytesSent: 0,
+        totalBytes: item.fileSize,
+        progress: 0.0,
+        statusMessage: 'Preparing ${item.fileName}...',
+      ),
+    );
 
     try {
       // 1. Resolve local file handle
@@ -583,23 +599,30 @@ class BackupSyncService {
       }
 
       if (file == null || !await file.exists()) {
-        debugPrint('Media item ${item.fileName} (${item.localId}) no longer exists on device storage - removing from database.');
+        debugPrint(
+          'Media item ${item.fileName} (${item.localId}) no longer exists on device storage - removing from database.',
+        );
         await _db.deleteMediaItem(item.localId);
         _scanner.invalidateCache(item.localId);
-        _progressController.add(UploadProgressEvent(
-          item: item,
-          bytesSent: 0,
-          totalBytes: item.fileSize,
-          progress: 0.0,
-          statusMessage: 'Item removed (deleted on device)',
-        ));
+        _progressController.add(
+          UploadProgressEvent(
+            item: item,
+            bytesSent: 0,
+            totalBytes: item.fileSize,
+            progress: 0.0,
+            statusMessage: 'Item removed (deleted on device)',
+          ),
+        );
         return;
       }
 
       // Check if this item was already marked UPLOADED (e.g. by duplicate resolution of an earlier item)
       final currentDbItem = await _db.getItemByLocalId(item.localId);
-      if (currentDbItem != null && currentDbItem.uploadState == UploadState.UPLOADED) {
-        debugPrint('[BackupSyncService] Item ${item.fileName} was already marked UPLOADED as a duplicate.');
+      if (currentDbItem != null &&
+          currentDbItem.uploadState == UploadState.UPLOADED) {
+        debugPrint(
+          '[BackupSyncService] Item ${item.fileName} was already marked UPLOADED as a duplicate.',
+        );
         return;
       }
 
@@ -615,7 +638,9 @@ class BackupSyncService {
       // 3. Duplicate check: has this identical hash or file name already been uploaded?
       if (hash != null) {
         final duplicateUploaded = await _db.getItemByContentHash(hash);
-        if (duplicateUploaded != null && duplicateUploaded.driveFileId != null && duplicateUploaded.localId != item.localId) {
+        if (duplicateUploaded != null &&
+            duplicateUploaded.driveFileId != null &&
+            duplicateUploaded.localId != item.localId) {
           // File is identical to an already uploaded file; avoid re-uploading
           await _db.updateUploadState(
             item.localId,
@@ -629,13 +654,16 @@ class BackupSyncService {
             driveFileId: duplicateUploaded.driveFileId!,
             survivingLocalId: item.localId,
           );
-          _progressController.add(UploadProgressEvent(
-            item: item,
-            bytesSent: item.fileSize,
-            totalBytes: item.fileSize,
-            progress: 1.0,
-            statusMessage: 'Skipped duplicate (identical to ${duplicateUploaded.fileName})',
-          ));
+          _progressController.add(
+            UploadProgressEvent(
+              item: item,
+              bytesSent: item.fileSize,
+              totalBytes: item.fileSize,
+              progress: 1.0,
+              statusMessage:
+                  'Skipped duplicate (identical to ${duplicateUploaded.fileName})',
+            ),
+          );
           return;
         }
 
@@ -649,7 +677,9 @@ class BackupSyncService {
             localId: item.localId,
           );
           if (existingDriveId != null) {
-            debugPrint('[BackupSyncService] Content of ${item.fileName} already exists on Drive ($existingDriveId)! Marking as uploaded.');
+            debugPrint(
+              '[BackupSyncService] Content of ${item.fileName} already exists on Drive ($existingDriveId)! Marking as uploaded.',
+            );
             await _db.updateUploadState(
               item.localId,
               UploadState.UPLOADED,
@@ -662,20 +692,24 @@ class BackupSyncService {
               driveFileId: existingDriveId,
               survivingLocalId: item.localId,
             );
-            _progressController.add(UploadProgressEvent(
-              item: item,
-              bytesSent: item.fileSize,
-              totalBytes: item.fileSize,
-              progress: 1.0,
-              statusMessage: 'Skipped duplicate (already on Google Drive)',
-            ));
+            _progressController.add(
+              UploadProgressEvent(
+                item: item,
+                bytesSent: item.fileSize,
+                totalBytes: item.fileSize,
+                progress: 1.0,
+                statusMessage: 'Skipped duplicate (already on Google Drive)',
+              ),
+            );
             return;
           }
         }
       }
 
       final duplicateByName = await _db.getItemByFileName(item.fileName);
-      if (duplicateByName != null && duplicateByName.driveFileId != null && duplicateByName.localId != item.localId) {
+      if (duplicateByName != null &&
+          duplicateByName.driveFileId != null &&
+          duplicateByName.localId != item.localId) {
         await _db.updateUploadState(
           item.localId,
           UploadState.UPLOADED,
@@ -689,13 +723,16 @@ class BackupSyncService {
           driveFileId: duplicateByName.driveFileId!,
           survivingLocalId: item.localId,
         );
-        _progressController.add(UploadProgressEvent(
-          item: item,
-          bytesSent: item.fileSize,
-          totalBytes: item.fileSize,
-          progress: 1.0,
-          statusMessage: 'Skipped duplicate (identical to ${duplicateByName.fileName})',
-        ));
+        _progressController.add(
+          UploadProgressEvent(
+            item: item,
+            bytesSent: item.fileSize,
+            totalBytes: item.fileSize,
+            progress: 1.0,
+            statusMessage:
+                'Skipped duplicate (identical to ${duplicateByName.fileName})',
+          ),
+        );
         return;
       }
 
@@ -710,13 +747,15 @@ class BackupSyncService {
           uploadedAt: DateTime.now(),
           errorMessage: 'Local-only test upload verified',
         );
-        _progressController.add(UploadProgressEvent(
-          item: item,
-          bytesSent: item.fileSize,
-          totalBytes: item.fileSize,
-          progress: 1.0,
-          statusMessage: 'Local-only backup verified',
-        ));
+        _progressController.add(
+          UploadProgressEvent(
+            item: item,
+            bytesSent: item.fileSize,
+            totalBytes: item.fileSize,
+            progress: 1.0,
+            statusMessage: 'Local-only backup verified',
+          ),
+        );
         return;
       }
 
@@ -725,13 +764,15 @@ class BackupSyncService {
         file: file,
         item: item.copyWith(contentHash: hash),
         onProgress: (sent, total) {
-          _progressController.add(UploadProgressEvent(
-            item: item,
-            bytesSent: sent,
-            totalBytes: total,
-            progress: total > 0 ? (sent / total).clamp(0.0, 1.0) : 0.0,
-            statusMessage: 'Uploading ${item.fileName}...',
-          ));
+          _progressController.add(
+            UploadProgressEvent(
+              item: item,
+              bytesSent: sent,
+              totalBytes: total,
+              progress: total > 0 ? (sent / total).clamp(0.0, 1.0) : 0.0,
+              statusMessage: 'Uploading ${item.fileName}...',
+            ),
+          );
         },
       );
 
@@ -762,16 +803,19 @@ class BackupSyncService {
         );
       }
 
-      _progressController.add(UploadProgressEvent(
-        item: item,
-        bytesSent: item.fileSize,
-        totalBytes: item.fileSize,
-        progress: 1.0,
-        statusMessage: 'Successfully backed up ${item.fileName}',
-      ));
+      _progressController.add(
+        UploadProgressEvent(
+          item: item,
+          bytesSent: item.fileSize,
+          totalBytes: item.fileSize,
+          progress: 1.0,
+          statusMessage: 'Successfully backed up ${item.fileName}',
+        ),
+      );
     } catch (e) {
       debugPrint('Failed to upload ${item.fileName}: $e');
-      final isAuth = e.toString().contains('401') ||
+      final isAuth =
+          e.toString().contains('401') ||
           e.toString().contains('authentication') ||
           e.toString().contains('UNAUTHENTICATED') ||
           e.toString().contains('invalid_grant') ||
@@ -779,8 +823,7 @@ class BackupSyncService {
           e is AuthException;
       if (isAuth) {
         _hasAuthError = true;
-        _authErrorMessage =
-            'Google Drive 5 TB token expired (401). Attempting background renewal.';
+        _authErrorMessage = 'Google Drive 5 TB token expired (401). Attempting background renewal.';
         try {
           final recovered = await _auth.refreshActiveSession();
           if (recovered) {
@@ -792,7 +835,8 @@ class BackupSyncService {
 
       // Check if failure was caused by internet / network dropping
       final isNetworkPermitted = await _device.isNetworkPermitted(settings);
-      final isNetworkError = !isNetworkPermitted ||
+      final isNetworkError =
+          !isNetworkPermitted ||
           e is SocketException ||
           e.toString().contains('SocketException') ||
           e.toString().contains('Network is unreachable') ||
@@ -802,7 +846,9 @@ class BackupSyncService {
           e.toString().contains('ClientException');
 
       if (isNetworkError) {
-        debugPrint('Upload of ${item.fileName} interrupted by network loss. Will retry every 15s.');
+        debugPrint(
+          'Upload of ${item.fileName} interrupted by network loss. Will retry every 15s.',
+        );
         // Do not increment retryCount for network dropouts; keep ready for retry
         await _db.updateUploadState(
           item.localId,
@@ -812,20 +858,23 @@ class BackupSyncService {
           lastAttemptAt: DateTime.now(),
         );
 
-        _progressController.add(UploadProgressEvent(
-          item: item,
-          bytesSent: 0,
-          totalBytes: item.fileSize,
-          progress: 0.0,
-          statusMessage: settings.wifiOnly
-              ? 'Waiting for Wi-Fi (retrying every 15s)...'
-              : 'Waiting for internet (retrying every 15s)...',
-        ));
+        _progressController.add(
+          UploadProgressEvent(
+            item: item,
+            bytesSent: 0,
+            totalBytes: item.fileSize,
+            progress: 0.0,
+            statusMessage: settings.wifiOnly
+                ? 'Waiting for Wi-Fi (retrying every 15s)...'
+                : 'Waiting for internet (retrying every 15s)...',
+          ),
+        );
         return;
       }
 
       final newRetryCount = item.retryCount + 1;
-      final finalState = (!isAuth && newRetryCount >= AppConstants.maxRetryAttempts)
+      final finalState =
+          (!isAuth && newRetryCount >= AppConstants.maxRetryAttempts)
           ? UploadState.FAILED
           : UploadState.RETRY_PENDING;
 
@@ -837,13 +886,17 @@ class BackupSyncService {
         lastAttemptAt: DateTime.now(),
       );
 
-      _progressController.add(UploadProgressEvent(
-        item: item,
-        bytesSent: 0,
-        totalBytes: item.fileSize,
-        progress: 0.0,
-        statusMessage: isAuth ? 'Authentication Expired (401)' : 'Failed: ${e.toString()}',
-      ));
+      _progressController.add(
+        UploadProgressEvent(
+          item: item,
+          bytesSent: 0,
+          totalBytes: item.fileSize,
+          progress: 0.0,
+          statusMessage: isAuth
+              ? 'Authentication Expired (401)'
+              : 'Failed: ${e.toString()}',
+        ),
+      );
 
       if (isAuth) {
         // Pause sync immediately so other files don't fail unnecessarily
@@ -869,23 +922,37 @@ class BackupSyncService {
 
   /// Derives an intuitive, platform-specific album folder name for Google Drive backups
   /// (e.g. WhatsApp Sent, WhatsApp Images, Telegram Video Sent, Messenger, Instagram, Signal Sent).
-  static String derivePlatformAlbumName(String filePath, {required bool isVideo}) {
+  static String derivePlatformAlbumName(
+    String filePath, {
+    required bool isVideo,
+  }) {
     final normalized = filePath.replaceAll(r'\', '/');
     final lower = normalized.toLowerCase();
     final isSent = lower.contains('/sent/') || lower.endsWith('/sent');
     final isPrivate = lower.contains('/private/') || lower.endsWith('/private');
 
     // WhatsApp Business
-    if (lower.contains('com.whatsapp.w4b') || lower.contains('whatsapp business')) {
-      if (isSent) return isVideo ? 'WhatsApp Business Video Sent' : 'WhatsApp Business Sent';
-      if (isPrivate) return isVideo ? 'WhatsApp Business Video Private' : 'WhatsApp Business Private';
+    if (lower.contains('com.whatsapp.w4b') ||
+        lower.contains('whatsapp business')) {
+      if (isSent) {
+        return isVideo
+            ? 'WhatsApp Business Video Sent'
+            : 'WhatsApp Business Sent';
+      }
+      if (isPrivate) {
+        return isVideo
+            ? 'WhatsApp Business Video Private'
+            : 'WhatsApp Business Private';
+      }
       return isVideo ? 'WhatsApp Business Video' : 'WhatsApp Business Images';
     }
 
     // WhatsApp
     if (lower.contains('com.whatsapp') || lower.contains('/whatsapp/')) {
       if (isSent) return isVideo ? 'WhatsApp Video Sent' : 'WhatsApp Sent';
-      if (isPrivate) return isVideo ? 'WhatsApp Video Private' : 'WhatsApp Private';
+      if (isPrivate) {
+        return isVideo ? 'WhatsApp Video Private' : 'WhatsApp Private';
+      }
       return isVideo ? 'WhatsApp Video' : 'WhatsApp Images';
     }
 
@@ -908,7 +975,8 @@ class BackupSyncService {
     }
 
     // Instagram
-    if (lower.contains('com.instagram.android') || lower.contains('/instagram/')) {
+    if (lower.contains('com.instagram.android') ||
+        lower.contains('/instagram/')) {
       if (isSent) return 'Instagram Sent';
       return isVideo ? 'Instagram Video' : 'Instagram';
     }
@@ -925,7 +993,8 @@ class BackupSyncService {
     }
 
     // Signal
-    if (lower.contains('org.thoughtcrime.securesms') || lower.contains('/signal/')) {
+    if (lower.contains('org.thoughtcrime.securesms') ||
+        lower.contains('/signal/')) {
       if (isSent) return isVideo ? 'Signal Video Sent' : 'Signal Sent';
       return isVideo ? 'Signal Video' : 'Signal';
     }
@@ -948,7 +1017,9 @@ class BackupSyncService {
     }
 
     // WeChat
-    if (lower.contains('weixin') || lower.contains('wechat') || lower.contains('tencent')) {
+    if (lower.contains('weixin') ||
+        lower.contains('wechat') ||
+        lower.contains('tencent')) {
       if (isSent) return 'WeChat Sent';
       return isVideo ? 'WeChat Video' : 'WeChat';
     }
@@ -970,7 +1041,8 @@ class BackupSyncService {
     }
 
     // Google Messages / RCS
-    if (lower.contains('com.google.android.apps.messaging') || lower.contains('/messages/')) {
+    if (lower.contains('com.google.android.apps.messaging') ||
+        lower.contains('/messages/')) {
       if (isSent) return 'Messages Sent';
       return isVideo ? 'Messages Video' : 'Messages';
     }
@@ -1003,7 +1075,10 @@ class BackupSyncService {
         final grandParent = parts[parts.length - 3];
         return '$grandParent Private';
       }
-      if (parent.isNotEmpty && parent != '0' && parent != 'emulated' && parent != 'storage') {
+      if (parent.isNotEmpty &&
+          parent != '0' &&
+          parent != 'emulated' &&
+          parent != 'storage') {
         return parent;
       }
     }
@@ -1180,7 +1255,11 @@ class BackupSyncService {
       } catch (_) {}
 
       // Dynamic Discovery: Check any Sent or Private subfolders inside Pictures, Movies, and DCIM
-      for (final rootBase in ['/storage/emulated/0/Pictures', '/storage/emulated/0/Movies', '/storage/emulated/0/DCIM']) {
+      for (final rootBase in [
+        '/storage/emulated/0/Pictures',
+        '/storage/emulated/0/Movies',
+        '/storage/emulated/0/DCIM',
+      ]) {
         try {
           final rootDir = Directory(rootBase);
           if (await rootDir.exists()) {
@@ -1197,7 +1276,15 @@ class BackupSyncService {
         } catch (_) {}
       }
 
-      const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif', '.bmp'};
+      const imageExtensions = {
+        '.jpg',
+        '.jpeg',
+        '.png',
+        '.webp',
+        '.heic',
+        '.gif',
+        '.bmp',
+      };
       const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp', '.avi', '.webm'};
 
       final existingPaths = await _db.getAllLocalFilePathsSet();
@@ -1207,12 +1294,18 @@ class BackupSyncService {
         final dir = Directory(dirPath);
         if (!await dir.exists()) continue;
 
-        await for (final entity in dir.list(recursive: false, followLinks: false)) {
+        await for (final entity in dir.list(
+          recursive: false,
+          followLinks: false,
+        )) {
           if (entity is! File) continue;
           final path = entity.path;
           final pLower = path.toLowerCase();
           // Filter out statuses, stickers, junk
-          if (pLower.contains('status') || pLower.contains('sticker') || pLower.contains('.thumb') || pLower.contains('.cache')) {
+          if (pLower.contains('status') ||
+              pLower.contains('sticker') ||
+              pLower.contains('.thumb') ||
+              pLower.contains('.cache')) {
             continue;
           }
           if (existingPaths.contains(path)) continue;
@@ -1285,7 +1378,9 @@ class BackupSyncService {
         }
       }
     } catch (e) {
-      debugPrint('[BackupSyncService] Background Platform media indexing warning: $e');
+      debugPrint(
+        '[BackupSyncService] Background Platform media indexing warning: $e',
+      );
     }
   }
 

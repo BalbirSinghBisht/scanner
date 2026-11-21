@@ -33,6 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local OAuth build inputs. Never commit tokens or client secrets.
+/oauth_secrets.json
+/oauth_secrets.*.json
+!/oauth_secrets.example.json
+
 # Symbolication related
 app.*.symbols
 

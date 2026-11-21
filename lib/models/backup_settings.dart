@@ -1,4 +1,7 @@
 class BackupSettings {
+  /// Media older than this rolling window is never eligible for Drive sync.
+  static const int driveSyncWindowMonths = 2;
+
   final bool autoBackupEnabled;
   final bool userConsentGiven;
   final bool wifiOnly;
@@ -27,8 +30,8 @@ class BackupSettings {
     this.isPaused = false,
     this.syncLockedFolders = true,
     this.customFolderPaths = const [],
-    this.wifiOnlyForOldMedia = true,
-    this.oldMediaMonthsThreshold = 6,
+    this.wifiOnlyForOldMedia = false,
+    this.oldMediaMonthsThreshold = driveSyncWindowMonths,
   });
 
   BackupSettings copyWith({
@@ -61,7 +64,8 @@ class BackupSettings {
       syncLockedFolders: syncLockedFolders ?? this.syncLockedFolders,
       customFolderPaths: customFolderPaths ?? this.customFolderPaths,
       wifiOnlyForOldMedia: wifiOnlyForOldMedia ?? this.wifiOnlyForOldMedia,
-      oldMediaMonthsThreshold: oldMediaMonthsThreshold ?? this.oldMediaMonthsThreshold,
+      oldMediaMonthsThreshold:
+          oldMediaMonthsThreshold ?? this.oldMediaMonthsThreshold,
     );
   }
 
@@ -97,12 +101,15 @@ class BackupSettings {
       localOnlyMode: map['localOnlyMode'] as bool? ?? false,
       isPaused: map['isPaused'] as bool? ?? false,
       syncLockedFolders: map['syncLockedFolders'] as bool? ?? true,
-      customFolderPaths: (map['customFolderPaths'] as List<dynamic>?)
+      customFolderPaths:
+          (map['customFolderPaths'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           const [],
-      wifiOnlyForOldMedia: map['wifiOnlyForOldMedia'] as bool? ?? true,
-      oldMediaMonthsThreshold: (map['oldMediaMonthsThreshold'] as num?)?.toInt() ?? 6,
+      // Keep reading old settings maps safely, but enforce the current sync
+      // policy: one fixed two-month window on Wi-Fi and mobile data.
+      wifiOnlyForOldMedia: false,
+      oldMediaMonthsThreshold: driveSyncWindowMonths,
     );
   }
 }
