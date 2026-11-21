@@ -37,4 +37,39 @@ void main() {
       );
     });
   });
+
+  group('Media scanner sticker policy', () {
+    test('excludes files and folders whose names identify stickers', () {
+      expect(
+        MediaScannerService.isStickerAsset(name: 'funny_sticker.webp'),
+        isTrue,
+      );
+      expect(
+        MediaScannerService.isStickerAsset(
+          name: 'asset.webp',
+          path:
+              '/storage/emulated/0/WhatsApp/Media/WhatsApp Stickers/asset.webp',
+        ),
+        isTrue,
+      );
+    });
+
+    test('excludes dedicated sticker formats', () {
+      expect(MediaScannerService.isStickerAsset(name: 'animated.tgs'), isTrue);
+      expect(
+        MediaScannerService.isStickerAsset(name: 'pack.wastickers'),
+        isTrue,
+      );
+    });
+
+    test('keeps ordinary WebP media outside sticker locations', () {
+      expect(
+        MediaScannerService.isStickerAsset(
+          name: 'photo.webp',
+          path: '/storage/emulated/0/Pictures/photo.webp',
+        ),
+        isFalse,
+      );
+    });
+  });
 }

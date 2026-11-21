@@ -1,7 +1,9 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+
 import '../core/constants/app_constants.dart';
 import '../models/media_item.dart';
 import '../models/dashboard_stats.dart';
@@ -174,7 +176,9 @@ class DatabaseHelper {
         duration_seconds INTEGER NOT NULL
       )
     ''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_expiring_expires_at ON expiring_media (expires_at)');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_expiring_expires_at ON expiring_media (expires_at)',
+    );
 
     // Paper Trail Documents table
     await db.execute('''
@@ -192,8 +196,12 @@ class DatabaseHelper {
         created_at INTEGER NOT NULL
       )
     ''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_paper_trail_local_id ON paper_trail_docs (local_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_paper_trail_warranty ON paper_trail_docs (warranty_expiry_date)');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_paper_trail_local_id ON paper_trail_docs (local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_paper_trail_warranty ON paper_trail_docs (warranty_expiry_date)',
+    );
   }
 
   Future<void> _onUpgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -217,17 +225,20 @@ class DatabaseHelper {
     final cutoffMs = DateTime.now()
         .subtract(Duration(minutes: timeoutMinutes))
         .millisecondsSinceEpoch;
-    return await db.rawUpdate('''
+    return await db.rawUpdate(
+      '''
       UPDATE ${AppConstants.manifestTableName}
       SET upload_state = ?,
           error_message = ?
       WHERE upload_state = ? AND (last_attempt_at IS NULL OR last_attempt_at < ?)
-    ''', [
-      UploadState.RETRY_PENDING.name,
-      'Interrupted transfer timed out. Queued for resume.',
-      UploadState.UPLOADING.name,
-      cutoffMs,
-    ]);
+    ''',
+      [
+        UploadState.RETRY_PENDING.name,
+        'Interrupted transfer timed out. Queued for resume.',
+        UploadState.UPLOADING.name,
+        cutoffMs,
+      ],
+    );
   }
 
   /// Reconciles local SQLite state with actual remote files on Google Drive.
@@ -273,7 +284,9 @@ class DatabaseHelper {
         );
       }
       await batch.commit(noResult: true);
-      debugPrint('[DatabaseHelper] Reset ${toResetIds.length} items to READY_TO_UPLOAD because they were removed from Google Drive.');
+      debugPrint(
+        '[DatabaseHelper] Reset ${toResetIds.length} items to READY_TO_UPLOAD because they were removed from Google Drive.',
+      );
     }
 
     // B. For any item in SQLite NOT marked UPLOADED:
@@ -288,7 +301,8 @@ class DatabaseHelper {
     for (final map in pendingItems) {
       final localId = map['local_id'] as String;
       final contentHash = map['content_hash'] as String?;
-      final remoteId = remoteIdsByLocalId[localId] ??
+      final remoteId =
+          remoteIdsByLocalId[localId] ??
           (contentHash == null || contentHash.isEmpty
               ? null
               : remoteIdsByContentHash[contentHash]);
@@ -312,7 +326,9 @@ class DatabaseHelper {
         );
       });
       await batch.commit(noResult: true);
-      debugPrint('Marked ${toMarkUploaded.length} items as UPLOADED because they already exist on Google Drive.');
+      debugPrint(
+        'Marked ${toMarkUploaded.length} items as UPLOADED because they already exist on Google Drive.',
+      );
     }
     return toResetIds.length;
   }
@@ -331,7 +347,9 @@ class DatabaseHelper {
       where: 'upload_state = ?',
       whereArgs: [UploadState.UPLOADED.name],
     );
-    debugPrint('[DatabaseHelper] resetAllUploadedToReady: reset $count items to READY_TO_UPLOAD');
+    debugPrint(
+      '[DatabaseHelper] resetAllUploadedToReady: reset $count items to READY_TO_UPLOAD',
+    );
     return count;
   }
 
@@ -371,7 +389,9 @@ class DatabaseHelper {
         ''',
       );
       if (count > 0) {
-        debugPrint('[DatabaseHelper] Purged $count audio/ringtone items from SQLite');
+        debugPrint(
+          '[DatabaseHelper] Purged $count audio/ringtone items from SQLite',
+        );
       }
       return count;
     } catch (e) {
@@ -485,7 +505,9 @@ class DatabaseHelper {
       ''');
 
       if (deletedCount > 0) {
-        debugPrint('[DatabaseHelper] Purged $deletedCount duplicate media records from manifest');
+        debugPrint(
+          '[DatabaseHelper] Purged $deletedCount duplicate media records from manifest',
+        );
       }
       return deletedCount;
     } catch (e) {
@@ -554,9 +576,7 @@ class DatabaseHelper {
     DateTime? uploadedAt,
   }) async {
     final db = await database;
-    final values = <String, dynamic>{
-      'upload_state': state.name,
-    };
+    final values = <String, dynamic>{'upload_state': state.name};
     if (driveFileId != null) values['drive_file_id'] = driveFileId;
     if (errorMessage != null) values['error_message'] = errorMessage;
     if (bytesUploaded != null) values['bytes_uploaded'] = bytesUploaded;
@@ -623,9 +643,7 @@ class DatabaseHelper {
     }
 
     if (maxVideoSizeBytes != null && maxVideoSizeBytes > 0) {
-      conditions.add(
-        '(media_type = ? OR (media_type = ? AND file_size <= ?))',
-      );
+      conditions.add('(media_type = ? OR (media_type = ? AND file_size <= ?))');
       args.add(AppMediaType.image.name);
       args.add(AppMediaType.video.name);
       args.add(maxVideoSizeBytes);
@@ -633,11 +651,22 @@ class DatabaseHelper {
 
     // Strictly exclude any audio files or ringtones from sync
     conditions.add("mime_type NOT LIKE 'audio/%'");
-    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
-    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
-    conditions.add("folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'");
-    conditions.add("folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'");
-    conditions.add("local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'");
+    conditions.add(
+      "file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'",
+    );
+    conditions.add(
+      "folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'",
+    );
+    conditions.add(
+      "folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'",
+    );
+    conditions.add(
+      "folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'",
+    );
+    conditions.add(
+      "local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'",
+    );
+    _addStickerSyncExclusions(conditions);
 
     final whereClause = conditions.join(' AND ');
 
@@ -683,9 +712,7 @@ class DatabaseHelper {
     }
 
     if (maxVideoSizeBytes != null && maxVideoSizeBytes > 0) {
-      conditions.add(
-        '(media_type = ? OR (media_type = ? AND file_size <= ?))',
-      );
+      conditions.add('(media_type = ? OR (media_type = ? AND file_size <= ?))');
       args.add(AppMediaType.image.name);
       args.add(AppMediaType.video.name);
       args.add(maxVideoSizeBytes);
@@ -703,11 +730,22 @@ class DatabaseHelper {
 
     // Strictly exclude any audio files or ringtones from sync
     conditions.add("mime_type NOT LIKE 'audio/%'");
-    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
-    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
-    conditions.add("folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'");
-    conditions.add("folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'");
-    conditions.add("local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'");
+    conditions.add(
+      "file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'",
+    );
+    conditions.add(
+      "folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'",
+    );
+    conditions.add(
+      "folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'",
+    );
+    conditions.add(
+      "folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'",
+    );
+    conditions.add(
+      "local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'",
+    );
+    _addStickerSyncExclusions(conditions);
 
     final whereClause = conditions.join(' AND ');
 
@@ -731,12 +769,13 @@ class DatabaseHelper {
       // Atomically transition to UPLOADING only if still READY or RETRY
       final updatedRows = await db.update(
         AppConstants.manifestTableName,
-        {
-          'upload_state': UploadState.UPLOADING.name,
-          'last_attempt_at': nowMs,
-        },
+        {'upload_state': UploadState.UPLOADING.name, 'last_attempt_at': nowMs},
         where: 'local_id = ? AND (upload_state = ? OR upload_state = ?)',
-        whereArgs: [item.localId, UploadState.READY_TO_UPLOAD.name, UploadState.RETRY_PENDING.name],
+        whereArgs: [
+          item.localId,
+          UploadState.READY_TO_UPLOAD.name,
+          UploadState.RETRY_PENDING.name,
+        ],
       );
 
       if (updatedRows > 0) {
@@ -787,9 +826,7 @@ class DatabaseHelper {
     }
 
     if (maxVideoSizeBytes != null && maxVideoSizeBytes > 0) {
-      conditions.add(
-        '(media_type = ? OR (media_type = ? AND file_size <= ?))',
-      );
+      conditions.add('(media_type = ? OR (media_type = ? AND file_size <= ?))');
       args.add(AppMediaType.image.name);
       args.add(AppMediaType.video.name);
       args.add(maxVideoSizeBytes);
@@ -805,12 +842,20 @@ class DatabaseHelper {
       args.add(maxCreatedAt.millisecondsSinceEpoch);
     }
 
-
     if (!includeLockedFolders) {
       const privateTerms = [
-        'private', 'locked', 'secret', 'hidden', 'vault', 'safe',
-        'safebox', 'privatesafe', 'keepsafe', 'galleryvault',
-        'calculatorvault', 'lockmypix',
+        'private',
+        'locked',
+        'secret',
+        'hidden',
+        'vault',
+        'safe',
+        'safebox',
+        'privatesafe',
+        'keepsafe',
+        'galleryvault',
+        'calculatorvault',
+        'lockmypix',
       ];
       for (final term in privateTerms) {
         conditions.add(
@@ -834,11 +879,22 @@ class DatabaseHelper {
 
     // Strictly exclude any audio files or ringtones from sync
     conditions.add("mime_type NOT LIKE 'audio/%'");
-    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
-    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
-    conditions.add("folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'");
-    conditions.add("folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'");
-    conditions.add("local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'");
+    conditions.add(
+      "file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'",
+    );
+    conditions.add(
+      "folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'",
+    );
+    conditions.add(
+      "folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'",
+    );
+    conditions.add(
+      "folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'",
+    );
+    conditions.add(
+      "local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'",
+    );
+    _addStickerSyncExclusions(conditions);
 
     final whereClause = conditions.join(' AND ');
 
@@ -865,7 +921,9 @@ class DatabaseHelper {
       final item = MediaItem.fromMap(map);
 
       // Intra-batch duplicate check: avoid claiming duplicate files within the same batch
-      if (item.contentHash != null && item.contentHash!.isNotEmpty && claimedHashes.contains(item.contentHash!)) {
+      if (item.contentHash != null &&
+          item.contentHash!.isNotEmpty &&
+          claimedHashes.contains(item.contentHash!)) {
         continue;
       }
 
@@ -878,7 +936,8 @@ class DatabaseHelper {
           limit: 1,
         );
         if (uploadedByHash.isNotEmpty) {
-          final existingDriveId = uploadedByHash.first['drive_file_id'] as String?;
+          final existingDriveId =
+              uploadedByHash.first['drive_file_id'] as String?;
           if (existingDriveId != null && existingDriveId.isNotEmpty) {
             await db.update(
               AppConstants.manifestTableName,
@@ -898,7 +957,11 @@ class DatabaseHelper {
         final activeUploadingByHash = await db.query(
           AppConstants.manifestTableName,
           where: 'content_hash = ? AND upload_state = ? AND local_id != ?',
-          whereArgs: [item.contentHash!, UploadState.UPLOADING.name, item.localId],
+          whereArgs: [
+            item.contentHash!,
+            UploadState.UPLOADING.name,
+            item.localId,
+          ],
           limit: 1,
         );
         if (activeUploadingByHash.isNotEmpty) {
@@ -909,22 +972,25 @@ class DatabaseHelper {
       // Atomically transition to UPLOADING only if still READY or RETRY
       final updatedRows = await db.update(
         AppConstants.manifestTableName,
-        {
-          'upload_state': UploadState.UPLOADING.name,
-          'last_attempt_at': nowMs,
-        },
+        {'upload_state': UploadState.UPLOADING.name, 'last_attempt_at': nowMs},
         where: 'local_id = ? AND (upload_state = ? OR upload_state = ?)',
-        whereArgs: [item.localId, UploadState.READY_TO_UPLOAD.name, UploadState.RETRY_PENDING.name],
+        whereArgs: [
+          item.localId,
+          UploadState.READY_TO_UPLOAD.name,
+          UploadState.RETRY_PENDING.name,
+        ],
       );
 
       if (updatedRows > 0) {
         if (item.contentHash != null && item.contentHash!.isNotEmpty) {
           claimedHashes.add(item.contentHash!);
         }
-        claimedItems.add(item.copyWith(
-          uploadState: UploadState.UPLOADING,
-          lastAttemptAt: DateTime.fromMillisecondsSinceEpoch(nowMs),
-        ));
+        claimedItems.add(
+          item.copyWith(
+            uploadState: UploadState.UPLOADING,
+            lastAttemptAt: DateTime.fromMillisecondsSinceEpoch(nowMs),
+          ),
+        );
       }
     }
 
@@ -959,9 +1025,7 @@ class DatabaseHelper {
     }
 
     if (maxVideoSizeBytes != null && maxVideoSizeBytes > 0) {
-      conditions.add(
-        '(media_type = ? OR (media_type = ? AND file_size <= ?))',
-      );
+      conditions.add('(media_type = ? OR (media_type = ? AND file_size <= ?))');
       args.add(AppMediaType.image.name);
       args.add(AppMediaType.video.name);
       args.add(maxVideoSizeBytes);
@@ -978,8 +1042,12 @@ class DatabaseHelper {
     }
 
     conditions.add("mime_type NOT LIKE 'audio/%'");
-    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
-    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
+    conditions.add(
+      "file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'",
+    );
+    conditions.add(
+      "folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'",
+    );
 
     final whereClause = conditions.join(' AND ');
 
@@ -1083,7 +1151,9 @@ class DatabaseHelper {
     return maps.map((m) => MediaItem.fromMap(m)).toList();
   }
 
-  Future<List<MediaItem>> getLargeFiles({int thresholdBytes = AppConstants.defaultLargeFileThresholdBytes}) async {
+  Future<List<MediaItem>> getLargeFiles({
+    int thresholdBytes = AppConstants.defaultLargeFileThresholdBytes,
+  }) async {
     final db = await database;
     final maps = await db.query(
       AppConstants.manifestTableName,
@@ -1174,16 +1244,22 @@ class DatabaseHelper {
   }) async {
     final db = await database;
 
-    final photoCountRes = await db.rawQuery('''
+    final photoCountRes = await db.rawQuery(
+      '''
       SELECT COUNT(*) as count FROM ${AppConstants.manifestTableName}
       WHERE media_type = ?
-    ''', [AppMediaType.image.name]);
+    ''',
+      [AppMediaType.image.name],
+    );
     final totalPhotos = Sqflite.firstIntValue(photoCountRes) ?? 0;
 
-    final videoCountRes = await db.rawQuery('''
+    final videoCountRes = await db.rawQuery(
+      '''
       SELECT COUNT(*) as count FROM ${AppConstants.manifestTableName}
       WHERE media_type = ?
-    ''', [AppMediaType.video.name]);
+    ''',
+      [AppMediaType.video.name],
+    );
     final totalVideos = Sqflite.firstIntValue(videoCountRes) ?? 0;
 
     final sizeRes = await db.rawQuery('''
@@ -1194,44 +1270,65 @@ class DatabaseHelper {
         ? rawSize.toInt()
         : (int.tryParse(rawSize?.toString() ?? '') ?? 0);
 
-    final uploadedRes = await db.rawQuery('''
+    final uploadedRes = await db.rawQuery(
+      '''
       SELECT COUNT(*) as count, SUM(file_size) as cloud_bytes
       FROM ${AppConstants.manifestTableName}
       WHERE upload_state = ?
-    ''', [UploadState.UPLOADED.name]);
+    ''',
+      [UploadState.UPLOADED.name],
+    );
     final uploadedCount = Sqflite.firstIntValue(uploadedRes) ?? 0;
-    final rawCloudBytes = uploadedRes.isNotEmpty ? uploadedRes.first['cloud_bytes'] : null;
+    final rawCloudBytes = uploadedRes.isNotEmpty
+        ? uploadedRes.first['cloud_bytes']
+        : null;
     final cloudBytes = rawCloudBytes is num
         ? rawCloudBytes.toInt()
         : (int.tryParse(rawCloudBytes?.toString() ?? '') ?? 0);
 
-    final pendingRes = await db.rawQuery('''
+    final pendingRes = await db.rawQuery(
+      '''
       SELECT COUNT(*) as count FROM ${AppConstants.manifestTableName}
       WHERE upload_state IN (?, ?)
-    ''', [UploadState.READY_TO_UPLOAD.name, UploadState.RETRY_PENDING.name]);
+    ''',
+      [UploadState.READY_TO_UPLOAD.name, UploadState.RETRY_PENDING.name],
+    );
     final pendingCount = Sqflite.firstIntValue(pendingRes) ?? 0;
 
-    final failedRes = await db.rawQuery('''
+    final failedRes = await db.rawQuery(
+      '''
       SELECT COUNT(*) as count FROM ${AppConstants.manifestTableName}
       WHERE upload_state = ?
-    ''', [UploadState.FAILED.name]);
+    ''',
+      [UploadState.FAILED.name],
+    );
     final failedCount = Sqflite.firstIntValue(failedRes) ?? 0;
 
-    final skippedRes = await db.rawQuery('''
+    final skippedRes = await db.rawQuery(
+      '''
       SELECT COUNT(*) as count FROM ${AppConstants.manifestTableName}
       WHERE upload_state = ?
-    ''', [UploadState.SKIPPED.name]);
+    ''',
+      [UploadState.SKIPPED.name],
+    );
     final skippedCount = Sqflite.firstIntValue(skippedRes) ?? 0;
 
-    final lastSuccessRes = await db.rawQuery('''
+    final lastSuccessRes = await db.rawQuery(
+      '''
       SELECT MAX(uploaded_at) as last_success
       FROM ${AppConstants.manifestTableName}
       WHERE upload_state = ?
-    ''', [UploadState.UPLOADED.name]);
-    final rawSuccess = lastSuccessRes.isNotEmpty ? lastSuccessRes.first['last_success'] : null;
+    ''',
+      [UploadState.UPLOADED.name],
+    );
+    final rawSuccess = lastSuccessRes.isNotEmpty
+        ? lastSuccessRes.first['last_success']
+        : null;
     DateTime? lastSuccessfulTime;
     if (rawSuccess is num) {
-      lastSuccessfulTime = DateTime.fromMillisecondsSinceEpoch(rawSuccess.toInt());
+      lastSuccessfulTime = DateTime.fromMillisecondsSinceEpoch(
+        rawSuccess.toInt(),
+      );
     } else if (rawSuccess is String) {
       final parsedInt = int.tryParse(rawSuccess);
       if (parsedInt != null) {
@@ -1280,13 +1377,16 @@ class DatabaseHelper {
 
   Future<void> resetAllFailedToReady() async {
     final db = await database;
-    await db.rawUpdate('''
+    await db.rawUpdate(
+      '''
       UPDATE ${AppConstants.manifestTableName}
       SET upload_state = ?,
           error_message = NULL,
           retry_count = 0
       WHERE upload_state = ?
-    ''', [UploadState.READY_TO_UPLOAD.name, UploadState.FAILED.name]);
+    ''',
+      [UploadState.READY_TO_UPLOAD.name, UploadState.FAILED.name],
+    );
   }
 
   Future<List<String>> getDistinctFolders() async {
@@ -1336,14 +1436,28 @@ class DatabaseHelper {
     // Exclude zero-byte or corrupt items, and exclude audio/ringtones
     conditions.add('file_size > 0');
     conditions.add("mime_type NOT LIKE 'audio/%'");
-    conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
-    conditions.add("folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'");
+    conditions.add(
+      "file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'",
+    );
+    conditions.add(
+      "folder_name != 'Ringtones' AND folder_name != 'Notifications' AND folder_name != 'Alarms'",
+    );
     conditions.add("folder_name IS NOT NULL AND folder_name != ''");
-    conditions.add("folder_name NOT LIKE '%.thumbnail%' AND folder_name NOT LIKE '%.thumbnails%' AND folder_name != 'thumbnails' AND folder_name != 'thumbnail'");
-    conditions.add("folder_name != '.thumbnails' AND folder_name != '.thumbnail' AND folder_name != '.cache' AND folder_name NOT LIKE '%.cache%'");
-    conditions.add("folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'");
-    conditions.add("folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'");
-    conditions.add("local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'");
+    conditions.add(
+      "folder_name NOT LIKE '%.thumbnail%' AND folder_name NOT LIKE '%.thumbnails%' AND folder_name != 'thumbnails' AND folder_name != 'thumbnail'",
+    );
+    conditions.add(
+      "folder_name != '.thumbnails' AND folder_name != '.thumbnail' AND folder_name != '.cache' AND folder_name NOT LIKE '%.cache%'",
+    );
+    conditions.add(
+      "folder_name NOT LIKE '%status%' AND folder_name NOT LIKE '%.status%'",
+    );
+    conditions.add(
+      "folder_name NOT LIKE '%sticker%' AND folder_name NOT LIKE '%.sticker%'",
+    );
+    conditions.add(
+      "local_file_path NOT LIKE '%/.Statuses%' AND local_file_path NOT LIKE '%/Statuses%' AND local_file_path NOT LIKE '%status%'",
+    );
 
     final whereClause = conditions.join(' AND ');
     final res = await db.rawQuery('''
@@ -1357,7 +1471,9 @@ class DatabaseHelper {
       final fName = row['folder_name'] as String?;
       final path = row['local_file_path'] as String?;
       final mTypeStr = row['media_type'] as String?;
-      final mType = mTypeStr == AppMediaType.video.name ? AppMediaType.video : AppMediaType.image;
+      final mType = mTypeStr == AppMediaType.video.name
+          ? AppMediaType.video
+          : AppMediaType.image;
 
       final item = MediaItem(
         localId: '',
@@ -1414,16 +1530,40 @@ class DatabaseHelper {
         local_file_path LIKE '%/Statuses%' OR 
         local_file_path LIKE '%status%' OR 
         folder_name LIKE '%sticker%' OR 
-        local_file_path LIKE '%sticker%'
+        local_file_path LIKE '%sticker%' OR
+        file_name LIKE '%sticker%' OR
+        LOWER(file_name) LIKE '%.tgs' OR
+        LOWER(file_name) LIKE '%.lottie' OR
+        LOWER(file_name) LIKE '%.wastickers' OR
+        LOWER(file_name) LIKE '%.sticker' OR
+        LOWER(file_name) LIKE '%.stk'
       ''',
     );
     if (count > 0) {
-      debugPrint('[DatabaseHelper] Purged $count WhatsApp status/sticker items from manifest.');
+      debugPrint(
+        '[DatabaseHelper] Purged $count WhatsApp status/sticker items from manifest.',
+      );
     }
     return count;
   }
 
-  Future<List<MediaItem>> getItemsByFolder(String folderName, {int limit = 500}) async {
+  static void _addStickerSyncExclusions(List<String> conditions) {
+    conditions.add("LOWER(COALESCE(file_name, '')) NOT LIKE '%sticker%'");
+    conditions.add("LOWER(COALESCE(folder_name, '')) NOT LIKE '%sticker%'");
+    conditions.add("LOWER(COALESCE(local_file_path, '')) NOT LIKE '%sticker%'");
+    conditions.add(
+      "LOWER(COALESCE(file_name, '')) NOT LIKE '%.tgs' AND "
+      "LOWER(COALESCE(file_name, '')) NOT LIKE '%.lottie' AND "
+      "LOWER(COALESCE(file_name, '')) NOT LIKE '%.wastickers' AND "
+      "LOWER(COALESCE(file_name, '')) NOT LIKE '%.sticker' AND "
+      "LOWER(COALESCE(file_name, '')) NOT LIKE '%.stk'",
+    );
+  }
+
+  Future<List<MediaItem>> getItemsByFolder(
+    String folderName, {
+    int limit = 500,
+  }) async {
     final db = await database;
     final res = await db.query(
       AppConstants.manifestTableName,
@@ -1442,9 +1582,7 @@ class DatabaseHelper {
     String? newLocalFilePath,
   }) async {
     final db = await database;
-    final values = <String, dynamic>{
-      'folder_name': newFolderName,
-    };
+    final values = <String, dynamic>{'folder_name': newFolderName};
     if (newLocalFilePath != null) {
       values['local_file_path'] = newLocalFilePath;
     }
@@ -1466,9 +1604,7 @@ class DatabaseHelper {
     final db = await database;
     final batch = db.batch();
     for (final id in localIds) {
-      final values = <String, dynamic>{
-        'folder_name': newFolderName,
-      };
+      final values = <String, dynamic>{'folder_name': newFolderName};
       if (idToNewPath != null && idToNewPath.containsKey(id)) {
         values['local_file_path'] = idToNewPath[id];
       }
@@ -1495,19 +1631,24 @@ class DatabaseHelper {
     );
     final mapped = allItems.map((m) => MediaItem.fromMap(m));
     if (inAppLockedIds != null) {
-      return mapped.where((it) =>
-        inAppLockedIds.contains(it.localId) ||
-        (it.localFilePath != null &&
-            (it.localFilePath!.contains('.private_vault') ||
-             it.localFilePath!.contains('.PrivateVault')))
-      ).toList();
+      return mapped
+          .where(
+            (it) =>
+                inAppLockedIds.contains(it.localId) ||
+                (it.localFilePath != null &&
+                    (it.localFilePath!.contains('.private_vault') ||
+                        it.localFilePath!.contains('.PrivateVault'))),
+          )
+          .toList();
     }
     return mapped
-        .where((it) =>
-            it.isLockedFolder ||
-            (it.localFilePath != null &&
-                (it.localFilePath!.contains('.private_vault') ||
-                 it.localFilePath!.contains('.PrivateVault'))))
+        .where(
+          (it) =>
+              it.isLockedFolder ||
+              (it.localFilePath != null &&
+                  (it.localFilePath!.contains('.private_vault') ||
+                      it.localFilePath!.contains('.PrivateVault'))),
+        )
         .toList();
   }
 

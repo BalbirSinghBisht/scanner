@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
+
 import '../core/constants/app_constants.dart';
 import '../core/errors/app_exceptions.dart';
 import '../models/media_item.dart';
@@ -42,6 +44,8 @@ class MediaScannerService {
     final n = (name ?? '').toLowerCase();
     final p = (path ?? '').toLowerCase();
 
+    if (isStickerAsset(name: name, path: path)) return true;
+
     // 1. Thumbnails
     if (n.contains('thumbnail') ||
         p.contains('.thumbnail') ||
@@ -72,7 +76,8 @@ class MediaScannerService {
     }
 
     // 4. Android internal package app caches
-    if (p.contains('/android/data/') && (p.contains('/cache') || p.contains('/code_cache'))) {
+    if (p.contains('/android/data/') &&
+        (p.contains('/cache') || p.contains('/code_cache'))) {
       return true;
     }
 
@@ -124,6 +129,27 @@ class MediaScannerService {
     }
 
     return false;
+  }
+
+  static bool isStickerAsset({String? name, String? path, String? folderName}) {
+    final n = (name ?? '').toLowerCase();
+    final p = (path ?? '').toLowerCase();
+    final folder = (folderName ?? '').toLowerCase();
+    if (n.contains('sticker') ||
+        p.contains('sticker') ||
+        folder.contains('sticker')) {
+      return true;
+    }
+    const stickerExtensions = {
+      '.tgs',
+      '.lottie',
+      '.wastickers',
+      '.sticker',
+      '.stk',
+    };
+    return stickerExtensions.any(
+      (extension) => n.endsWith(extension) || p.endsWith(extension),
+    );
   }
 
   static bool isPrivateOrLockedPath(String? name, String? path) {
@@ -182,7 +208,9 @@ class MediaScannerService {
     _isObservingChanges = true;
 
     _changeCallback = (MethodCall call) async {
-      debugPrint('Device media change detected (${call.method}). Auto-scanning new data...');
+      debugPrint(
+        'Device media change detected (${call.method}). Auto-scanning new data...',
+      );
       await onNewMedia();
     };
 
@@ -238,11 +266,13 @@ class MediaScannerService {
   Future<List<AssetPathEntity>> getAllAlbums() async {
     try {
       final perm = await requestPermission();
-      if (perm == PermissionState.denied || perm == PermissionState.restricted) {
+      if (perm == PermissionState.denied ||
+          perm == PermissionState.restricted) {
         return [];
       }
       var albums = await PhotoManager.getAssetPathList(
-        type: RequestType.common, // Strictly images and videos (no audio/ringtones)
+        type: RequestType
+            .common, // Strictly images and videos (no audio/ringtones)
         hasAll: true,
         onlyAll: false,
       );
@@ -277,10 +307,13 @@ class MediaScannerService {
     final settings = await SettingsRepository.instance.loadSettings();
     if (!isBackground) {
       final perm = await requestPermission();
-      if (perm == PermissionState.denied || perm == PermissionState.restricted) {
+      if (perm == PermissionState.denied ||
+          perm == PermissionState.restricted) {
         final existing = await _db.getAllItems(limit: 500);
         if (existing.isNotEmpty) {
-          debugPrint('Permissions denied, but serving ${existing.length} cached items');
+          debugPrint(
+            'Permissions denied, but serving ${existing.length} cached items',
+          );
           return existing;
         }
         throw MediaPermissionDeniedException(
@@ -298,7 +331,8 @@ class MediaScannerService {
           await Future.delayed(const Duration(milliseconds: 300));
         }
         albums = await PhotoManager.getAssetPathList(
-          type: RequestType.common, // Strictly images and videos (no audio/ringtones)
+          type: RequestType
+              .common, // Strictly images and videos (no audio/ringtones)
           hasAll: true,
           onlyAll: false,
         );
@@ -326,35 +360,45 @@ class MediaScannerService {
     albums.removeWhere((album) => isJunkOrThumbnail(album.name, null));
 
     if (albums.isEmpty) {
-      debugPrint('No albums from PhotoManager. Falling back to direct storage scan and SQLite cache...');
+      debugPrint(
+        'No albums from PhotoManager. Falling back to direct storage scan and SQLite cache...',
+      );
       final directItems = await scanDirectDirectories();
       if (directItems.isNotEmpty) {
-        _scanProgressController.add(ScanProgressReport(
-          scannedItems: directItems.length,
-          totalDiscovered: directItems.length,
-          currentBatchStatus: 'Found ${directItems.length} media items via device storage.',
-          isCompleted: true,
-        ));
+        _scanProgressController.add(
+          ScanProgressReport(
+            scannedItems: directItems.length,
+            totalDiscovered: directItems.length,
+            currentBatchStatus:
+                'Found ${directItems.length} media items via device storage.',
+            isCompleted: true,
+          ),
+        );
         return directItems;
       }
 
       final existingDbItems = await _db.getAllItems(limit: 500);
       if (existingDbItems.isNotEmpty) {
-        _scanProgressController.add(ScanProgressReport(
-          scannedItems: existingDbItems.length,
-          totalDiscovered: existingDbItems.length,
-          currentBatchStatus: 'Retained ${existingDbItems.length} media items from device database.',
-          isCompleted: true,
-        ));
+        _scanProgressController.add(
+          ScanProgressReport(
+            scannedItems: existingDbItems.length,
+            totalDiscovered: existingDbItems.length,
+            currentBatchStatus:
+                'Retained ${existingDbItems.length} media items from device database.',
+            isCompleted: true,
+          ),
+        );
         return existingDbItems;
       }
 
-      _scanProgressController.add(const ScanProgressReport(
-        scannedItems: 0,
-        totalDiscovered: 0,
-        currentBatchStatus: 'No media albums found on device',
-        isCompleted: true,
-      ));
+      _scanProgressController.add(
+        const ScanProgressReport(
+          scannedItems: 0,
+          totalDiscovered: 0,
+          currentBatchStatus: 'No media albums found on device',
+          isCompleted: true,
+        ),
+      );
       return [];
     }
 
@@ -367,18 +411,23 @@ class MediaScannerService {
     }
     recentAlbum ??= albums.isNotEmpty ? albums.first : null;
     if (recentAlbum == null) return [];
-    final List<AssetPathEntity> scanTargets = recentAlbum.isAll ? [recentAlbum] : albums;
+    final List<AssetPathEntity> scanTargets = recentAlbum.isAll
+        ? [recentAlbum]
+        : albums;
 
     int totalAssetCount = 0;
     for (final album in scanTargets) {
       totalAssetCount += await album.assetCountAsync;
     }
 
-    _scanProgressController.add(ScanProgressReport(
-      scannedItems: 0,
-      totalDiscovered: totalAssetCount,
-      currentBatchStatus: 'Found $totalAssetCount accessible media items. Indexing metadata...',
-    ));
+    _scanProgressController.add(
+      ScanProgressReport(
+        scannedItems: 0,
+        totalDiscovered: totalAssetCount,
+        currentBatchStatus:
+            'Found $totalAssetCount accessible media items. Indexing metadata...',
+      ),
+    );
 
     final discoveredList = <MediaItem>[];
     const pageSize = AppConstants.scanPageSize;
@@ -403,7 +452,8 @@ class MediaScannerService {
         for (final entity in entities) {
           try {
             // Strictly exclude audio, ringtones, system sounds, and non-visual assets
-            if (entity.type == AssetType.audio || entity.type == AssetType.other) {
+            if (entity.type == AssetType.audio ||
+                entity.type == AssetType.other) {
               processedCount++;
               continue;
             }
@@ -442,7 +492,8 @@ class MediaScannerService {
                 ? AppMediaType.video
                 : AppMediaType.image;
 
-            String mimeType = existingItem?.mimeType ??
+            String mimeType =
+                existingItem?.mimeType ??
                 (mediaType == AppMediaType.video ? 'video/mp4' : 'image/jpeg');
             if (existingItem == null) {
               try {
@@ -469,8 +520,12 @@ class MediaScannerService {
             // Extract folder name accurately without triggering disk IO
             String? folderName;
             try {
-              if (entity.relativePath != null && entity.relativePath!.isNotEmpty) {
-                final trimmed = entity.relativePath!.replaceAll(RegExp(r'[\\/]+$'), '');
+              if (entity.relativePath != null &&
+                  entity.relativePath!.isNotEmpty) {
+                final trimmed = entity.relativePath!.replaceAll(
+                  RegExp(r'[\\/]+$'),
+                  '',
+                );
                 final parts = trimmed.split(RegExp(r'[\\/]'));
                 if (parts.isNotEmpty) {
                   folderName = parts.last;
@@ -487,7 +542,9 @@ class MediaScannerService {
             if (folderName?.toUpperCase() == 'DCIM') {
               folderName = 'Camera';
             }
-            folderName ??= (mediaType == AppMediaType.video ? 'Videos' : 'Camera');
+            folderName ??= (mediaType == AppMediaType.video
+                ? 'Videos'
+                : 'Camera');
 
             // Strictly filter out any items from system thumbnail / cache folders
             if (isJunkOrThumbnail(folderName, entity.relativePath)) {
@@ -501,20 +558,27 @@ class MediaScannerService {
             }
 
             String? localFilePath = existingItem?.localFilePath;
-            if (localFilePath == null && entity.relativePath != null && entity.title != null) {
-              final candidate = '/storage/emulated/0/${entity.relativePath}${entity.title}';
+            if (localFilePath == null &&
+                entity.relativePath != null &&
+                entity.title != null) {
+              final candidate =
+                  '/storage/emulated/0/${entity.relativePath}${entity.title}';
               if (File(candidate).existsSync()) {
                 localFilePath = candidate;
               }
             }
 
-            if (localFilePath != null && isJunkOrThumbnail(null, localFilePath)) {
+            if (localFilePath != null &&
+                isJunkOrThumbnail(null, localFilePath)) {
               processedCount++;
               continue;
             }
 
             if (!settings.syncLockedFolders &&
-                isPrivateOrLockedPath(folderName, localFilePath ?? entity.relativePath)) {
+                isPrivateOrLockedPath(
+                  folderName,
+                  localFilePath ?? entity.relativePath,
+                )) {
               processedCount++;
               continue;
             }
@@ -532,7 +596,8 @@ class MediaScannerService {
               durationSeconds: entity.duration,
               createdAt: entity.createDateTime,
               modifiedAt: entity.modifiedDateTime,
-              uploadState: existingItem?.uploadState ?? UploadState.READY_TO_UPLOAD,
+              uploadState:
+                  existingItem?.uploadState ?? UploadState.READY_TO_UPLOAD,
               contentHash: existingItem?.contentHash,
               driveFileId: existingItem?.driveFileId,
               lastAttemptAt: existingItem?.lastAttemptAt,
@@ -549,7 +614,9 @@ class MediaScannerService {
             discoveredList.add(item);
             processedCount++;
           } catch (e) {
-            debugPrint('Skipping entity ${entity.id} due to parse error (possibly deleted): $e');
+            debugPrint(
+              'Skipping entity ${entity.id} due to parse error (possibly deleted): $e',
+            );
           }
         }
 
@@ -563,11 +630,14 @@ class MediaScannerService {
           }
         }
 
-        _scanProgressController.add(ScanProgressReport(
-          scannedItems: processedCount,
-          totalDiscovered: totalAssetCount,
-          currentBatchStatus: 'Indexed $processedCount of $totalAssetCount items...',
-        ));
+        _scanProgressController.add(
+          ScanProgressReport(
+            scannedItems: processedCount,
+            totalDiscovered: totalAssetCount,
+            currentBatchStatus:
+                'Indexed $processedCount of $totalAssetCount items...',
+          ),
+        );
       }
     }
 
@@ -582,12 +652,18 @@ class MediaScannerService {
       debugPrint('Direct directory scan error: $e');
     }
 
-    _scanProgressController.add(ScanProgressReport(
-      scannedItems: processedCount,
-      totalDiscovered: totalAssetCount + (discoveredList.length > totalAssetCount ? discoveredList.length - totalAssetCount : 0),
-      currentBatchStatus: 'Scan complete! Indexed $processedCount items.',
-      isCompleted: true,
-    ));
+    _scanProgressController.add(
+      ScanProgressReport(
+        scannedItems: processedCount,
+        totalDiscovered:
+            totalAssetCount +
+            (discoveredList.length > totalAssetCount
+                ? discoveredList.length - totalAssetCount
+                : 0),
+        currentBatchStatus: 'Scan complete! Indexed $processedCount items.',
+        isCompleted: true,
+      ),
+    );
 
     return discoveredList;
   }
@@ -669,7 +745,9 @@ class MediaScannerService {
   Future<File?> getCachedVideoThumbnailFile(String assetId) async {
     try {
       final dirPath = await _getVthumbDirPath();
-      final file = File(p.join(dirPath, 'vthumb_${assetId.hashCode.abs()}.jpg'));
+      final file = File(
+        p.join(dirPath, 'vthumb_${assetId.hashCode.abs()}.jpg'),
+      );
       if (file.existsSync() && file.lengthSync() > 0) {
         return file;
       }
@@ -677,10 +755,15 @@ class MediaScannerService {
     return null;
   }
 
-  Future<void> _saveVideoThumbnailToDisk(String assetId, Uint8List bytes) async {
+  Future<void> _saveVideoThumbnailToDisk(
+    String assetId,
+    Uint8List bytes,
+  ) async {
     try {
       final dirPath = await _getVthumbDirPath();
-      final file = File(p.join(dirPath, 'vthumb_${assetId.hashCode.abs()}.jpg'));
+      final file = File(
+        p.join(dirPath, 'vthumb_${assetId.hashCode.abs()}.jpg'),
+      );
       await file.writeAsBytes(bytes, flush: false);
     } catch (_) {}
   }
@@ -838,14 +921,18 @@ class MediaScannerService {
               ? size / descriptor.width
               : size / descriptor.height;
           final targetW = (descriptor.width * scale).round().clamp(1, size * 2);
-          final targetH = (descriptor.height * scale).round().clamp(1, size * 2);
+          final targetH = (descriptor.height * scale).round().clamp(
+            1,
+            size * 2,
+          );
           codec = await descriptor.instantiateCodec(
             targetWidth: targetW,
             targetHeight: targetH,
           );
           frame = await codec.getNextFrame();
-          final byteData =
-              await frame.image.toByteData(format: ImageByteFormat.png);
+          final byteData = await frame.image.toByteData(
+            format: ImageByteFormat.png,
+          );
           if (byteData != null) {
             final downsampled = byteData.buffer.asUint8List();
             _putInThumbnailCache(cacheKey, downsampled);
@@ -864,7 +951,9 @@ class MediaScannerService {
     // 3. Cloud fallback: If file is not on device but was backed up to Google Drive
     if (dbItem?.driveFileId != null && dbItem!.driveFileId!.isNotEmpty) {
       try {
-        final cloudBytes = await GoogleDriveService.instance.downloadFileBytes(dbItem.driveFileId!);
+        final cloudBytes = await GoogleDriveService.instance.downloadFileBytes(
+          dbItem.driveFileId!,
+        );
         if (cloudBytes != null && cloudBytes.isNotEmpty) {
           _putInThumbnailCache(cacheKey, cloudBytes);
           _putInThumbnailCache(assetId, cloudBytes);
@@ -886,8 +975,10 @@ class MediaScannerService {
 
     // 2. Attempt native platform channel deletion (ContentResolver + File.delete)
     try {
-      fileDeleted =
-          await DeviceSettingsHelper.deleteMediaFileNative(filePath, assetId);
+      fileDeleted = await DeviceSettingsHelper.deleteMediaFileNative(
+        filePath,
+        assetId,
+      );
     } catch (_) {}
 
     // 3. Attempt direct filesystem deletion if file exists
@@ -906,8 +997,9 @@ class MediaScannerService {
     // 4. Fallback to PhotoManager editor if it is a valid numeric MediaStore ID
     if (!fileDeleted && !assetId.startsWith('disk_')) {
       try {
-        final List<String> deletedIds =
-            await PhotoManager.editor.deleteWithIds([assetId]);
+        final List<String> deletedIds = await PhotoManager.editor.deleteWithIds(
+          [assetId],
+        );
         if (deletedIds.contains(assetId)) {
           fileDeleted = true;
         }
@@ -922,8 +1014,7 @@ class MediaScannerService {
 
     // 6. If deletion was blocked by Android 11+ scoped storage, request All Files Access
     if (!fileDeleted && Platform.isAndroid) {
-      final hasAllFiles =
-          await DeviceSettingsHelper.isAllFilesAccessGranted();
+      final hasAllFiles = await DeviceSettingsHelper.isAllFilesAccessGranted();
       if (!hasAllFiles) {
         await DeviceSettingsHelper.requestAllFilesAccess();
       }
@@ -1107,18 +1198,23 @@ class MediaScannerService {
 
     // Dynamically discover subdirectories under Pictures, DCIM, Movies, Download, Documents, and Android/media
     final allDirsToScan = Set<String>.from(targetDirs);
-    for (final baseDir in storageRoots.expand((root) => [
-      '$root/Pictures',
-      '$root/DCIM',
-      '$root/Movies',
-      '$root/Download',
-      '$root/Documents',
-      '$root/Android/media',
-    ])) {
+    for (final baseDir in storageRoots.expand(
+      (root) => [
+        '$root/Pictures',
+        '$root/DCIM',
+        '$root/Movies',
+        '$root/Download',
+        '$root/Documents',
+        '$root/Android/media',
+      ],
+    )) {
       try {
         final d = Directory(baseDir);
         if (await d.exists()) {
-          await for (final sub in d.list(recursive: false, followLinks: false)) {
+          await for (final sub in d.list(
+            recursive: false,
+            followLinks: false,
+          )) {
             if (sub is Directory) {
               final subName = sub.path.split(RegExp(r'[\\/]')).last;
               if (isJunkOrThumbnail(subName, sub.path)) {
@@ -1138,11 +1234,32 @@ class MediaScannerService {
     }
 
     const imageExtensions = {
-      '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.avif', '.gif',
-      '.dng', '.raw', '.cr2', '.cr3', '.nef', '.arw', '.orf', '.rw2',
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.webp',
+      '.heic',
+      '.heif',
+      '.avif',
+      '.gif',
+      '.dng',
+      '.raw',
+      '.cr2',
+      '.cr3',
+      '.nef',
+      '.arw',
+      '.orf',
+      '.rw2',
     };
     const videoExtensions = {
-      '.mp4', '.mkv', '.mov', '.3gp', '.webm', '.m4v', '.avi', '.mpeg',
+      '.mp4',
+      '.mkv',
+      '.mov',
+      '.3gp',
+      '.webm',
+      '.m4v',
+      '.avi',
+      '.mpeg',
       '.mpg',
     };
 
@@ -1153,8 +1270,7 @@ class MediaScannerService {
       if (isJunkOrThumbnail(null, dirPath)) {
         continue;
       }
-      if (!settings.syncLockedFolders &&
-          isPrivateOrLockedPath(null, dirPath)) {
+      if (!settings.syncLockedFolders && isPrivateOrLockedPath(null, dirPath)) {
         continue;
       }
 
@@ -1165,7 +1281,10 @@ class MediaScannerService {
       // In Android, .nomedia is standard for private/locked folders. We scan them so they are synced.
 
       try {
-        await for (final entity in dir.list(recursive: true, followLinks: false)) {
+        await for (final entity in dir.list(
+          recursive: true,
+          followLinks: false,
+        )) {
           if (entity is! File) continue;
           final path = entity.path;
           if (isJunkOrThumbnail(null, path)) {
@@ -1191,12 +1310,14 @@ class MediaScannerService {
           if (existingPaths.contains(path)) continue;
           existingPaths.add(path);
           var folderName = entity.parent.path.split(RegExp(r'[\\/]')).last;
-          
+
           if (folderName.toLowerCase() == 'sent') {
             final parts = dirPath.split(RegExp(r'[\\/]'));
             if (parts.length >= 2) {
               final grandParent = parts[parts.length - 2];
-              if (grandParent.isNotEmpty && grandParent != '0' && grandParent != 'emulated') {
+              if (grandParent.isNotEmpty &&
+                  grandParent != '0' &&
+                  grandParent != 'emulated') {
                 folderName = '$grandParent Sent';
               }
             }
@@ -1204,11 +1325,14 @@ class MediaScannerService {
             final parts = dirPath.split(RegExp(r'[\\/]'));
             if (parts.length >= 2) {
               final grandParent = parts[parts.length - 2];
-              if (grandParent.isNotEmpty && grandParent != '0' && grandParent != 'emulated') {
+              if (grandParent.isNotEmpty &&
+                  grandParent != '0' &&
+                  grandParent != 'emulated') {
                 folderName = '$grandParent Private';
               }
             }
-          } else if (dirPath.contains('WhatsApp') && folderName.toLowerCase() == 'private') {
+          } else if (dirPath.contains('WhatsApp') &&
+              folderName.toLowerCase() == 'private') {
             folderName = 'WhatsApp Private';
           } else if (folderName == 'DCIM') {
             folderName = 'Camera';
@@ -1260,19 +1384,35 @@ class MediaScannerService {
 
     if (discovered.isNotEmpty) {
       await _db.batchUpsertMediaItems(discovered);
-      debugPrint('Direct storage scan discovered ${discovered.length} new items!');
+      debugPrint(
+        'Direct storage scan discovered ${discovered.length} new items!',
+      );
     }
     return discovered;
   }
 
-  static String _mimeTypeForExtension(String extension, {required bool isVideo}) {
+  static String _mimeTypeForExtension(
+    String extension, {
+    required bool isVideo,
+  }) {
     const types = <String, String>{
-      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-      '.webp': 'image/webp', '.heic': 'image/heic', '.heif': 'image/heif',
-      '.avif': 'image/avif', '.gif': 'image/gif', '.dng': 'image/x-adobe-dng',
-      '.m4v': 'video/x-m4v', '.avi': 'video/x-msvideo',
-      '.mpeg': 'video/mpeg', '.mpg': 'video/mpeg', '.mov': 'video/quicktime',
-      '.mkv': 'video/x-matroska', '.webm': 'video/webm', '.3gp': 'video/3gpp',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.webp': 'image/webp',
+      '.heic': 'image/heic',
+      '.heif': 'image/heif',
+      '.avif': 'image/avif',
+      '.gif': 'image/gif',
+      '.dng': 'image/x-adobe-dng',
+      '.m4v': 'video/x-m4v',
+      '.avi': 'video/x-msvideo',
+      '.mpeg': 'video/mpeg',
+      '.mpg': 'video/mpeg',
+      '.mov': 'video/quicktime',
+      '.mkv': 'video/x-matroska',
+      '.webm': 'video/webm',
+      '.3gp': 'video/3gpp',
     };
     return types[extension] ?? (isVideo ? 'video/mp4' : 'image/x-raw');
   }
@@ -1332,7 +1472,8 @@ class MediaScannerService {
             bool anyFileExistsInFolder = false;
             final folderItems = allItems.where((it) => it.folderName == folder);
             for (final it in folderItems) {
-              if (it.localFilePath != null && File(it.localFilePath!).existsSync()) {
+              if (it.localFilePath != null &&
+                  File(it.localFilePath!).existsSync()) {
                 anyFileExistsInFolder = true;
                 break;
               }
@@ -1371,7 +1512,8 @@ class MediaScannerService {
 
         // A. Direct storage files (disk_...)
         if (item.localId.startsWith('disk_')) {
-          if (item.localFilePath == null || !File(item.localFilePath!).existsSync()) {
+          if (item.localFilePath == null ||
+              !File(item.localFilePath!).existsSync()) {
             toDelete.add(item.localId);
           }
           continue;
@@ -1406,7 +1548,9 @@ class MediaScannerService {
       }
 
       if (toDelete.isNotEmpty) {
-        debugPrint('Safely pruned ${toDelete.length} confirmed deleted items from database');
+        debugPrint(
+          'Safely pruned ${toDelete.length} confirmed deleted items from database',
+        );
         for (final id in toDelete) {
           _removeThumbnailFromCache(id);
         }

@@ -512,6 +512,19 @@ class BackupSyncService {
   }
 
   Future<void> _uploadBatchItem(MediaItem item, BackupSettings settings) async {
+    if (MediaScannerService.isStickerAsset(
+      name: item.fileName,
+      path: item.localFilePath,
+      folderName: item.folderName,
+    )) {
+      await _db.updateUploadState(
+        item.localId,
+        UploadState.SKIPPED,
+        errorMessage: 'Sticker assets are excluded from Drive sync',
+      );
+      return;
+    }
+
     // Check video size limit
     if (item.mediaType == AppMediaType.video &&
         settings.maxVideoSizeBytes != null &&
@@ -791,8 +804,7 @@ class BackupSyncService {
           e is AuthException;
       if (isAuth) {
         _hasAuthError = true;
-        _authErrorMessage =
-            'Google Drive token expired (401). Attempting silent background renewal.';
+        _authErrorMessage = 'Google Drive token expired (401). Attempting silent background renewal.';
         try {
           final recovered = await _auth.refreshActiveSession();
           if (recovered) {
@@ -1265,7 +1277,14 @@ class BackupSyncService {
         '.rw2',
       };
       const videoExtensions = {
-        '.mp4', '.mkv', '.mov', '.3gp', '.avi', '.webm', '.m4v', '.mpeg',
+        '.mp4',
+        '.mkv',
+        '.mov',
+        '.3gp',
+        '.avi',
+        '.webm',
+        '.m4v',
+        '.mpeg',
         '.mpg',
       };
 

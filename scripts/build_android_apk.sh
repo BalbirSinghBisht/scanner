@@ -17,9 +17,9 @@ fi
 
 if [ -n "$GITHUB_RUN_NUMBER" ]; then
   echo "Using CI build number: $GITHUB_RUN_NUMBER"
-  flutter build apk --release --target-platform android-arm,android-arm64 --build-number="$GITHUB_RUN_NUMBER" "${OAUTH_ARGS[@]}"
+  flutter build apk --release --no-pub --target-platform android-arm,android-arm64 --build-number="$GITHUB_RUN_NUMBER" "${OAUTH_ARGS[@]}"
 else
-  flutter build apk --release --target-platform android-arm,android-arm64 "${OAUTH_ARGS[@]}"
+  flutter build apk --release --no-pub --target-platform android-arm,android-arm64 "${OAUTH_ARGS[@]}"
 fi
 
 # 2. Package and copy with standard names
