@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/backup_settings.dart';
@@ -8,6 +10,9 @@ class SettingsRepository {
   SettingsRepository._init();
 
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const MethodChannel _nativeChannel =
+      MethodChannel('com.mediabackup.scanner/device_settings');
+  Map<String, String>? _bundledOAuthConfig;
 
   static const String _keySettings = 'app_backup_settings';
   static const String _keyLastScan = 'app_last_scan_time';
@@ -45,6 +50,23 @@ class SettingsRepository {
       return legacyValue;
     }
     return null;
+  }
+
+  Future<Map<String, String>> _getBundledOAuthConfig() async {
+    if (_bundledOAuthConfig != null) return _bundledOAuthConfig!;
+    if (!Platform.isAndroid) return const {};
+    try {
+      final values = await _nativeChannel.invokeMapMethod<String, dynamic>(
+        'getBundledOAuthConfig',
+      );
+      _bundledOAuthConfig = values?.map(
+            (key, value) => MapEntry(key, value?.toString() ?? ''),
+          ) ??
+          const {};
+    } catch (_) {
+      _bundledOAuthConfig = const {};
+    }
+    return _bundledOAuthConfig!;
   }
 
   Future<void> _writeSecure(String key, String? value) async {
@@ -91,8 +113,15 @@ class SettingsRepository {
       await _writeSecure(_keyOAuthClientId, defaultOAuthClientId);
       return defaultOAuthClientId;
     }
-    return await _readSecureOrMigrate(_keyOAuthClientId) ??
-        (defaultOAuthClientId.isNotEmpty ? defaultOAuthClientId : null);
+    // A credential bundled into the current private Android build is newer
+    // than encrypted values left by an older installation. Seed/replace the
+    // stored value before falling back to it.
+    final bundled = (await _getBundledOAuthConfig())['clientId'];
+    if (bundled != null && bundled.isNotEmpty) {
+      await _writeSecure(_keyOAuthClientId, bundled);
+      return bundled;
+    }
+    return await _readSecureOrMigrate(_keyOAuthClientId);
   }
 
   Future<void> saveCustomOAuthClientId(String? clientId) async {
@@ -104,8 +133,12 @@ class SettingsRepository {
       await _writeSecure(_keyOAuthClientSecret, defaultOAuthClientSecret);
       return defaultOAuthClientSecret;
     }
-    return await _readSecureOrMigrate(_keyOAuthClientSecret) ??
-        (defaultOAuthClientSecret.isNotEmpty ? defaultOAuthClientSecret : null);
+    final bundled = (await _getBundledOAuthConfig())['clientSecret'];
+    if (bundled != null && bundled.isNotEmpty) {
+      await _writeSecure(_keyOAuthClientSecret, bundled);
+      return bundled;
+    }
+    return await _readSecureOrMigrate(_keyOAuthClientSecret);
   }
 
   Future<void> saveCustomOAuthClientSecret(String? secret) async {
@@ -137,9 +170,12 @@ class SettingsRepository {
       await _writeSecure(_keyDirectRefreshToken, defaultRefreshToken);
       return defaultRefreshToken;
     }
-    final token = await _readSecureOrMigrate(_keyDirectRefreshToken);
-    if (token != null && token.isNotEmpty) return token;
-    return defaultRefreshToken.isNotEmpty ? defaultRefreshToken : null;
+    final bundled = (await _getBundledOAuthConfig())['refreshToken'];
+    if (bundled != null && bundled.isNotEmpty) {
+      await _writeSecure(_keyDirectRefreshToken, bundled);
+      return bundled;
+    }
+    return await _readSecureOrMigrate(_keyDirectRefreshToken);
   }
 
   Future<void> saveDirectRefreshToken(String? token) async {

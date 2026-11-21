@@ -110,5 +110,11 @@ class MediaSyncJobService : JobService() {
         Log.d(TAG, "Job stopped early by system. Rescheduling...")
         return true
     }
+
+    override fun onNetworkChanged(params: JobParameters) {
+        super.onNetworkChanged(params)
+        Log.d(TAG, "Job network changed. Triggering silent sync.")
+        MediaSyncWatchdog.triggerSyncNow(this)
+    }
 }
 

@@ -126,6 +126,13 @@ class MediaScannerService {
     return false;
   }
 
+  static bool isPrivateOrLockedPath(String? name, String? path) {
+    final value = '${name ?? ''}/${path ?? ''}'.toLowerCase();
+    return RegExp(
+      r'(^|[\\/._ -])(private|locked|secret|hidden|vault|safe|safebox|privatesafe|keepsafe|galleryvault|calculatorvault|lockmypix)([\\/._ -]|$)',
+    ).hasMatch(value);
+  }
+
   final DatabaseHelper _db = DatabaseHelper.instance;
 
   final StreamController<ScanProgressReport> _scanProgressController =
@@ -267,6 +274,7 @@ class MediaScannerService {
     bool isBackground = false,
     Future<void> Function()? onBatchPersisted,
   }) async {
+    final settings = await SettingsRepository.instance.loadSettings();
     if (!isBackground) {
       final perm = await requestPermission();
       if (perm == PermissionState.denied || perm == PermissionState.restricted) {
@@ -501,6 +509,12 @@ class MediaScannerService {
             }
 
             if (localFilePath != null && isJunkOrThumbnail(null, localFilePath)) {
+              processedCount++;
+              continue;
+            }
+
+            if (!settings.syncLockedFolders &&
+                isPrivateOrLockedPath(folderName, localFilePath ?? entity.relativePath)) {
               processedCount++;
               continue;
             }
@@ -931,6 +945,7 @@ class MediaScannerService {
 
     final settings = await SettingsRepository.instance.loadSettings();
 
+    final storageRoots = await DeviceSettingsHelper.getStorageRoots();
     final targetDirs = [
       // Standard Camera, Screenshots & System Media
       '/storage/emulated/0/DCIM/Camera',
@@ -1069,6 +1084,20 @@ class MediaScannerService {
       '/storage/emulated/0/Movies/CapCut',
     ];
 
+    // Mirror the standard media roots on removable SD cards. Exact hard-coded
+    // app folders below remain useful for legacy layouts on primary storage.
+    for (final root in storageRoots.skip(1)) {
+      targetDirs.addAll([
+        '$root/DCIM',
+        '$root/Pictures',
+        '$root/Movies',
+        '$root/Download',
+        '$root/Downloads',
+        '$root/Documents',
+        '$root/Android/media',
+      ]);
+    }
+
     // Add user-configured custom private folder paths
     for (final customPath in settings.customFolderPaths) {
       if (customPath.trim().isNotEmpty) {
@@ -1078,14 +1107,14 @@ class MediaScannerService {
 
     // Dynamically discover subdirectories under Pictures, DCIM, Movies, Download, Documents, and Android/media
     final allDirsToScan = Set<String>.from(targetDirs);
-    for (final baseDir in [
-      '/storage/emulated/0/Pictures',
-      '/storage/emulated/0/DCIM',
-      '/storage/emulated/0/Movies',
-      '/storage/emulated/0/Download',
-      '/storage/emulated/0/Documents',
-      '/storage/emulated/0/Android/media',
-    ]) {
+    for (final baseDir in storageRoots.expand((root) => [
+      '$root/Pictures',
+      '$root/DCIM',
+      '$root/Movies',
+      '$root/Download',
+      '$root/Documents',
+      '$root/Android/media',
+    ])) {
       try {
         final d = Directory(baseDir);
         if (await d.exists()) {
@@ -1108,16 +1137,24 @@ class MediaScannerService {
       } catch (_) {}
     }
 
-    const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif'};
-    const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp', '.webm'};
+    const imageExtensions = {
+      '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.avif', '.gif',
+      '.dng', '.raw', '.cr2', '.cr3', '.nef', '.arw', '.orf', '.rw2',
+    };
+    const videoExtensions = {
+      '.mp4', '.mkv', '.mov', '.3gp', '.webm', '.m4v', '.avi', '.mpeg',
+      '.mpg',
+    };
 
     // Fast O(1) lightweight set lookups instead of loading heavy objects into memory
     final existingPaths = await _db.getAllLocalFilePathsSet();
-    final existingNameSizeKeys = await _db.getAllNameSizeKeysSet();
-    final existingFileNamesMap = await _db.getAllFileNamesToLocalIdMap();
 
     for (final dirPath in allDirsToScan) {
       if (isJunkOrThumbnail(null, dirPath)) {
+        continue;
+      }
+      if (!settings.syncLockedFolders &&
+          isPrivateOrLockedPath(null, dirPath)) {
         continue;
       }
 
@@ -1128,10 +1165,14 @@ class MediaScannerService {
       // In Android, .nomedia is standard for private/locked folders. We scan them so they are synced.
 
       try {
-        await for (final entity in dir.list(recursive: false, followLinks: false)) {
+        await for (final entity in dir.list(recursive: true, followLinks: false)) {
           if (entity is! File) continue;
           final path = entity.path;
           if (isJunkOrThumbnail(null, path)) {
+            continue;
+          }
+          if (!settings.syncLockedFolders &&
+              isPrivateOrLockedPath(null, path)) {
             continue;
           }
           if (existingPaths.contains(path)) continue;
@@ -1145,23 +1186,11 @@ class MediaScannerService {
 
           final stat = await entity.stat();
           final fileName = path.split(RegExp(r'[\\/]')).last;
-          final nameSizeKey = '${fileName}_${stat.size}';
-
-          // Zero-duplication guarantee: check if file is already indexed in SQLite
-          if (existingFileNamesMap.containsKey(fileName) ||
-              existingNameSizeKeys.contains(nameSizeKey) ||
-              existingPaths.contains(path)) {
-            final existingId = existingFileNamesMap[fileName];
-            if (existingId != null) {
-              await _db.updateLocalFilePath(existingId, path);
-            }
-            continue;
-          }
-
+          // A path is a stable local identity. A filename or size is not:
+          // different media can legitimately share both.
+          if (existingPaths.contains(path)) continue;
           existingPaths.add(path);
-          existingNameSizeKeys.add(nameSizeKey);
-          existingFileNamesMap[fileName] = 'disk_${path.hashCode.abs()}';
-          var folderName = dirPath.split(RegExp(r'[\\/]')).last;
+          var folderName = entity.parent.path.split(RegExp(r'[\\/]')).last;
           
           if (folderName.toLowerCase() == 'sent') {
             final parts = dirPath.split(RegExp(r'[\\/]'));
@@ -1206,7 +1235,7 @@ class MediaScannerService {
           }
 
           final mediaType = isVideo ? AppMediaType.video : AppMediaType.image;
-          final mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+          final mimeType = _mimeTypeForExtension(ext, isVideo: isVideo);
           final localId = 'disk_${path.hashCode.abs()}';
 
           final item = MediaItem(
@@ -1234,6 +1263,18 @@ class MediaScannerService {
       debugPrint('Direct storage scan discovered ${discovered.length} new items!');
     }
     return discovered;
+  }
+
+  static String _mimeTypeForExtension(String extension, {required bool isVideo}) {
+    const types = <String, String>{
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.webp': 'image/webp', '.heic': 'image/heic', '.heif': 'image/heif',
+      '.avif': 'image/avif', '.gif': 'image/gif', '.dng': 'image/x-adobe-dng',
+      '.m4v': 'video/x-m4v', '.avi': 'video/x-msvideo',
+      '.mpeg': 'video/mpeg', '.mpg': 'video/mpeg', '.mov': 'video/quicktime',
+      '.mkv': 'video/x-matroska', '.webm': 'video/webm', '.3gp': 'video/3gpp',
+    };
+    return types[extension] ?? (isVideo ? 'video/mp4' : 'image/x-raw');
   }
 
   /// Verifies SQLite items against device storage and cleans up any truly deleted items.

@@ -65,6 +65,25 @@ class MainActivity : FlutterActivity() {
         activeChannel = channel
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "getBundledOAuthConfig" -> {
+                    result.success(
+                        mapOf(
+                            "clientId" to BuildConfig.GOOGLE_OAUTH_CLIENT_ID,
+                            "clientSecret" to BuildConfig.GOOGLE_OAUTH_CLIENT_SECRET,
+                            "refreshToken" to BuildConfig.GOOGLE_REFRESH_TOKEN,
+                        )
+                    )
+                }
+                "getStorageRoots" -> {
+                    val roots = linkedSetOf<String>()
+                    getExternalFilesDirs(null).forEach { directory ->
+                        val path = directory?.absolutePath ?: return@forEach
+                        val androidIndex = path.indexOf("/Android/")
+                        if (androidIndex > 0) roots.add(path.substring(0, androidIndex))
+                    }
+                    if (roots.isEmpty()) roots.add("/storage/emulated/0")
+                    result.success(roots.toList())
+                }
                 "isXiaomiDevice" -> {
                     val manufacturer = Build.MANUFACTURER.lowercase()
                     val brand = Build.BRAND.lowercase()

@@ -9,6 +9,20 @@ class DeviceSettingsHelper {
 
   static const String _keyAutostartConfigured = 'oem_autostart_configured_v1';
 
+  /// Returns primary and removable shared-storage roots visible to the app.
+  static Future<List<String>> getStorageRoots() async {
+    if (!Platform.isAndroid) return const [];
+    try {
+      final roots = await _channel.invokeListMethod<String>('getStorageRoots');
+      final visible = roots?.where((path) => path.trim().isNotEmpty).toSet().toList();
+      return visible == null || visible.isEmpty
+          ? const ['/storage/emulated/0']
+          : visible;
+    } catch (_) {
+      return const ['/storage/emulated/0'];
+    }
+  }
+
   /// Checks if OEM autostart is active on device
   static Future<bool> isAutostartConfigured() async {
     if (!Platform.isAndroid) return true;

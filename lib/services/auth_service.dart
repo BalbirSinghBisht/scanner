@@ -76,6 +76,7 @@ class AuthService {
   String? _apiKey;
   Timer? _renewalTimer;
   Completer<String?>? _inFlightTokenRefresh;
+  Completer<GoogleSignInAccount?>? _inFlightSessionRestore;
 
   GoogleSignInAccount? get currentUser => _currentUser;
   bool get isAuthenticated =>
@@ -116,41 +117,65 @@ class AuthService {
 
   /// Restores signed-in account silently on app launch or restores direct developer token
   Future<GoogleSignInAccount?> restoreSession({String? clientId}) async {
+    final activeRestore = _inFlightSessionRestore;
+    if (activeRestore != null) return activeRestore.future;
+
+    final completer = Completer<GoogleSignInAccount?>();
+    _inFlightSessionRestore = completer;
     try {
       _apiKey = await _settings.getGoogleApiKey();
       _directAccessToken = await _settings.getDirectAccessToken();
       _directRefreshToken = await _settings.getDirectRefreshToken();
       _tokenExpiry = await _settings.getTokenExpiry();
 
-      // Proactively renew direct access token if close to expiration
-      await ensureValidToken();
-
-      // Start background auto-renewal timer (checks every 5 minutes)
-      _startAutoRenewalTimer();
-
-      if (clientId != null && clientId.isNotEmpty) {
-        _initGoogleSignIn(clientId: clientId);
+      // Background restoration must never invoke interactive sign-in. Restore
+      // the Google account first because its SDK can silently renew ordinary
+      // access-token expiry without requiring a stored client secret.
+      final effectiveClientId = clientId ?? await _settings.getCustomOAuthClientId();
+      if (effectiveClientId != null && effectiveClientId.isNotEmpty) {
+        _initGoogleSignIn(clientId: effectiveClientId);
       }
+
       final account = await _signInInstance.signInSilently().timeout(
-            const Duration(seconds: 4),
+            const Duration(seconds: 8),
             onTimeout: () => null,
           );
       _currentUser = account;
+
       if (account != null) {
         await _saveUserMetadata(account);
         try {
           final authHeaders = await account.authHeaders;
-          final bearerToken = authHeaders['Authorization']?.replaceFirst('Bearer ', '');
+          final bearerToken = authHeaders['Authorization']?.replaceFirst(
+            'Bearer ',
+            '',
+          );
           if (bearerToken != null && bearerToken.isNotEmpty) {
             _directAccessToken = bearerToken;
             await _settings.saveDirectAccessToken(bearerToken);
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[AuthService] Silent account restored; token warm-up deferred: $e');
+        }
+      } else {
+        // No Google SDK session is available. Direct OAuth is the non-interactive
+        // fallback and can renew only when a refresh token was previously saved.
+        try {
+          await ensureValidToken();
+        } catch (e) {
+          debugPrint('[AuthService] Non-interactive credential restore failed: $e');
+        }
       }
+
+      _startAutoRenewalTimer();
+      completer.complete(account);
       return account;
     } catch (e) {
-      // Non-fatal, silent sign-in failure means user needs to sign in explicitly
+      debugPrint('[AuthService] Silent session restore failed: $e');
+      if (!completer.isCompleted) completer.complete(null);
       return null;
+    } finally {
+      _inFlightSessionRestore = null;
     }
   }
 
@@ -190,7 +215,10 @@ class AuthService {
         final newToken = await refreshDirectAccessToken();
         if (newToken == null &&
             (_directAccessToken == null || (_tokenExpiry != null && now.isAfter(_tokenExpiry!)))) {
-          throw AuthException('5 TB Google Drive access token expired and auto-renewal failed. Please re-authenticate or paste a fresh token.');
+          throw AuthException(
+            'Google Drive access token expired and silent renewal failed. '
+            'Verify that this run includes the configured OAuth refresh credentials.',
+          );
         }
       }
     }
@@ -419,7 +447,7 @@ class AuthService {
 
   /// Returns an authenticated HTTP Client suitable for Google Drive API calls
   Future<http.Client> getAuthenticatedClient() async {
-    // 1. Prioritize Google Sign-In user account (consumes user's 5 TB Drive storage)
+    // 1. Prioritize the silently restored Google Sign-In account.
     if (_currentUser == null) {
       await restoreSession();
     }
@@ -449,7 +477,7 @@ class AuthService {
       );
     }
 
-    // 2. Direct developer OAuth token (for user's 5 TB account)
+    // 2. Direct OAuth token for the app-owned My Drive backup tree.
     _directAccessToken ??= await _settings.getDirectAccessToken();
     _directRefreshToken ??= await _settings.getDirectRefreshToken();
     _directRefreshToken ??= SettingsRepository.defaultRefreshToken;
@@ -487,7 +515,7 @@ class AuthService {
     }
 
     throw AuthException(
-      'Google Drive requires connecting your 5 TB Google account to allocate storage quota.',
+      'Google Drive credentials are unavailable in this app run.',
     );
   }
 

@@ -46,10 +46,11 @@ class GoogleDriveService {
 
   final AuthService _auth = AuthService.instance;
 
-  // Root folder in Google Drive (5 TB Shared Drive)
+  // App-owned root in the signed-in account's My Drive. The `drive.file`
+  // scope can silently create and manage this tree without broad Drive access.
   static const String rootFolderName = 'PhoneBackup';
-  static const String canonicalRootFolderId = '1D4WcMHsuG1mLWqjh3dK-9zh_mQV08b6M';
-  static const String sharedDriveRootId = '0AJ9AkL5OYh0uUk9PVA';
+  static const String canonicalRootFolderId = '';
+  static const String sharedDriveRootId = 'root';
 
   // In-memory cache backed by SharedPreferences
   final Map<String, String> _folderCache = {};
@@ -77,7 +78,7 @@ class GoogleDriveService {
     return _driveApi!;
   }
 
-  /// Ensures the root PhoneBackup folder exists in the 5 TB Shared Drive, returning its ID.
+  /// Ensures the app-owned root PhoneBackup folder exists in My Drive.
   Future<String> createRootFolderInMyDrive() async {
     return await getOrCreateFolderPath([rootFolderName]);
   }
@@ -320,6 +321,7 @@ class GoogleDriveService {
         query =
             "name = '$escapedSegment' and "
             "mimeType = 'application/vnd.google-apps.folder' and "
+            "'$parentId' in parents and "
             "trashed = false";
       } else {
         query =
@@ -334,7 +336,8 @@ class GoogleDriveService {
         spaces: 'drive',
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
-        $fields: 'files(id, name, parents)',
+        orderBy: 'createdTime',
+        $fields: 'files(id, name, parents, createdTime)',
         pageSize: 10,
       );
 
@@ -349,7 +352,7 @@ class GoogleDriveService {
             final dupFolder = fileList.files![d];
             final dupId = dupFolder.id;
             if (dupId != null && dupId != canonicalId) {
-              _consolidateAndDeleteDuplicateFolder(
+              await _consolidateAndDeleteDuplicateFolder(
                 api: api,
                 canonicalFolderId: canonicalId,
                 duplicateFolderId: dupId,
@@ -376,8 +379,22 @@ class GoogleDriveService {
         );
         resolvedFolderId = created.id!;
         debugPrint('[GoogleDriveService] Created folder "$segmentName" (id: $resolvedFolderId) under parent: $parentId');
+
+        // Drive does not provide create-if-absent. A foreground and background
+        // isolate can both observe a miss and create within milliseconds. Give
+        // Drive a moment to index both writes, then converge on the oldest ID.
+        await Future.delayed(const Duration(milliseconds: 500));
       }
     }
+
+    // Always reconcile by name+parent, even after a SharedPreferences cache
+    // hit. This repairs stale cached IDs and cross-isolate creation races.
+    final canonicalId = await _canonicalizeFolderSegment(
+      api: api,
+      segmentName: segmentName,
+      parentId: parentId,
+    );
+    if (canonicalId != null) resolvedFolderId = canonicalId;
 
     if (resolvedFolderId == null || resolvedFolderId.isEmpty) {
       throw BackupException('Failed to resolve or create Drive folder: $segmentName');
@@ -386,6 +403,42 @@ class GoogleDriveService {
     _folderCache[segmentPathKey] = resolvedFolderId;
     await prefs.setString(prefKey, resolvedFolderId);
     return resolvedFolderId;
+  }
+
+  Future<String?> _canonicalizeFolderSegment({
+    required drive.DriveApi api,
+    required String segmentName,
+    required String parentId,
+  }) async {
+    final escapedName = segmentName.replaceAll("'", "\\'");
+    final matches = await api.files.list(
+      q: "name = '$escapedName' and "
+          "mimeType = 'application/vnd.google-apps.folder' and "
+          "'$parentId' in parents and trashed = false",
+      spaces: 'drive',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      orderBy: 'createdTime',
+      $fields: 'files(id, name, parents, createdTime)',
+      pageSize: 100,
+    );
+    final folders = matches.files
+            ?.where((folder) => folder.id != null && folder.id!.isNotEmpty)
+            .toList() ??
+        const <drive.File>[];
+    if (folders.isEmpty) return null;
+
+    final canonicalId = folders.first.id!;
+    for (final duplicate in folders.skip(1)) {
+      final duplicateId = duplicate.id!;
+      if (duplicateId == canonicalId) continue;
+      await _consolidateAndDeleteDuplicateFolder(
+        api: api,
+        canonicalFolderId: canonicalId,
+        duplicateFolderId: duplicateId,
+      );
+    }
+    return canonicalId;
   }
 
   Future<void> _consolidateAndDeleteDuplicateFolder({
@@ -426,7 +479,8 @@ class GoogleDriveService {
     }
   }
 
-  /// Checks if file already exists in target folder or on Drive by name, contentHash, or localId
+  /// Checks if this exact file already exists using stable identity metadata.
+  /// Filename and size are deliberately not treated as proof of equality.
   Future<String?> findExistingDriveFile({
     required String parentFolderId,
     required String fileName,
@@ -434,92 +488,9 @@ class GoogleDriveService {
     String? contentHash,
     String? localId,
   }) async {
-    // 0. Fast-path: in-memory cache lookup from remote summary
-    if (_cachedRemoteFilesByName != null) {
-      final cachedId = _cachedRemoteFilesByName![fileName];
-      if (cachedId != null) {
-        return cachedId;
-      }
-      // Cache miss: proceed to live query to guarantee no duplicates
-    }
-
     try {
       final api = await _getDriveApi();
-      final escapedName = fileName.replaceAll("'", "\\'");
-
-      // 1. Search by exact file name inside target folder (if a valid parentFolderId is provided)
-      if (parentFolderId.trim().isNotEmpty) {
-        final query =
-            "name = '$escapedName' and "
-            "'$parentFolderId' in parents and "
-            "trashed = false";
-
-        final fileList = await api.files.list(
-          q: query,
-          spaces: 'drive',
-          supportsAllDrives: true,
-          includeItemsFromAllDrives: true,
-          corpora: 'allDrives',
-          pageSize: 1,
-          $fields: 'files(id, name, size)',
-        );
-
-        if (fileList.files != null && fileList.files!.isNotEmpty) {
-          final id = fileList.files!.first.id;
-          if (id != null) _cachedRemoteFilesByName?[fileName] = id;
-          return id;
-        }
-      }
-
-      // 2. Global search: Check if this file already exists in ANY folder on Drive
-      // Prevents duplicating files when they are moved across folders (Camera -> Album -> Vault)
-      final globalQuery =
-          "name = '$escapedName' and "
-          "trashed = false and "
-          "mimeType != 'application/vnd.google-apps.folder'";
-
-      final globalList = await api.files.list(
-        q: globalQuery,
-        spaces: 'drive',
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true,
-        corpora: 'allDrives',
-        pageSize: 5,
-        $fields: 'files(id, name, size, parents)',
-      );
-
-      if (globalList.files != null && globalList.files!.isNotEmpty) {
-        for (final existingFile in globalList.files!) {
-          final existingSize = int.tryParse(existingFile.size ?? '') ?? 0;
-          if (fileSize <= 0 || existingSize <= 0 || (existingSize - fileSize).abs() < 2048) {
-            final id = existingFile.id;
-            if (id != null) {
-              // Relocate file to the current target folder instead of uploading a duplicate (if parentFolderId provided)
-              if (parentFolderId.trim().isNotEmpty) {
-                final currentParents = (existingFile.parents ?? []).join(',');
-                if (!currentParents.contains(parentFolderId)) {
-                  try {
-                    await api.files.update(
-                      drive.File(),
-                      id,
-                      addParents: parentFolderId,
-                      removeParents: currentParents.isNotEmpty ? currentParents : null,
-                      supportsAllDrives: true,
-                    );
-                    debugPrint('[GoogleDriveService] Relocated existing Drive file $fileName ($id) to $parentFolderId (prevented duplicate upload)');
-                  } catch (e) {
-                    debugPrint('[GoogleDriveService] Relocation warning: $e');
-                  }
-                }
-              }
-              _cachedRemoteFilesByName?[fileName] = id;
-              return id;
-            }
-          }
-        }
-      }
-
-      // 3. Search by localId in appProperties
+      // 1. Search by localId in appProperties.
       if (localId != null && localId.isNotEmpty) {
         try {
           final localIdQuery =
@@ -536,13 +507,12 @@ class GoogleDriveService {
           );
           if (localIdList.files != null && localIdList.files!.isNotEmpty) {
             final id = localIdList.files!.first.id;
-            if (id != null) _cachedRemoteFilesByName?[fileName] = id;
             return id;
           }
         } catch (_) {}
       }
 
-      // 4. Search by contentHash in appProperties if available
+      // 2. Search by the SHA-256 content hash written by this app.
       if (contentHash != null && contentHash.isNotEmpty) {
         try {
           final hashQuery =
@@ -559,7 +529,6 @@ class GoogleDriveService {
           );
           if (hashList.files != null && hashList.files!.isNotEmpty) {
             final id = hashList.files!.first.id;
-            if (id != null) _cachedRemoteFilesByName?[fileName] = id;
             return id;
           }
         } catch (_) {}

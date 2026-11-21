@@ -7,7 +7,9 @@ import 'providers/auth_provider.dart';
 import 'providers/backup_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/background_sync_manager.dart';
+import 'services/auth_service.dart';
 import 'services/favorites_service.dart';
+import 'services/google_drive_service.dart';
 import 'services/expiring_media_service.dart';
 import 'services/paper_trail_service.dart';
 import 'ui/screens/media_library_screen.dart';
@@ -17,6 +19,21 @@ void main() async {
 
   // Enforce VAPT network security hardening & mute release logs
   applyVaptHardening();
+
+  // Restore authentication before the background service can trigger its
+  // first sync. This path is silent and never opens a consent screen.
+  try {
+    await AuthService.instance.restoreSession();
+    final credentialsValid = await AuthService.instance.validateCurrentToken();
+    if (credentialsValid) {
+      final rootId = await GoogleDriveService.instance.createRootFolderInMyDrive();
+      debugPrint('[Startup] Google Drive credentials validated. PhoneBackup root ready: $rootId');
+    } else {
+      debugPrint('[Startup] Google Drive credential validation failed; background upload will remain idle.');
+    }
+  } catch (e) {
+    debugPrint('[Startup] Silent Google Drive validation/root setup failed: $e');
+  }
 
   // Initialize persistent background sync service & native watchdog
   try {

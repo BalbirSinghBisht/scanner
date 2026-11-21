@@ -415,6 +415,7 @@ class BackupSyncService {
         maxVideoSizeBytes: settings.maxVideoSizeBytes,
         minCreatedAt: syncCutoff,
         batchSize: batchSize,
+        includeLockedFolders: settings.syncLockedFolders,
       );
 
       // If batch is empty, check for Wi-Fi wait, quick scan for incoming media, or continuous monitoring
@@ -432,6 +433,7 @@ class BackupSyncService {
           maxVideoSizeBytes: settings.maxVideoSizeBytes,
           minCreatedAt: syncCutoff,
           batchSize: batchSize,
+          includeLockedFolders: settings.syncLockedFolders,
         );
 
         if (batch.isEmpty) {
@@ -543,7 +545,9 @@ class BackupSyncService {
     MediaItem item,
     BackupSettings settings,
   ) async {
-    final fileKey = '${item.fileName}_${item.fileSize}';
+    final fileKey = item.contentHash?.isNotEmpty == true
+        ? item.contentHash!
+        : item.localId;
     if (_activeUploadingFileKeys.contains(fileKey)) {
       debugPrint(
         '[BackupSyncService] Skipping duplicate in-flight upload for $fileKey',
@@ -706,36 +710,6 @@ class BackupSyncService {
         }
       }
 
-      final duplicateByName = await _db.getItemByFileName(item.fileName);
-      if (duplicateByName != null &&
-          duplicateByName.driveFileId != null &&
-          duplicateByName.localId != item.localId) {
-        await _db.updateUploadState(
-          item.localId,
-          UploadState.UPLOADED,
-          driveFileId: duplicateByName.driveFileId,
-          uploadedAt: DateTime.now(),
-          errorMessage: 'Verified duplicate of ${duplicateByName.fileName}',
-        );
-        await _db.markDuplicatesUploadedByNameAndSize(
-          fileName: item.fileName,
-          fileSize: item.fileSize,
-          driveFileId: duplicateByName.driveFileId!,
-          survivingLocalId: item.localId,
-        );
-        _progressController.add(
-          UploadProgressEvent(
-            item: item,
-            bytesSent: item.fileSize,
-            totalBytes: item.fileSize,
-            progress: 1.0,
-            statusMessage:
-                'Skipped duplicate (identical to ${duplicateByName.fileName})',
-          ),
-        );
-        return;
-      }
-
       // 4. Local-only simulation mode check
       if (settings.localOnlyMode) {
         // In local-only testing mode, simulate upload verification without hitting Drive API
@@ -794,15 +768,6 @@ class BackupSyncService {
           survivingLocalId: item.localId,
         );
       }
-      if (uploadedDriveFile.id != null) {
-        await _db.markDuplicatesUploadedByNameAndSize(
-          fileName: item.fileName,
-          fileSize: item.fileSize,
-          driveFileId: uploadedDriveFile.id!,
-          survivingLocalId: item.localId,
-        );
-      }
-
       _progressController.add(
         UploadProgressEvent(
           item: item,
@@ -823,7 +788,8 @@ class BackupSyncService {
           e is AuthException;
       if (isAuth) {
         _hasAuthError = true;
-        _authErrorMessage = 'Google Drive 5 TB token expired (401). Attempting background renewal.';
+        _authErrorMessage =
+            'Google Drive token expired (401). Attempting silent background renewal.';
         try {
           final recovered = await _auth.refreshActiveSession();
           if (recovered) {
@@ -1282,20 +1248,36 @@ class BackupSyncService {
         '.png',
         '.webp',
         '.heic',
+        '.heif',
+        '.avif',
         '.gif',
         '.bmp',
+        '.dng',
+        '.raw',
+        '.cr2',
+        '.cr3',
+        '.nef',
+        '.arw',
+        '.orf',
+        '.rw2',
       };
-      const videoExtensions = {'.mp4', '.mkv', '.mov', '.3gp', '.avi', '.webm'};
+      const videoExtensions = {
+        '.mp4', '.mkv', '.mov', '.3gp', '.avi', '.webm', '.m4v', '.mpeg',
+        '.mpg',
+      };
 
       final existingPaths = await _db.getAllLocalFilePathsSet();
-      final existingNameSizes = await _db.getAllNameSizeKeysSet();
 
       for (final dirPath in candidateDirs) {
         final dir = Directory(dirPath);
         if (!await dir.exists()) continue;
+        if (!settings.syncLockedFolders &&
+            MediaScannerService.isPrivateOrLockedPath(null, dirPath)) {
+          continue;
+        }
 
         await for (final entity in dir.list(
-          recursive: false,
+          recursive: true,
           followLinks: false,
         )) {
           if (entity is! File) continue;
@@ -1306,6 +1288,10 @@ class BackupSyncService {
               pLower.contains('sticker') ||
               pLower.contains('.thumb') ||
               pLower.contains('.cache')) {
+            continue;
+          }
+          if (!settings.syncLockedFolders &&
+              MediaScannerService.isPrivateOrLockedPath(null, path)) {
             continue;
           }
           if (existingPaths.contains(path)) continue;
@@ -1322,11 +1308,7 @@ class BackupSyncService {
           final stat = await entity.stat();
           if (stat.size <= 0) continue;
           final fileName = path.split(RegExp(r'[\\/]')).last;
-          final nameSizeKey = '${fileName}_${stat.size}';
-          if (existingNameSizes.contains(nameSizeKey)) continue;
-
           existingPaths.add(path);
-          existingNameSizes.add(nameSizeKey);
 
           final mediaType = isVideo ? AppMediaType.video : AppMediaType.image;
           String mimeType;

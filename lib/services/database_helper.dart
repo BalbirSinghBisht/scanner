@@ -125,12 +125,19 @@ class DatabaseHelper {
       )
     ''');
 
-    // Ensure folder_name column exists if database table already existed from v1
-    try {
+    // Ensure folder_name exists without intentionally issuing a failing ALTER,
+    // which Android otherwise reports as a noisy SQLite error on every launch.
+    final manifestColumns = await db.rawQuery(
+      'PRAGMA table_info(${AppConstants.manifestTableName})',
+    );
+    final hasFolderName = manifestColumns.any(
+      (column) => column['name'] == 'folder_name',
+    );
+    if (!hasFolderName) {
       await db.execute(
         'ALTER TABLE ${AppConstants.manifestTableName} ADD COLUMN folder_name TEXT',
       );
-    } catch (_) {}
+    }
 
     // Indices for performance
     await db.execute(
@@ -426,22 +433,6 @@ class DatabaseHelper {
     return set;
   }
 
-  /// Lightweight set of fileName_fileSize keys for duplicate detection without loading entire rows
-  Future<Set<String>> getAllNameSizeKeysSet() async {
-    final db = await database;
-    final maps = await db.query(
-      AppConstants.manifestTableName,
-      columns: ['file_name', 'file_size'],
-    );
-    final set = <String>{};
-    for (final row in maps) {
-      final name = row['file_name'] as String?;
-      final size = row['file_size'];
-      if (name != null) set.add('${name}_$size');
-    }
-    return set;
-  }
-
   Future<Set<String>> getAllLocalFilePathsSet() async {
     final db = await database;
     final maps = await db.query(
@@ -459,70 +450,11 @@ class DatabaseHelper {
     return set;
   }
 
-  /// Returns a map of fileName -> localId for fast duplicate avoidance
-  Future<Map<String, String>> getAllFileNamesToLocalIdMap() async {
-    final db = await database;
-    final maps = await db.query(
-      AppConstants.manifestTableName,
-      columns: ['file_name', 'local_id'],
-    );
-    final map = <String, String>{};
-    for (final row in maps) {
-      final name = row['file_name'] as String?;
-      final id = row['local_id'] as String?;
-      if (name != null && id != null) {
-        map[name] = id;
-      }
-    }
-    return map;
-  }
-
-  /// Removes duplicate records from the manifest, keeping the canonical MediaStore asset
-  /// and merging local file paths into the surviving record.
+  /// Removes only duplicates proven by content hash or identical local path.
   Future<int> deduplicateManifest([Database? targetDb]) async {
     final db = targetDb ?? await database;
     try {
-      // 1. For records with the same file_name where one is a disk_* or vault_* scan and one is a MediaStore ID:
-      // Update the MediaStore record's local_file_path if it was null
-      await db.rawUpdate('''
-        UPDATE ${AppConstants.manifestTableName}
-        SET local_file_path = (
-          SELECT d.local_file_path FROM ${AppConstants.manifestTableName} d
-          WHERE (d.local_id LIKE 'disk_%' OR d.local_id LIKE 'vault_%')
-            AND d.file_name = ${AppConstants.manifestTableName}.file_name
-            AND d.local_file_path IS NOT NULL
-          LIMIT 1
-        )
-        WHERE local_id NOT LIKE 'disk_%' AND local_id NOT LIKE 'vault_%'
-          AND (local_file_path IS NULL OR local_file_path = '')
-          AND file_name IN (
-            SELECT file_name FROM ${AppConstants.manifestTableName} WHERE local_id LIKE 'disk_%' OR local_id LIKE 'vault_%'
-          )
-      ''');
-
-      // 2. Propagate drive_file_id and UPLOADED state across duplicate file_name records:
-      // If one record for file_name was already uploaded, all duplicate records inherit it!
-      await db.rawUpdate('''
-        UPDATE ${AppConstants.manifestTableName}
-        SET upload_state = '${UploadState.UPLOADED.name}',
-            drive_file_id = (
-              SELECT u.drive_file_id FROM ${AppConstants.manifestTableName} u
-              WHERE u.file_name = ${AppConstants.manifestTableName}.file_name
-                AND u.upload_state = '${UploadState.UPLOADED.name}'
-                AND u.drive_file_id IS NOT NULL
-              LIMIT 1
-            ),
-            uploaded_at = COALESCE(uploaded_at, strftime('%s','now') * 1000)
-        WHERE upload_state != '${UploadState.UPLOADED.name}'
-          AND file_name IN (
-            SELECT u2.file_name FROM ${AppConstants.manifestTableName} u2
-            WHERE u2.upload_state = '${UploadState.UPLOADED.name}'
-              AND u2.drive_file_id IS NOT NULL
-          )
-      ''');
-
-      // 2b. Propagate drive_file_id across duplicate content_hash records:
-      // If one record with this hash was uploaded, all other records with the same hash inherit it!
+      // If one record with this hash was uploaded, all other records inherit it.
       await db.rawUpdate('''
         UPDATE ${AppConstants.manifestTableName}
         SET upload_state = '${UploadState.UPLOADED.name}',
@@ -544,17 +476,7 @@ class DatabaseHelper {
           )
       ''');
 
-      // 3. Delete disk_* and vault_* duplicates when a canonical MediaStore record exists for that file_name
       final deletedCount = await db.rawDelete('''
-        DELETE FROM ${AppConstants.manifestTableName}
-        WHERE (local_id LIKE 'disk_%' OR (local_id LIKE 'vault_%' AND folder_name != '.private'))
-          AND file_name IN (
-            SELECT file_name FROM ${AppConstants.manifestTableName} WHERE local_id NOT LIKE 'disk_%' AND local_id NOT LIKE 'vault_%'
-          )
-      ''');
-
-      // 4. For any remaining exact duplicates by local_file_path, keep only the lowest rowid
-      await db.rawDelete('''
         DELETE FROM ${AppConstants.manifestTableName}
         WHERE rowid NOT IN (
           SELECT min(rowid) FROM ${AppConstants.manifestTableName} GROUP BY local_file_path
@@ -606,48 +528,12 @@ class DatabaseHelper {
     );
   }
 
-  /// Propagates drive_file_id and marks all duplicate items with matching file_name and file_size as UPLOADED
-  Future<int> markDuplicatesUploadedByNameAndSize({
-    required String fileName,
-    required int fileSize,
-    required String driveFileId,
-    required String survivingLocalId,
-  }) async {
-    final db = await database;
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    return await db.update(
-      AppConstants.manifestTableName,
-      {
-        'upload_state': UploadState.UPLOADED.name,
-        'drive_file_id': driveFileId,
-        'uploaded_at': nowMs,
-        'error_message': 'Duplicate of uploaded media',
-      },
-      where: 'file_name = ? AND file_size = ? AND local_id != ? AND upload_state != ?',
-      whereArgs: [fileName, fileSize, survivingLocalId, UploadState.UPLOADED.name],
-    );
-  }
-
   Future<MediaItem?> getItemByContentHash(String contentHash) async {
     final db = await database;
     final maps = await db.query(
       AppConstants.manifestTableName,
       where: 'content_hash = ? AND upload_state = ? AND drive_file_id IS NOT NULL AND drive_file_id != \'\'',
       whereArgs: [contentHash, UploadState.UPLOADED.name],
-      limit: 1,
-    );
-    if (maps.isNotEmpty) {
-      return MediaItem.fromMap(maps.first);
-    }
-    return null;
-  }
-
-  Future<MediaItem?> getItemByFileName(String fileName) async {
-    final db = await database;
-    final maps = await db.query(
-      AppConstants.manifestTableName,
-      where: 'file_name = ? AND upload_state = ? AND drive_file_id IS NOT NULL',
-      whereArgs: [fileName, UploadState.UPLOADED.name],
       limit: 1,
     );
     if (maps.isNotEmpty) {
@@ -841,31 +727,6 @@ class DatabaseHelper {
       final item = MediaItem.fromMap(maps.first);
       final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-      // Duplicate guard: check if another record with identical file_name is already UPLOADED
-      final alreadyUploaded = await db.query(
-        AppConstants.manifestTableName,
-        where: 'file_name = ? AND upload_state = ? AND drive_file_id IS NOT NULL',
-        whereArgs: [item.fileName, UploadState.UPLOADED.name],
-        limit: 1,
-      );
-
-      if (alreadyUploaded.isNotEmpty) {
-        final existingDriveId = alreadyUploaded.first['drive_file_id'] as String?;
-        if (existingDriveId != null && existingDriveId.isNotEmpty) {
-          await db.update(
-            AppConstants.manifestTableName,
-            {
-              'upload_state': UploadState.UPLOADED.name,
-              'drive_file_id': existingDriveId,
-              'uploaded_at': nowMs,
-            },
-            where: 'local_id = ?',
-            whereArgs: [item.localId],
-          );
-          continue; // Successfully adopted existing Drive upload; check next candidate
-        }
-      }
-
       // Atomically transition to UPLOADING only if still READY or RETRY
       final updatedRows = await db.update(
         AppConstants.manifestTableName,
@@ -902,6 +763,7 @@ class DatabaseHelper {
     DateTime? minCreatedAt,
     DateTime? maxCreatedAt,
     int batchSize = 10,
+    bool includeLockedFolders = true,
   }) async {
     final effectiveLimit = batchSize.clamp(1, 50);
     final db = await database;
@@ -942,6 +804,23 @@ class DatabaseHelper {
       args.add(maxCreatedAt.millisecondsSinceEpoch);
     }
 
+
+    if (!includeLockedFolders) {
+      const privateTerms = [
+        'private', 'locked', 'secret', 'hidden', 'vault', 'safe',
+        'safebox', 'privatesafe', 'keepsafe', 'galleryvault',
+        'calculatorvault', 'lockmypix',
+      ];
+      for (final term in privateTerms) {
+        conditions.add(
+          "LOWER(COALESCE(folder_name, '')) NOT LIKE ? AND "
+          "LOWER(COALESCE(local_file_path, '')) NOT LIKE ?",
+        );
+        args.add('%$term%');
+        args.add('%$term%');
+      }
+    }
+
     // Strictly exclude any audio files or ringtones from sync
     conditions.add("mime_type NOT LIKE 'audio/%'");
     conditions.add("file_name NOT LIKE '%.mp3' AND file_name NOT LIKE '%.ogg' AND file_name NOT LIKE '%.m4a' AND file_name NOT LIKE '%.wav'");
@@ -967,7 +846,6 @@ class DatabaseHelper {
     }
 
     final claimedItems = <MediaItem>[];
-    final claimedFileNames = <String>{};
     final claimedHashes = <String>{};
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
@@ -976,14 +854,11 @@ class DatabaseHelper {
       final item = MediaItem.fromMap(map);
 
       // Intra-batch duplicate check: avoid claiming duplicate files within the same batch
-      if (claimedFileNames.contains(item.fileName)) {
-        continue;
-      }
       if (item.contentHash != null && item.contentHash!.isNotEmpty && claimedHashes.contains(item.contentHash!)) {
         continue;
       }
 
-      // Duplicate guard: check if another record with identical file_name or content_hash is already UPLOADED
+      // Duplicate guard: only an identical content hash proves equality.
       if (item.contentHash != null && item.contentHash!.isNotEmpty) {
         final uploadedByHash = await db.query(
           AppConstants.manifestTableName,
@@ -1020,41 +895,6 @@ class DatabaseHelper {
         }
       }
 
-      final alreadyUploaded = await db.query(
-        AppConstants.manifestTableName,
-        where: 'file_name = ? AND upload_state = ? AND drive_file_id IS NOT NULL',
-        whereArgs: [item.fileName, UploadState.UPLOADED.name],
-        limit: 1,
-      );
-
-      if (alreadyUploaded.isNotEmpty) {
-        final existingDriveId = alreadyUploaded.first['drive_file_id'] as String?;
-        if (existingDriveId != null && existingDriveId.isNotEmpty) {
-          await db.update(
-            AppConstants.manifestTableName,
-            {
-              'upload_state': UploadState.UPLOADED.name,
-              'drive_file_id': existingDriveId,
-              'uploaded_at': nowMs,
-            },
-            where: 'local_id = ?',
-            whereArgs: [item.localId],
-          );
-          continue;
-        }
-      }
-
-      // Check if another record with identical file_name is actively UPLOADING right now
-      final activeUploading = await db.query(
-        AppConstants.manifestTableName,
-        where: 'file_name = ? AND upload_state = ? AND local_id != ?',
-        whereArgs: [item.fileName, UploadState.UPLOADING.name, item.localId],
-        limit: 1,
-      );
-      if (activeUploading.isNotEmpty) {
-        continue; // Wait for active upload to finish and adopt its driveFileId
-      }
-
       // Atomically transition to UPLOADING only if still READY or RETRY
       final updatedRows = await db.update(
         AppConstants.manifestTableName,
@@ -1067,7 +907,6 @@ class DatabaseHelper {
       );
 
       if (updatedRows > 0) {
-        claimedFileNames.add(item.fileName);
         if (item.contentHash != null && item.contentHash!.isNotEmpty) {
           claimedHashes.add(item.contentHash!);
         }

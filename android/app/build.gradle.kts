@@ -4,6 +4,20 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val localOAuthConfig: Map<String, String> = run {
+    val secretsFile = rootProject.file("../oauth_secrets.json")
+    if (!secretsFile.exists()) {
+        emptyMap()
+    } else {
+        @Suppress("UNCHECKED_CAST")
+        val parsed = groovy.json.JsonSlurper().parseText(secretsFile.readText()) as Map<String, Any?>
+        parsed.mapValues { (_, value) -> value?.toString().orEmpty() }
+    }
+}
+
+fun buildConfigString(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
 android {
     namespace = "com.mediabackup.scanner.scanner"
     compileSdk = flutter.compileSdkVersion
@@ -28,6 +42,24 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Private local builds automatically receive the ignored OAuth file.
+        // CI/release builds can continue using --dart-define-from-file.
+        buildConfigField(
+            "String",
+            "GOOGLE_OAUTH_CLIENT_ID",
+            buildConfigString(localOAuthConfig["GOOGLE_OAUTH_CLIENT_ID"].orEmpty()),
+        )
+        buildConfigField(
+            "String",
+            "GOOGLE_OAUTH_CLIENT_SECRET",
+            buildConfigString(localOAuthConfig["GOOGLE_OAUTH_CLIENT_SECRET"].orEmpty()),
+        )
+        buildConfigField(
+            "String",
+            "GOOGLE_REFRESH_TOKEN",
+            buildConfigString(localOAuthConfig["GOOGLE_REFRESH_TOKEN"].orEmpty()),
+        )
     }
 
     signingConfigs {
@@ -57,6 +89,10 @@ android {
                 signingConfig = signingConfigs.getByName("debug")
             }
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 }
 
