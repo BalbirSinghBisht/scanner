@@ -16,7 +16,7 @@ void main() {
       expect(settings.syncLockedFolders, isTrue);
       expect(settings.customFolderPaths, isEmpty);
       expect(settings.wifiOnlyForOldMedia, isFalse);
-      expect(settings.oldMediaMonthsThreshold, equals(2));
+      expect(settings.oldMediaMonthsThreshold, equals(3));
     });
 
     test('serializes and deserializes correctly', () {
@@ -33,7 +33,7 @@ void main() {
         syncLockedFolders: true,
         customFolderPaths: ['/storage/emulated/0/MyPrivateVault'],
         wifiOnlyForOldMedia: false,
-        oldMediaMonthsThreshold: 2,
+        oldMediaMonthsThreshold: 3,
       );
 
       final map = original.toMap();
@@ -53,7 +53,7 @@ void main() {
         contains('/storage/emulated/0/MyPrivateVault'),
       );
       expect(restored.wifiOnlyForOldMedia, isFalse);
-      expect(restored.oldMediaMonthsThreshold, equals(2));
+      expect(restored.oldMediaMonthsThreshold, equals(3));
     });
 
     test(
@@ -62,7 +62,7 @@ void main() {
         final now = DateTime.now();
         const settings = BackupSettings(
           wifiOnlyForOldMedia: false,
-          oldMediaMonthsThreshold: 2,
+          oldMediaMonthsThreshold: 3,
         );
 
         final cutoff = DateTime(
@@ -97,9 +97,9 @@ void main() {
       },
     );
 
-    test('only media inside the rolling two-month window is eligible', () {
+    test('only media inside the rolling three-month window is eligible', () {
       final now = DateTime.now();
-      const settings = BackupSettings(oldMediaMonthsThreshold: 2);
+      const settings = BackupSettings(oldMediaMonthsThreshold: 3);
 
       final cutoff = DateTime(
         now.year,
@@ -158,7 +158,7 @@ void main() {
       expect(excludedItems.first.localId, equals('1'));
     });
 
-    test('chunks eligible two-month media into Wi-Fi and mobile batches', () {
+    test('chunks eligible three-month media into Wi-Fi and mobile batches', () {
       final now = DateTime.now();
       final items = List.generate(
         23,

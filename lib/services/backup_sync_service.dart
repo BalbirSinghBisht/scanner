@@ -400,7 +400,7 @@ class BackupSyncService {
           : AppConstants.batchSizeMobile; // 5
 
       final now = DateTime.now();
-      // Only media inside the rolling two-month window is eligible on either
+      // Only media inside the rolling three-month window is eligible on either
       // Wi-Fi or mobile data. Older media stays local and is never claimed.
       final syncCutoff = DateTime(
         now.year,

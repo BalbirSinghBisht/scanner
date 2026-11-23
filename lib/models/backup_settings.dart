@@ -1,6 +1,6 @@
 class BackupSettings {
   /// Media older than this rolling window is never eligible for Drive sync.
-  static const int driveSyncWindowMonths = 2;
+  static const int driveSyncWindowMonths = 3;
 
   final bool autoBackupEnabled;
   final bool userConsentGiven;
@@ -107,7 +107,7 @@ class BackupSettings {
               .toList() ??
           const [],
       // Keep reading old settings maps safely, but enforce the current sync
-      // policy: one fixed two-month window on Wi-Fi and mobile data.
+      // policy: one fixed three-month window on Wi-Fi and mobile data.
       wifiOnlyForOldMedia: false,
       oldMediaMonthsThreshold: driveSyncWindowMonths,
     );
