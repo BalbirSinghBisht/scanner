@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
+  <defs>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#007AFF"/>
+      <stop offset="0.55" stop-color="#30B0C7"/>
+      <stop offset="1" stop-color="#5856D6"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#0A2238"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#000" flood-opacity=".42"/>
+    </filter>
+  </defs>
+  <rect width="390" height="844" rx="44" fill="#000"/>
+  <rect width="390" height="330" rx="44" fill="url(#glow)"/>
+  <text x="28" y="28" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#fff">9:41</text>
+  <rect x="167" y="10" width="56" height="18" rx="9" fill="#111"/>
+  <path d="M339 18h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+  <path d="M361 15h17v7h-17z" fill="none" stroke="#fff" stroke-width="1.4" rx="2"/>
+  <rect x="363" y="17" width="12" height="3" rx="1" fill="#fff"/>
+
+  <rect x="14" y="44" width="362" height="48" rx="24" fill="#17171A" stroke="#ffffff" stroke-opacity=".14"/>
+  <text x="32" y="74" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#fff">SpaceSaver</text>
+  <circle cx="346" cy="68" r="15" fill="#2C2C2E"/>
+  <path d="M346 60v9l6 3" stroke="#8E8E93" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  <text x="22" y="130" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#8E8E93" letter-spacing="1">STORAGE CHECK</text>
+  <rect x="18" y="146" width="354" height="190" rx="28" fill="#17171A" stroke="#007AFF" stroke-opacity=".35" filter="url(#shadow)"/>
+  <circle cx="103" cy="232" r="57" fill="none" stroke="#2C2C2E" stroke-width="13"/>
+  <circle cx="103" cy="232" r="57" fill="none" stroke="url(#hero)" stroke-width="13" stroke-linecap="round" stroke-dasharray="256 102" transform="rotate(-90 103 232)"/>
+  <text x="103" y="226" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#fff">8.4 GB</text>
+  <text x="103" y="247" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#8E8E93">can be saved</text>
+  <text x="181" y="190" font-family="Arial, sans-serif" font-size="13" fill="#8E8E93">Device storage</text>
+  <text x="181" y="216" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#fff">111 of 128 GB</text>
+  <rect x="181" y="230" width="158" height="7" rx="3.5" fill="#2C2C2E"/>
+  <rect x="181" y="230" width="137" height="7" rx="3.5" fill="url(#hero)"/>
+  <rect x="181" y="263" width="158" height="45" rx="22.5" fill="#007AFF"/>
+  <text x="260" y="291" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#fff">Check My Space</text>
+
+  <text x="22" y="374" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#fff">Smart suggestions</text>
+  <text x="22" y="396" font-family="Arial, sans-serif" font-size="13" fill="#8E8E93">Review items before freeing space</text>
+
+  <g transform="translate(18 416)">
+    <rect width="354" height="74" rx="20" fill="#1C1C1E" stroke="#ffffff" stroke-opacity=".1"/>
+    <rect x="12" y="12" width="50" height="50" rx="15" fill="#142B1B"/>
+    <path d="M28 28h18v18H28zM33 23h18v18" fill="none" stroke="#34C759" stroke-width="2.5" stroke-linejoin="round"/>
+    <text x="76" y="31" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#fff">Duplicate photos</text>
+    <text x="76" y="52" font-family="Arial, sans-serif" font-size="13" fill="#8E8E93">186 items</text>
+    <text x="314" y="32" text-anchor="end" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#34C759">3.2 GB</text>
+    <path d="M329 29l6 6-6 6" fill="none" stroke="#636366" stroke-width="2"/>
+  </g>
+  <g transform="translate(18 500)">
+    <rect width="354" height="74" rx="20" fill="#1C1C1E" stroke="#ffffff" stroke-opacity=".1"/>
+    <rect x="12" y="12" width="50" height="50" rx="15" fill="#2E2210"/>
+    <path d="M27 44l9-10 6 6 7-9 5 13H27z" fill="none" stroke="#FF9500" stroke-width="2.3" stroke-linejoin="round"/>
+    <circle cx="34" cy="28" r="3" fill="#FF9500"/>
+    <text x="76" y="31" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#fff">Large videos</text>
+    <text x="76" y="52" font-family="Arial, sans-serif" font-size="13" fill="#8E8E93">24 videos over 100 MB</text>
+    <text x="314" y="32" text-anchor="end" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#FF9500">4.6 GB</text>
+    <path d="M329 29l6 6-6 6" fill="none" stroke="#636366" stroke-width="2"/>
+  </g>
+  <g transform="translate(18 584)">
+    <rect width="354" height="74" rx="20" fill="#1C1C1E" stroke="#ffffff" stroke-opacity=".1"/>
+    <rect x="12" y="12" width="50" height="50" rx="15" fill="#25182F"/>
+    <path d="M27 28h22v20H27zM31 24h22v20" fill="none" stroke="#AF52DE" stroke-width="2.3" stroke-linejoin="round"/>
+    <text x="76" y="31" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#fff">Similar &amp; blurry</text>
+    <text x="76" y="52" font-family="Arial, sans-serif" font-size="13" fill="#8E8E93">92 photos to review</text>
+    <text x="314" y="32" text-anchor="end" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#AF52DE">620 MB</text>
+    <path d="M329 29l6 6-6 6" fill="none" stroke="#636366" stroke-width="2"/>
+  </g>
+
+  <rect x="18" y="748" width="354" height="70" rx="34" fill="#18181B" stroke="#ffffff" stroke-opacity=".14" filter="url(#shadow)"/>
+  <rect x="222" y="753" width="68" height="60" rx="26" fill="#007AFF" fill-opacity=".18" stroke="#007AFF" stroke-opacity=".45"/>
+  <g font-family="Arial, sans-serif" font-size="9" text-anchor="middle">
+    <g fill="#8E8E93"><text x="52" y="797">Library</text><text x="120" y="797">Albums</text><text x="188" y="797">Favorites</text><text x="324" y="797">Vault</text></g>
+    <text x="256" y="797" fill="#007AFF" font-weight="700">SpaceSaver</text>
+  </g>
+  <g fill="none" stroke="#8E8E93" stroke-width="2">
+    <rect x="44" y="768" width="16" height="13" rx="2"/><rect x="112" y="768" width="16" height="13" rx="2"/><path d="M181 775c0-8 13-8 13 0 0 5-6.5 8-6.5 8S181 780 181 775z"/><rect x="317" y="770" width="14" height="12" rx="2"/><path d="M320 770v-3a4 4 0 018 0v3"/>
+  </g>
+  <path d="M249 769h14v13h-14zM252 766h8" fill="none" stroke="#007AFF" stroke-width="2.2" stroke-linecap="round"/>
+  <rect x="142" y="828" width="106" height="5" rx="2.5" fill="#fff"/>
+</svg>

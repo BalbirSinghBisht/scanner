@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
 import '../../providers/backup_provider.dart';
@@ -32,21 +34,11 @@ import 'collage_maker_screen.dart';
 import 'media_preview_screen.dart';
 import 'paper_trail_screen.dart';
 import 'private_folder_screen.dart';
+import 'space_saver_screen.dart';
 
-enum SortMode {
-  newest,
-  oldest,
-  size,
-  name,
-}
+enum SortMode { newest, oldest, size, name }
 
-enum MediaFilter {
-  all,
-  photos,
-  videos,
-  favorites,
-  expiring,
-}
+enum MediaFilter { all, photos, videos, favorites, expiring }
 
 class MediaLibraryScreen extends StatefulWidget {
   const MediaLibraryScreen({super.key});
@@ -57,7 +49,8 @@ class MediaLibraryScreen extends StatefulWidget {
 
 class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     with WidgetsBindingObserver {
-  // Navigation: 0 = Photos (Timeline), 1 = Albums (3D Stacks), 2 = Favorites
+  // Navigation: 0 = Photos, 1 = Albums, 2 = Favorites, 3 = SpaceSaver.
+  // Vault remains a separate protected route opened from the fifth nav item.
   int _currentTabIndex = 0;
   late final PageController _tabPageController;
 
@@ -181,9 +174,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     if (mounted) {
       setState(() => _isBackgroundOptimized = isOptimized);
       if (!isOptimized) {
-        UnrestrictedBackgroundSheet.show(context, onSettingsChanged: () {
-          _checkBackgroundOptimizationStatus();
-        });
+        UnrestrictedBackgroundSheet.show(
+          context,
+          onSettingsChanged: () {
+            _checkBackgroundOptimizationStatus();
+          },
+        );
       }
     }
   }
@@ -191,7 +187,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   Map<String, List<MediaItem>> _groupItemsByFolder(List<MediaItem> items) {
     final map = <String, List<MediaItem>>{};
     for (final item in items) {
-      if (item.isLockedFolder || MediaScannerService.isJunkOrThumbnail(item.displayFolderName, item.localFilePath)) {
+      if (item.isLockedFolder ||
+          MediaScannerService.isJunkOrThumbnail(
+            item.displayFolderName,
+            item.localFilePath,
+          )) {
         continue;
       }
       final folder = item.displayFolderName;
@@ -208,12 +208,19 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final yesterday = today.subtract(const Duration(days: 1));
 
     for (final item in items) {
-      if (item.isLockedFolder || MediaScannerService.isJunkOrThumbnail(item.displayFolderName, item.localFilePath)) {
+      if (item.isLockedFolder ||
+          MediaScannerService.isJunkOrThumbnail(
+            item.displayFolderName,
+            item.localFilePath,
+          )) {
         continue;
       }
 
-      final itemDate =
-          DateTime(item.createdAt.year, item.createdAt.month, item.createdAt.day);
+      final itemDate = DateTime(
+        item.createdAt.year,
+        item.createdAt.month,
+        item.createdAt.day,
+      );
       String label;
       if (itemDate == today) {
         label = 'Today';
@@ -234,36 +241,48 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
     // Filter out internal thumbnails, junk, and private/locked folders (synced silently in background)
     result.removeWhere((it) {
-      return it.isLockedFolder || MediaScannerService.isJunkOrThumbnail(it.displayFolderName, it.localFilePath);
+      return it.isLockedFolder ||
+          MediaScannerService.isJunkOrThumbnail(
+            it.displayFolderName,
+            it.localFilePath,
+          );
     });
 
     // 1. Search Query Filter
     if (_searchQuery.trim().isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       result = result
-          .where((it) =>
-              it.fileName.toLowerCase().contains(q) ||
-              it.displayFolderName.toLowerCase().contains(q))
+          .where(
+            (it) =>
+                it.fileName.toLowerCase().contains(q) ||
+                it.displayFolderName.toLowerCase().contains(q),
+          )
           .toList();
     }
 
     // 2. Category Filter
     switch (_activeFilter) {
       case MediaFilter.photos:
-        result =
-            result.where((it) => it.mediaType == AppMediaType.image).toList();
+        result = result
+            .where((it) => it.mediaType == AppMediaType.image)
+            .toList();
         break;
       case MediaFilter.videos:
-        result =
-            result.where((it) => it.mediaType == AppMediaType.video).toList();
+        result = result
+            .where((it) => it.mediaType == AppMediaType.video)
+            .toList();
         break;
       case MediaFilter.favorites:
         final favService = FavoritesService.instance;
-        result = result.where((it) => favService.isFavorite(it.localId)).toList();
+        result = result
+            .where((it) => favService.isFavorite(it.localId))
+            .toList();
         break;
       case MediaFilter.expiring:
         final expService = ExpiringMediaService.instance;
-        result = result.where((it) => expService.isExpiring(it.localId)).toList();
+        result = result
+            .where((it) => expService.isExpiring(it.localId))
+            .toList();
         break;
       case MediaFilter.all:
         break;
@@ -281,8 +300,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         result.sort((a, b) => b.fileSize.compareTo(a.fileSize));
         break;
       case SortMode.name:
-        result.sort((a, b) =>
-            a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase()));
+        result.sort(
+          (a, b) =>
+              a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase()),
+        );
         break;
     }
 
@@ -329,8 +350,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   void _toggleSelectDateGroup(List<MediaItem> items) {
     if (items.isEmpty) return;
-    final allInGroupSelected =
-        items.every((it) => _selectedIds.contains(it.localId));
+    final allInGroupSelected = items.every(
+      (it) => _selectedIds.contains(it.localId),
+    );
     setState(() {
       if (!_isSelectionMode) {
         _isSelectionMode = true;
@@ -351,8 +373,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   }
 
   void _openCollageFromSelection(List<MediaItem> allItems) async {
-    final selectedItems =
-        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    final selectedItems = allItems
+        .where((it) => _selectedIds.contains(it.localId))
+        .toList();
     if (selectedItems.length < 2) return;
 
     final result = await Navigator.of(context).push<MediaItem>(
@@ -368,8 +391,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   }
 
   Future<void> _batchShareSelected(List<MediaItem> allItems) async {
-    final selectedItems =
-        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    final selectedItems = allItems
+        .where((it) => _selectedIds.contains(it.localId))
+        .toList();
     if (selectedItems.isEmpty) return;
 
     final filePaths = <String>[];
@@ -388,7 +412,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     if (filePaths.isNotEmpty) {
       if (filePaths.length == 1) {
         await DeviceSettingsHelper.shareMediaFile(
-            filePaths.first, selectedItems.first.mimeType);
+          filePaths.first,
+          selectedItems.first.mimeType,
+        );
       } else {
         await DeviceSettingsHelper.shareMultipleMediaFiles(filePaths);
       }
@@ -406,8 +432,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   }
 
   Future<void> _batchMoveSelected(List<MediaItem> allItems) async {
-    final selectedItems =
-        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    final selectedItems = allItems
+        .where((it) => _selectedIds.contains(it.localId))
+        .toList();
     if (selectedItems.isEmpty) return;
 
     final targetFolder = await MoveToFolderSheet.show(context, selectedItems);
@@ -415,7 +442,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       _exitSelectionMode();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Moved ${selectedItems.length} item(s) to $targetFolder'),
+          content: Text(
+            'Moved ${selectedItems.length} item(s) to $targetFolder',
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -437,11 +466,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   Future<void> _openPrivateFolder() async {
     final unlocked = await PinCodeDialog.showUnlock(context);
     if (unlocked && mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (ctx) => const PrivateFolderScreen(),
-        ),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (ctx) => const PrivateFolderScreen()));
       if (mounted) {
         context.read<BackupProvider>().refreshData();
       }
@@ -450,8 +477,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   Future<void> _batchDeleteSelected(List<MediaItem> allItems) async {
     final c = AppTheme.colors(context);
-    final selectedItems =
-        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    final selectedItems = allItems
+        .where((it) => _selectedIds.contains(it.localId))
+        .toList();
     if (selectedItems.isEmpty) return;
 
     final confirmed = await showDialog<bool>(
@@ -501,12 +529,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   Future<void> _batchToggleFavorites(List<MediaItem> allItems) async {
     final favService = FavoritesService.instance;
-    final selectedItems =
-        allItems.where((it) => _selectedIds.contains(it.localId)).toList();
+    final selectedItems = allItems
+        .where((it) => _selectedIds.contains(it.localId))
+        .toList();
     if (selectedItems.isEmpty) return;
 
-    final allFavorited =
-        selectedItems.every((it) => favService.isFavorite(it.localId));
+    final allFavorited = selectedItems.every(
+      (it) => favService.isFavorite(it.localId),
+    );
     for (final it in selectedItems) {
       await favService.setFavorite(it.localId, !allFavorited);
     }
@@ -528,8 +558,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
             child: Container(
               decoration: BoxDecoration(
-                color: c.isDark ? const Color(0xE61C1C1E) : const Color(0xF2FFFFFF),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                color: c.isDark
+                    ? const Color(0xE61C1C1E)
+                    : const Color(0xF2FFFFFF),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
                 border: Border.all(color: c.glassBorderSubtle, width: 0.5),
               ),
               padding: EdgeInsets.only(
@@ -538,53 +572,73 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 right: 16,
                 bottom: bottomPadding,
               ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: c.textTertiary.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(2.5),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: c.textTertiary.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(2.5),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    'Sort Photos',
-                    style: TextStyle(
-                      color: c.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.4,
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'Sort Photos',
+                      style: TextStyle(
+                        color: c.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.4,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _buildSortOption(
-                    SortMode.newest, 'Newest First', CupertinoIcons.clock, c),
-                _buildSortOption(
-                    SortMode.oldest, 'Oldest First', CupertinoIcons.time, c),
-                _buildSortOption(SortMode.size, 'File Size (Largest)',
-                    CupertinoIcons.square_stack_3d_up, c),
-                _buildSortOption(SortMode.name, 'Name (A to Z)',
-                    CupertinoIcons.textformat_abc, c),
-              ],
+                  const SizedBox(height: 12),
+                  _buildSortOption(
+                    SortMode.newest,
+                    'Newest First',
+                    CupertinoIcons.clock,
+                    c,
+                  ),
+                  _buildSortOption(
+                    SortMode.oldest,
+                    'Oldest First',
+                    CupertinoIcons.time,
+                    c,
+                  ),
+                  _buildSortOption(
+                    SortMode.size,
+                    'File Size (Largest)',
+                    CupertinoIcons.square_stack_3d_up,
+                    c,
+                  ),
+                  _buildSortOption(
+                    SortMode.name,
+                    'Name (A to Z)',
+                    CupertinoIcons.textformat_abc,
+                    c,
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 
   Widget _buildSortOption(
-      SortMode mode, String label, IconData icon, AppThemeColors c) {
+    SortMode mode,
+    String label,
+    IconData icon,
+    AppThemeColors c,
+  ) {
     final isSelected = _sortMode == mode;
     return InkWell(
       onTap: () {
@@ -603,9 +657,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         ),
         child: Row(
           children: [
-            Icon(icon,
-                size: 17,
-                color: isSelected ? c.primary : c.textSecondary),
+            Icon(
+              icon,
+              size: 17,
+              color: isSelected ? c.primary : c.textSecondary,
+            ),
             const SizedBox(width: 12),
             Text(
               label,
@@ -633,16 +689,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final systemUiOverlay = SystemUiOverlayStyle(
-      statusBarColor:
-          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      statusBarColor: isDark
+          ? const Color(0xFF000000)
+          : const Color(0xFFFFFFFF),
       statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-      systemNavigationBarColor:
-          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
-      systemNavigationBarIconBrightness:
-          isDark ? Brightness.light : Brightness.dark,
-      systemNavigationBarDividerColor:
-          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      systemNavigationBarColor: isDark
+          ? const Color(0xFF000000)
+          : const Color(0xFFFFFFFF),
+      systemNavigationBarIconBrightness: isDark
+          ? Brightness.light
+          : Brightness.dark,
+      systemNavigationBarDividerColor: isDark
+          ? const Color(0xFF000000)
+          : const Color(0xFFFFFFFF),
       systemNavigationBarContrastEnforced: false,
       systemStatusBarContrastEnforced: false,
     );
@@ -680,10 +740,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
           // Determine active media items based on current tab or folder (excluding private/locked folders from UI)
           final visibleMediaItems = backup.mediaItems
-              .where((it) =>
-                  !it.isLockedFolder &&
-                  !MediaScannerService.isJunkOrThumbnail(
-                      it.displayFolderName, it.localFilePath))
+              .where(
+                (it) =>
+                    !it.isLockedFolder &&
+                    !MediaScannerService.isJunkOrThumbnail(
+                      it.displayFolderName,
+                      it.localFilePath,
+                    ),
+              )
               .toList();
 
           final List<MediaItem> currentMediaPool;
@@ -701,7 +765,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           }
 
           return PopScope(
-            canPop: _openedFolder == null &&
+            canPop:
+                _openedFolder == null &&
                 !_isSelectionMode &&
                 !_isSearchOpen &&
                 _currentTabIndex == 0,
@@ -743,9 +808,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   return Stack(
                     children: [
                       // Haikei-inspired Animated Organic Fluid Background
-                      const Positioned.fill(
-                        child: HaikeiBackground(),
-                      ),
+                      const Positioned.fill(child: HaikeiBackground()),
 
                       // Main Content View (Edge-to-edge scroll behind floating header)
                       Positioned.fill(
@@ -867,9 +930,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           height: 46,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: c.isDark
-                ? const Color(0xE016161A)
-                : const Color(0xF2FFFFFF),
+            color: c.isDark ? const Color(0xE016161A) : const Color(0xF2FFFFFF),
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
               color: c.isDark
@@ -1020,130 +1081,131 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     const Spacer(),
 
                     // Action buttons
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Search Button
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          minSize: 0,
-                          onPressed: () {
-                            setState(() {
-                              _isSearchOpen = !_isSearchOpen;
-                              if (!_isSearchOpen) {
-                                _searchQuery = '';
-                                _searchController.clear();
-                              }
-                            });
-                          },
-                          child: Container(
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _isSearchOpen
-                                  ? c.primary.withOpacity(0.25)
-                                  : (c.isDark
-                                      ? Colors.white.withOpacity(0.10)
-                                      : Colors.black.withOpacity(0.06)),
-                            ),
-                            child: Icon(
-                              _isSearchOpen
-                                  ? CupertinoIcons.clear
-                                  : CupertinoIcons.search,
-                              size: 15,
-                              color: _isSearchOpen
-                                  ? c.primary
-                                  : c.textSecondary,
+                    if (_currentTabIndex != 3)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Search Button
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minSize: 0,
+                            onPressed: () {
+                              setState(() {
+                                _isSearchOpen = !_isSearchOpen;
+                                if (!_isSearchOpen) {
+                                  _searchQuery = '';
+                                  _searchController.clear();
+                                }
+                              });
+                            },
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _isSearchOpen
+                                    ? c.primary.withOpacity(0.25)
+                                    : (c.isDark
+                                          ? Colors.white.withOpacity(0.10)
+                                          : Colors.black.withOpacity(0.06)),
+                              ),
+                              child: Icon(
+                                _isSearchOpen
+                                    ? CupertinoIcons.clear
+                                    : CupertinoIcons.search,
+                                size: 15,
+                                color: _isSearchOpen
+                                    ? c.primary
+                                    : c.textSecondary,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 7),
+                          const SizedBox(width: 7),
 
-                        // 3-Dot Options & Filter Menu
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          minSize: 0,
-                          onPressed: () =>
-                              _showFilterAndOptionsSheet(context, favService),
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Container(
-                                width: 30,
-                                height: 30,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: c.isDark
-                                      ? Colors.white.withOpacity(0.10)
-                                      : Colors.black.withOpacity(0.06),
+                          // 3-Dot Options & Filter Menu
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minSize: 0,
+                            onPressed: () =>
+                                _showFilterAndOptionsSheet(context, favService),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  width: 30,
+                                  height: 30,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: c.isDark
+                                        ? Colors.white.withOpacity(0.10)
+                                        : Colors.black.withOpacity(0.06),
+                                  ),
+                                  child: Icon(
+                                    CupertinoIcons.ellipsis,
+                                    size: 16,
+                                    color: c.textSecondary,
+                                  ),
                                 ),
-                                child: Icon(
-                                  CupertinoIcons.ellipsis,
-                                  size: 16,
-                                  color: c.textSecondary,
-                                ),
-                              ),
-                              if (_activeFilter != MediaFilter.all)
-                                Positioned(
-                                  top: -1,
-                                  right: -1,
-                                  child: Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: c.primary,
-                                      border: Border.all(
-                                        color: c.isDark
-                                            ? Colors.black
-                                            : Colors.white,
-                                        width: 1.5,
+                                if (_activeFilter != MediaFilter.all)
+                                  Positioned(
+                                    top: -1,
+                                    right: -1,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: c.primary,
+                                        border: Border.all(
+                                          color: c.isDark
+                                              ? Colors.black
+                                              : Colors.white,
+                                          width: 1.5,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-
-                        // Select Button
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          minSize: 0,
-                          onPressed: () {
-                            setState(() => _isSelectionMode = true);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 13,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: c.primary,
-                              borderRadius: BorderRadius.circular(18),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: c.primary.withOpacity(0.35),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 1.5),
-                                ),
                               ],
                             ),
-                            child: const Text(
-                              'Select',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.2,
+                          ),
+                          const SizedBox(width: 8),
+
+                          // Select Button
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minSize: 0,
+                            onPressed: () {
+                              setState(() => _isSelectionMode = true);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 13,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: c.primary,
+                                borderRadius: BorderRadius.circular(18),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: c.primary.withOpacity(0.35),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 1.5),
+                                  ),
+                                ],
+                              ),
+                              child: const Text(
+                                'Select',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -0.2,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
                   ],
                 ),
         ),
@@ -1155,6 +1217,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     if (_openedFolder != null) return _openedFolder!;
     if (_currentTabIndex == 1) return 'Albums';
     if (_currentTabIndex == 2) return 'Favorites';
+    if (_currentTabIndex == 3) return 'SpaceSaver';
     return 'Photos';
   }
 
@@ -1175,7 +1238,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
 
   /// Apple 3-Dot Filter & Gallery View Options Action Sheet
   void _showFilterAndOptionsSheet(
-      BuildContext context, FavoritesService favService) {
+    BuildContext context,
+    FavoritesService favService,
+  ) {
     final c = AppTheme.colors(context);
     final expiringCount = ExpiringMediaService.instance.count;
 
@@ -1269,13 +1334,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 _gridColumns == 2
                     ? 'Grid: 2 Columns (Cinematic)'
                     : (_gridColumns == 3
-                        ? 'Grid: 3 Columns (Standard)'
-                        : 'Grid: 4 Columns (Compact)'),
+                          ? 'Grid: 3 Columns (Standard)'
+                          : 'Grid: 4 Columns (Compact)'),
                 _gridColumns == 2
                     ? CupertinoIcons.square_grid_2x2
                     : (_gridColumns == 3
-                        ? CupertinoIcons.rectangle_grid_3x2
-                        : CupertinoIcons.circle_grid_hex),
+                          ? CupertinoIcons.rectangle_grid_3x2
+                          : CupertinoIcons.circle_grid_hex),
                 false,
                 c,
                 trailing: Text(
@@ -1340,11 +1405,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          Icon(
-            icon,
-            size: 19,
-            color: isSelected ? c.primary : c.textSecondary,
-          ),
+          Icon(icon, size: 19, color: isSelected ? c.primary : c.textSecondary),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -1444,7 +1505,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     required double topClearance,
   }) {
     if (_openedFolder != null) {
-      return _buildFolderMediaView(backup, groupedFolders, c, topClearance: topClearance);
+      return _buildFolderMediaView(
+        backup,
+        groupedFolders,
+        c,
+        topClearance: topClearance,
+      );
     }
 
     final favoritesPool = visibleMediaItems
@@ -1496,6 +1562,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             topClearance: topClearance,
           ),
         ),
+        // Tab 3: SpaceSaver storage analysis and review tools
+        _KeepAliveTab(
+          child: SpaceSaverScreen(
+            items: visibleMediaItems,
+            topClearance: topClearance,
+            onDelete: backup.deleteMediaItem,
+          ),
+        ),
       ],
     );
   }
@@ -1531,8 +1605,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   color: c.surfaceGlass,
                   border: Border.all(color: c.glassBorder),
                 ),
-                child: Icon(Icons.photo_library_outlined,
-                    size: 44, color: c.textTertiary),
+                child: Icon(
+                  Icons.photo_library_outlined,
+                  size: 44,
+                  color: c.textTertiary,
+                ),
               ),
               const SizedBox(height: 16),
               Text(
@@ -1540,9 +1617,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     ? 'No results for "$_searchQuery"'
                     : emptyMessage,
                 style: TextStyle(
-                    fontSize: 15,
-                    color: c.textSecondary,
-                    fontWeight: FontWeight.w600),
+                  fontSize: 15,
+                  color: c.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -1551,7 +1629,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     }
 
     final dateGroups = _groupByDate(filtered);
-    final memories = (_openedFolder == null &&
+    final memories =
+        (_openedFolder == null &&
             _activeFilter == MediaFilter.all &&
             _searchQuery.isEmpty &&
             _currentTabIndex == 0)
@@ -1568,21 +1647,19 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           // Top breathing room clearance for floating capsule header & search bar
-          SliverToBoxAdapter(
-            child: SizedBox(height: topClearance),
-          ),
+          SliverToBoxAdapter(child: SizedBox(height: topClearance)),
           if (memories.isNotEmpty)
-            SliverToBoxAdapter(
-              child: MemoriesShowcase(memories: memories),
-            ),
+            SliverToBoxAdapter(child: MemoriesShowcase(memories: memories)),
           for (final entry in dateGroups.entries) ...[
             // Date Section Header
             SliverToBoxAdapter(
               child: Builder(
                 builder: (context) {
-                  final isGroupSelected = entry.value.isNotEmpty &&
-                      entry.value
-                          .every((it) => _selectedIds.contains(it.localId));
+                  final isGroupSelected =
+                      entry.value.isNotEmpty &&
+                      entry.value.every(
+                        (it) => _selectedIds.contains(it.localId),
+                      );
 
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(14, 18, 14, 6),
@@ -1613,7 +1690,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           CupertinoButton(
                             padding: EdgeInsets.zero,
                             minSize: 0,
-                            onPressed: () => _toggleSelectDateGroup(entry.value),
+                            onPressed: () =>
+                                _toggleSelectDateGroup(entry.value),
                             child: Text(
                               isGroupSelected ? 'Deselect' : 'Select',
                               style: TextStyle(
@@ -1640,50 +1718,49 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   mainAxisSpacing: 2,
                   childAspectRatio: 1.0,
                 ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final item = entry.value[index];
-                    final isSelected = _selectedIds.contains(item.localId);
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final item = entry.value[index];
+                  final isSelected = _selectedIds.contains(item.localId);
 
-                    return MediaItemTile(
-                      key: ValueKey(item.localId),
-                      item: item,
-                      isSelectionMode: _isSelectionMode,
-                      isSelected: isSelected,
-                      onLongPress: () {
-                        if (!_isSelectionMode) {
-                          _enterSelectionMode(item.localId);
-                        }
-                      },
-                      onTap: () {
-                        if (_isSelectionMode) {
-                          _toggleSelection(item.localId);
-                        } else {
-                          final globalIndex = filtered.indexOf(item);
-                          Navigator.push(
-                            context,
-                            PageRouteBuilder(
-                              opaque: false,
-                              barrierColor: Colors.black,
-                              reverseTransitionDuration: Duration.zero,
-                              pageBuilder: (_, _, _) => MediaPreviewScreen(
-                                items: filtered,
-                                initialIndex:
-                                    globalIndex != -1 ? globalIndex : 0,
-                              ),
-                              transitionsBuilder: (_, animation, _, child) =>
-                                  FadeTransition(
-                                      opacity: animation, child: child),
-                              transitionDuration:
-                                  const Duration(milliseconds: 180),
+                  return MediaItemTile(
+                    key: ValueKey(item.localId),
+                    item: item,
+                    isSelectionMode: _isSelectionMode,
+                    isSelected: isSelected,
+                    onLongPress: () {
+                      if (!_isSelectionMode) {
+                        _enterSelectionMode(item.localId);
+                      }
+                    },
+                    onTap: () {
+                      if (_isSelectionMode) {
+                        _toggleSelection(item.localId);
+                      } else {
+                        final globalIndex = filtered.indexOf(item);
+                        Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            opaque: false,
+                            barrierColor: Colors.black,
+                            reverseTransitionDuration: Duration.zero,
+                            pageBuilder: (_, _, _) => MediaPreviewScreen(
+                              items: filtered,
+                              initialIndex: globalIndex != -1 ? globalIndex : 0,
                             ),
-                          );
-                        }
-                      },
-                    );
-                  },
-                  childCount: entry.value.length,
-                ),
+                            transitionsBuilder: (_, animation, _, child) =>
+                                FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                ),
+                            transitionDuration: const Duration(
+                              milliseconds: 180,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                }, childCount: entry.value.length),
               ),
             ),
           ],
@@ -1698,11 +1775,16 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
   }
 
   Widget _buildLibraryStatusFooter(
-      BackupProvider backup, List<MediaItem> allItems, AppThemeColors c) {
-    final photoCount =
-        allItems.where((i) => i.mediaType == AppMediaType.image).length;
-    final videoCount =
-        allItems.where((i) => i.mediaType == AppMediaType.video).length;
+    BackupProvider backup,
+    List<MediaItem> allItems,
+    AppThemeColors c,
+  ) {
+    final photoCount = allItems
+        .where((i) => i.mediaType == AppMediaType.image)
+        .length;
+    final videoCount = allItems
+        .where((i) => i.mediaType == AppMediaType.video)
+        .length;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
@@ -1734,10 +1816,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     required double topClearance,
   }) {
     final visibleItems = backup.mediaItems
-        .where((it) =>
-            !it.isLockedFolder &&
-            !MediaScannerService.isJunkOrThumbnail(
-                it.displayFolderName, it.localFilePath))
+        .where(
+          (it) =>
+              !it.isLockedFolder &&
+              !MediaScannerService.isJunkOrThumbnail(
+                it.displayFolderName,
+                it.localFilePath,
+              ),
+        )
         .toList();
 
     final totalCount = visibleItems.length;
@@ -1752,9 +1838,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           // Top breathing room clearance for floating capsule header & search bar
-          SliverToBoxAdapter(
-            child: SizedBox(height: topClearance),
-          ),
+          SliverToBoxAdapter(child: SizedBox(height: topClearance)),
           // 3D Featured Showcase Carousel
           if (_showFeaturedShowcase &&
               _searchQuery.isEmpty &&
@@ -1780,15 +1864,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   onTap: () => _toggleFeaturedMoments(true),
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: c.surfaceGlass,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: c.glassBorder,
-                        width: 0.6,
-                      ),
+                      border: Border.all(color: c.glassBorder, width: 0.6),
                       boxShadow: [
                         BoxShadow(
                           color: c.primary.withOpacity(0.12),
@@ -1807,8 +1890,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                               colors: [c.primary, c.secondary],
                             ),
                           ),
-                          child: const Icon(Icons.auto_awesome,
-                              size: 13, color: Colors.white),
+                          child: const Icon(
+                            Icons.auto_awesome,
+                            size: 13,
+                            color: Colors.white,
+                          ),
                         ),
                         const SizedBox(width: 10),
                         Text(
@@ -1861,13 +1947,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   Row(
                     children: [
                       CupertinoButton(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         minSize: 0,
                         onPressed: _createNewAlbum,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(CupertinoIcons.plus, size: 16, color: c.primary),
+                            Icon(
+                              CupertinoIcons.plus,
+                              size: 16,
+                              color: c.primary,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               'New Album',
@@ -1906,72 +1999,69 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 mainAxisSpacing: 18,
                 childAspectRatio: 0.82,
               ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  // Card 0: "All Photos & Videos"
-                  if (index == 0) {
-                    return MediaFolderCard(
-                      folderName: 'All Photos & Videos',
-                      itemCount: totalCount,
-                      coverItem: visibleItems.isNotEmpty
-                          ? visibleItems.first
-                          : null,
-                      isAll: true,
-                      onTap: () {
-                        setState(() => _openedFolder = 'All Photos & Videos');
-                      },
-                    );
-                  }
-
-                  // Card 1: "Private Folder" (Locked)
-                  if (index == 1) {
-                    return MediaFolderCard(
-                      folderName: 'Private Folder',
-                      itemCount: 0,
-                      isLocked: true,
-                      onTap: _openPrivateFolder,
-                    );
-                  }
-
-                  // Card 2: "Paper Trail & Warranties"
-                  if (index == 2) {
-                    final paperTrail = PaperTrailService.instance;
-                    final activeCount = paperTrail.activeWarranties.length;
-                    return MediaFolderCard(
-                      folderName: 'Paper Trail & Warranties',
-                      itemCount: paperTrail.totalCount,
-                      customIcon: Icons.receipt_long,
-                      customAccentColor: c.accentTeal,
-                      customSubtitle: activeCount > 0
-                          ? '$activeCount active warranties'
-                          : '${paperTrail.totalCount} documents',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const PaperTrailScreen(),
-                          ),
-                        );
-                      },
-                    );
-                  }
-
-                  // Subsequent cards: Physical phone folders and custom albums
-                  final folderName = sortedFolderNames[index - 3];
-                  final folderItems = groupedFolders[folderName] ?? [];
-
+              delegate: SliverChildBuilderDelegate((context, index) {
+                // Card 0: "All Photos & Videos"
+                if (index == 0) {
                   return MediaFolderCard(
-                    folderName: folderName,
-                    itemCount: folderItems.length,
-                    coverItem: folderItems.isNotEmpty ? folderItems.first : null,
-                    isAll: false,
+                    folderName: 'All Photos & Videos',
+                    itemCount: totalCount,
+                    coverItem: visibleItems.isNotEmpty
+                        ? visibleItems.first
+                        : null,
+                    isAll: true,
                     onTap: () {
-                      setState(() => _openedFolder = folderName);
+                      setState(() => _openedFolder = 'All Photos & Videos');
                     },
                   );
-                },
-                childCount: sortedFolderNames.length + 3,
-              ),
+                }
+
+                // Card 1: "Private Folder" (Locked)
+                if (index == 1) {
+                  return MediaFolderCard(
+                    folderName: 'Private Folder',
+                    itemCount: 0,
+                    isLocked: true,
+                    onTap: _openPrivateFolder,
+                  );
+                }
+
+                // Card 2: "Paper Trail & Warranties"
+                if (index == 2) {
+                  final paperTrail = PaperTrailService.instance;
+                  final activeCount = paperTrail.activeWarranties.length;
+                  return MediaFolderCard(
+                    folderName: 'Paper Trail & Warranties',
+                    itemCount: paperTrail.totalCount,
+                    customIcon: Icons.receipt_long,
+                    customAccentColor: c.accentTeal,
+                    customSubtitle: activeCount > 0
+                        ? '$activeCount active warranties'
+                        : '${paperTrail.totalCount} documents',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PaperTrailScreen(),
+                        ),
+                      );
+                    },
+                  );
+                }
+
+                // Subsequent cards: Physical phone folders and custom albums
+                final folderName = sortedFolderNames[index - 3];
+                final folderItems = groupedFolders[folderName] ?? [];
+
+                return MediaFolderCard(
+                  folderName: folderName,
+                  itemCount: folderItems.length,
+                  coverItem: folderItems.isNotEmpty ? folderItems.first : null,
+                  isAll: false,
+                  onTap: () {
+                    setState(() => _openedFolder = folderName);
+                  },
+                );
+              }, childCount: sortedFolderNames.length + 3),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 105)),
@@ -2010,16 +2100,19 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   color: c.surfaceGlass,
                   border: Border.all(color: c.glassBorder),
                 ),
-                child: Icon(Icons.perm_media_outlined,
-                    size: 48, color: c.textTertiary),
+                child: Icon(
+                  Icons.perm_media_outlined,
+                  size: 48,
+                  color: c.textTertiary,
+                ),
               ),
               const SizedBox(height: 16),
               Text(
                 _searchQuery.isNotEmpty
                     ? 'No results matching "$_searchQuery"'
                     : (_activeFilter == MediaFilter.favorites
-                        ? 'No favorite items in this album'
-                        : 'No media in "$_openedFolder"'),
+                          ? 'No favorite items in this album'
+                          : 'No media in "$_openedFolder"'),
                 style: TextStyle(
                   fontSize: 15,
                   color: c.textSecondary,
@@ -2071,10 +2164,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     opaque: false,
                     barrierColor: Colors.black,
                     reverseTransitionDuration: Duration.zero,
-                    pageBuilder: (_, _, _) => MediaPreviewScreen(
-                      items: items,
-                      initialIndex: index,
-                    ),
+                    pageBuilder: (_, _, _) =>
+                        MediaPreviewScreen(items: items, initialIndex: index),
                     transitionsBuilder: (_, animation, _, child) =>
                         FadeTransition(opacity: animation, child: child),
                     transitionDuration: const Duration(milliseconds: 180),
@@ -2102,12 +2193,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
           decoration: AppTheme.floatingNavbarDecoration(context: context),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final tabWidth = constraints.maxWidth / 4;
+              final tabWidth = constraints.maxWidth / 5;
 
               return AnimatedBuilder(
                 animation: _tabPageController,
                 builder: (context, child) {
-                  final double page = (_tabPageController.hasClients &&
+                  final double page =
+                      (_tabPageController.hasClients &&
                           _tabPageController.position.haveDimensions)
                       ? (_tabPageController.page ?? _currentTabIndex.toDouble())
                       : _currentTabIndex.toDouble();
@@ -2117,9 +2209,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   return Stack(
                     children: [
                       // Smooth Sliding Spring Indicator Capsule
-                      if (!isFolderOpen && page <= 2.2)
+                      if (!isFolderOpen && page <= 3.2)
                         Positioned(
-                          left: page.clamp(0.0, 2.0) * tabWidth + 3,
+                          left: page.clamp(0.0, 3.0) * tabWidth + 3,
                           top: 2,
                           bottom: 2,
                           width: tabWidth - 6,
@@ -2135,7 +2227,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: c.primary.withOpacity(c.isDark ? 0.25 : 0.15),
+                                  color: c.primary.withOpacity(
+                                    c.isDark ? 0.25 : 0.15,
+                                  ),
                                   blurRadius: 10,
                                   offset: const Offset(0, 2),
                                 ),
@@ -2144,7 +2238,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           ),
                         ),
 
-                      // Animated Interactive Tab Items (Library, Albums, Favorites, Vault)
+                      // Animated tab items. Vault opens as a protected route.
                       Row(
                         children: [
                           _buildAnimatedAppleTabItem(
@@ -2176,6 +2270,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                           ),
                           _buildAnimatedAppleTabItem(
                             3,
+                            'SpaceSaver',
+                            CupertinoIcons.trash,
+                            CupertinoIcons.trash_fill,
+                            page,
+                            c,
+                            0,
+                          ),
+                          _buildAnimatedAppleTabItem(
+                            4,
                             'Vault',
                             CupertinoIcons.lock,
                             CupertinoIcons.lock_fill,
@@ -2208,7 +2311,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
     VoidCallback? onTapOverride,
   }) {
     final isFolderOpen = _openedFolder != null;
-    final double proximity = (isFolderOpen || index >= 3)
+    final double proximity = (isFolderOpen || index >= 4)
         ? 0.0
         : (1.0 - (currentPage - index).abs()).clamp(0.0, 1.0);
     final isSelected = proximity > 0.5;
@@ -2222,7 +2325,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
       child: CupertinoButton(
         padding: EdgeInsets.zero,
         minSize: 0,
-        onPressed: onTapOverride ??
+        onPressed:
+            onTapOverride ??
             () {
               setState(() {
                 _currentTabIndex = index;
@@ -2257,7 +2361,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         right: -8,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 4.5, vertical: 1.5),
+                            horizontal: 4.5,
+                            vertical: 1.5,
+                          ),
                           decoration: BoxDecoration(
                             color: c.accentRose,
                             borderRadius: BorderRadius.circular(10),
@@ -2278,7 +2384,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: label == 'SpaceSaver' ? 8.5 : 10,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                     color: itemColor,
                     letterSpacing: -0.1,
@@ -2305,7 +2411,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 minSize: 0,
                 onPressed: () => _batchShareSelected(allItems),
                 child: Column(
@@ -2325,7 +2434,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 ),
               ),
               CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 minSize: 0,
                 onPressed: () => _batchToggleFavorites(allItems),
                 child: Column(
@@ -2345,7 +2457,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 ),
               ),
               CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 minSize: 0,
                 onPressed: () {
                   SetExpiryDialog.show(
@@ -2374,13 +2489,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                 ),
               ),
               CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 minSize: 0,
                 onPressed: () => _batchMoveSelected(allItems),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.drive_file_move_outlined, color: c.primary, size: 19),
+                    Icon(
+                      Icons.drive_file_move_outlined,
+                      color: c.primary,
+                      size: 19,
+                    ),
                     const SizedBox(height: 3),
                     Text(
                       'Move',
@@ -2395,13 +2517,20 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
               ),
               if (_selectedIds.length >= 2 && _selectedIds.length <= 6)
                 CupertinoButton(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   minSize: 0,
                   onPressed: () => _openCollageFromSelection(allItems),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.dashboard_customize_outlined, color: c.primary, size: 19),
+                      Icon(
+                        Icons.dashboard_customize_outlined,
+                        color: c.primary,
+                        size: 19,
+                      ),
                       const SizedBox(height: 3),
                       Text(
                         'Collage',
@@ -2415,7 +2544,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                   ),
                 ),
               CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 minSize: 0,
                 onPressed: () => _batchDeleteSelected(allItems),
                 child: Column(
@@ -2470,7 +2602,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                             ? CupertinoIcons.lock
                             : CupertinoIcons.photo_on_rectangle,
                         size: 36,
-                        color: (hasPerm && backup.isScanning) ? c.primary : c.textSecondary,
+                        color: (hasPerm && backup.isScanning)
+                            ? c.primary
+                            : c.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -2478,8 +2612,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       !hasPerm
                           ? 'Media Permission Required'
                           : (backup.isScanning
-                              ? 'Loading Photos...'
-                              : 'No Photos or Videos'),
+                                ? 'Loading Photos...'
+                                : 'No Photos or Videos'),
                       style: TextStyle(
                         fontSize: 20,
                         color: c.textPrimary,
@@ -2492,8 +2626,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       !hasPerm
                           ? 'Please grant photo and video access to view your library.'
                           : (backup.isScanning
-                              ? 'Organizing your photo library'
-                              : 'Photos and videos you take will appear here.'),
+                                ? 'Organizing your photo library'
+                                : 'Photos and videos you take will appear here.'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
@@ -2505,13 +2639,17 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                       const SizedBox(height: 24),
                       CupertinoButton.filled(
                         onPressed: () async {
-                          await MediaScannerService.instance.requestPermission();
+                          await MediaScannerService.instance
+                              .requestPermission();
                           await backup.startScan(forceFullScan: true);
                         },
                         borderRadius: BorderRadius.circular(18),
                         child: const Text(
                           'Grant Media Permission',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -2526,8 +2664,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                     ] else ...[
                       const SizedBox(height: 20),
                       CupertinoButton.filled(
-                        onPressed: () =>
-                            backup.startScan(forceFullScan: false),
+                        onPressed: () => backup.startScan(forceFullScan: false),
                         borderRadius: BorderRadius.circular(18),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -2536,7 +2673,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                             SizedBox(width: 6),
                             Text(
                               'Scan Device Media',
-                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
                             ),
                           ],
                         ),
@@ -2547,7 +2687,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(CupertinoIcons.lock_shield_fill, size: 16, color: c.primary),
+                            Icon(
+                              CupertinoIcons.lock_shield_fill,
+                              size: 16,
+                              color: c.primary,
+                            ),
                             const SizedBox(width: 6),
                             Text(
                               'Open Private Folder',

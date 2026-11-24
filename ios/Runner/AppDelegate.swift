@@ -212,6 +212,25 @@ class SilentAudioPlayer: NSObject, AVAudioPlayerDelegate {
         result(false)
       case "isIgnoringBatteryOptimizations":
         result(true)
+      case "getStorageStats":
+        do {
+          let attributes = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
+          let total = (attributes[.systemSize] as? NSNumber)?.int64Value ?? 0
+          let free = (attributes[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
+          result([
+            "totalBytes": total,
+            "freeBytes": free,
+            "volumes": [[
+              "name": "Phone storage",
+              "rootPath": NSHomeDirectory(),
+              "totalBytes": total,
+              "freeBytes": free,
+              "removable": false,
+            ]],
+          ])
+        } catch {
+          result(FlutterError(code: "STORAGE_STATS", message: error.localizedDescription, details: nil))
+        }
       case "openAppInfoSettings":
         if let settingsUrl = URL(string: UIApplication.openSettingsURLString),
            UIApplication.shared.canOpenURL(settingsUrl) {

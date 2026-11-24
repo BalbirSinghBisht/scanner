@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.os.StatFs
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
@@ -83,6 +84,46 @@ class MainActivity : FlutterActivity() {
                     }
                     if (roots.isEmpty()) roots.add("/storage/emulated/0")
                     result.success(roots.toList())
+                }
+                "getStorageStats" -> {
+                    val volumes = mutableListOf<Map<String, Any>>()
+                    getExternalFilesDirs(null).forEachIndexed { index, directory ->
+                        if (directory == null) return@forEachIndexed
+                        val fullPath = directory.absolutePath
+                        val androidIndex = fullPath.indexOf("/Android/")
+                        val rootPath = if (androidIndex > 0) fullPath.substring(0, androidIndex) else fullPath
+                        try {
+                            val removable = android.os.Environment.isExternalStorageRemovable(directory)
+                            // Shared internal storage (/storage/emulated/0) can omit app-private
+                            // and system-managed data from its usage accounting. Measure the
+                            // underlying app data filesystem for the phone card so it matches
+                            // Android file managers more closely. Removable cards are measured
+                            // directly at their own filesystem root.
+                            val statsPath = if (removable) rootPath else filesDir.absolutePath
+                            val stats = StatFs(statsPath)
+                            volumes.add(
+                                mapOf(
+                                    "name" to if (removable) "SD card" else "Phone storage",
+                                    "rootPath" to rootPath,
+                                    "totalBytes" to stats.totalBytes,
+                                    "freeBytes" to stats.availableBytes,
+                                    "removable" to removable,
+                                )
+                            )
+                        } catch (e: Exception) {
+                            Log.d(TAG, "Storage volume $index unavailable: ${e.message}")
+                        }
+                    }
+                    val distinctVolumes = volumes.distinctBy { it["rootPath"] }
+                    val primary = distinctVolumes.firstOrNull { it["removable"] == false }
+                        ?: distinctVolumes.firstOrNull()
+                    result.success(
+                        mapOf(
+                            "totalBytes" to (primary?.get("totalBytes") ?: 0L),
+                            "freeBytes" to (primary?.get("freeBytes") ?: 0L),
+                            "volumes" to distinctVolumes,
+                        )
+                    )
                 }
                 "isXiaomiDevice" -> {
                     val manufacturer = Build.MANUFACTURER.lowercase()
