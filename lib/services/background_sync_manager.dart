@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
 import '../core/security/security_overrides.dart';
 import 'auth_service.dart';
 import 'backup_sync_service.dart';
@@ -41,7 +43,9 @@ void onStartBackgroundService(ServiceInstance service) async {
     });
 
     service.on('triggerSync').listen((event) {
-      debugPrint('[BackgroundSync] 10-minute silent alarm event received! Running backup cycle now...');
+      debugPrint(
+        '[BackgroundSync] 10-minute silent alarm event received! Running backup cycle now...',
+      );
       _runBackgroundSyncCycle(service);
     });
   }
@@ -54,7 +58,8 @@ void onStartBackgroundService(ServiceInstance service) async {
   // Instant trigger when network reconnects after being offline
   Connectivity().onConnectivityChanged.listen(
     (results) {
-      final hasConnection = results.isNotEmpty &&
+      final hasConnection =
+          results.isNotEmpty &&
           !results.every((r) => r == ConnectivityResult.none);
       if (hasConnection) {
         debugPrint(
@@ -70,8 +75,9 @@ void onStartBackgroundService(ServiceInstance service) async {
     },
   );
 
-  // Background check every 45 seconds to catch newly downloaded/saved media and sync pending items
-  Timer.periodic(const Duration(seconds: 45), (timer) async {
+  // MediaStore and connectivity observers trigger urgent work. This is only a
+  // low-frequency safety net; frequent polling keeps radios and the CPU awake.
+  Timer.periodic(const Duration(minutes: 15), (timer) async {
     try {
       await _runBackgroundSyncCycle(service);
     } catch (e) {
@@ -100,13 +106,19 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
       if (settings.isPaused) break;
 
       if (BackupSyncService.instance.hasAuthError) {
-        debugPrint('[BackgroundSync] Auth renewal needed. Attempting background session recovery...');
+        debugPrint(
+          '[BackgroundSync] Auth renewal needed. Attempting background session recovery...',
+        );
         final recovered = await AuthService.instance.refreshActiveSession();
         if (recovered) {
           BackupSyncService.instance.clearAuthError();
-          debugPrint('[BackgroundSync] Session successfully refreshed in background.');
+          debugPrint(
+            '[BackgroundSync] Session successfully refreshed in background.',
+          );
         } else {
-          debugPrint('[BackgroundSync] Auth still awaiting valid token. Will retry on next cycle.');
+          debugPrint(
+            '[BackgroundSync] Auth still awaiting valid token. Will retry on next cycle.',
+          );
           break;
         }
       }
@@ -121,7 +133,9 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
       // Acquire native WakeLock during active sync so CPU doesn't sleep while uploading
       if (Platform.isAndroid) {
         try {
-          const platform = MethodChannel('com.mediabackup.scanner/device_settings');
+          const platform = MethodChannel(
+            'com.mediabackup.scanner/device_settings',
+          );
           await platform.invokeMethod('acquireWakeLock');
         } catch (_) {}
       }
@@ -148,7 +162,9 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
   } finally {
     if (Platform.isAndroid) {
       try {
-        const platform = MethodChannel('com.mediabackup.scanner/device_settings');
+        const platform = MethodChannel(
+          'com.mediabackup.scanner/device_settings',
+        );
         await platform.invokeMethod('releaseWakeLock');
       } catch (_) {}
     }
@@ -192,7 +208,8 @@ class BackgroundSyncManager {
     if (Platform.isAndroid) {
       await flutterLocalNotificationsPlugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin
+          >()
           ?.createNotificationChannel(channel);
     }
 
@@ -206,9 +223,7 @@ class BackgroundSyncManager {
         initialNotificationTitle: 'Gallery',
         initialNotificationContent: 'Gallery running',
         foregroundServiceNotificationId: 991,
-        foregroundServiceTypes: [
-          AndroidForegroundType.dataSync,
-        ],
+        foregroundServiceTypes: [AndroidForegroundType.dataSync],
       ),
       iosConfiguration: IosConfiguration(
         autoStart: true,
@@ -226,27 +241,21 @@ class BackgroundSyncManager {
       debugPrint('[BackgroundSync] startService notice: $e');
     }
 
-    // Activate Google Photos / OneDrive style native watchdog, wake alarm, and CPU keep-alive
+    // Register the OS-managed media observer/watchdog. Wake locks are acquired
+    // only for an active sync cycle and always released in its finally block.
     if (Platform.isAndroid) {
       try {
-        const platform = MethodChannel('com.mediabackup.scanner/device_settings');
+        const platform = MethodChannel(
+          'com.mediabackup.scanner/device_settings',
+        );
         await platform.invokeMethod('startWatchdog');
-        await platform.invokeMethod('startContinuousKeepAlive');
-        debugPrint('[BackgroundSync] Native Android watchdog, MediaStore observer & continuous CPU keep-alive activated.');
+        debugPrint('[BackgroundSync] Native Android media observer activated.');
       } catch (e) {
         debugPrint('[BackgroundSync] Watchdog init notice: $e');
       }
     }
 
-    // On iOS, activate native audio keep-alive to prevent suspension when device is locked & offline
-    if (Platform.isIOS) {
-      try {
-        const platform = MethodChannel('com.mediabackup.scanner/device_settings');
-        await platform.invokeMethod('startBackgroundKeepAlive');
-        debugPrint('[BackgroundSync] Native iOS background keep-alive activated.');
-      } catch (e) {
-        debugPrint('[BackgroundSync] iOS keep-alive notice: $e');
-      }
-    }
+    // iOS should suspend normally and invoke onIosBackground for its allotted
+    // background window. An inaudible audio keep-alive wastes substantial power.
   }
 }

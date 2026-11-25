@@ -1,9 +1,11 @@
 import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
+
 import '../models/media_item.dart';
 import 'database_helper.dart';
 
@@ -11,8 +13,9 @@ class MediaEditorService {
   static final MediaEditorService instance = MediaEditorService._init();
   MediaEditorService._init();
 
-  static const MethodChannel _channel =
-      MethodChannel('com.mediabackup.scanner/device_settings');
+  static const MethodChannel _channel = MethodChannel(
+    'com.mediabackup.scanner/device_settings',
+  );
 
   /// Resolves the device's DCIM directory path across Android, iOS, and fallbacks
   Future<Directory> getDcimDirectory() async {
@@ -56,7 +59,12 @@ class MediaEditorService {
     try {
       final now = DateTime.now();
       final baseName = p.basenameWithoutExtension(originalFileName);
-      final newTitle = '${baseName}_edited_${now.millisecondsSinceEpoch}.jpg';
+      final requestedExtension = p.extension(originalFileName).toLowerCase();
+      final isPng = requestedExtension == '.png';
+      final extension = isPng ? '.png' : '.jpg';
+      final mimeType = isPng ? 'image/png' : 'image/jpeg';
+      final newTitle =
+          '${baseName}_edited_${now.millisecondsSinceEpoch}$extension';
 
       // 1. Resolve DCIM Directory and write file directly into DCIM
       final dcimDir = await getDcimDirectory();
@@ -75,7 +83,7 @@ class MediaEditorService {
       } catch (_) {}
 
       // 3. Inform Android MediaScanner so file is indexed into DCIM gallery
-      await _notifyMediaScanner(diskFile.path, 'image/jpeg');
+      await _notifyMediaScanner(diskFile.path, mimeType);
 
       String localId = asset?.id ?? 'edited_${now.millisecondsSinceEpoch}';
       String filePath = diskFile.path;
@@ -93,7 +101,7 @@ class MediaEditorService {
         localId: localId,
         fileName: newTitle,
         mediaType: AppMediaType.image,
-        mimeType: 'image/jpeg',
+        mimeType: mimeType,
         fileSize: bytes.length,
         createdAt: now,
         modifiedAt: now,
@@ -201,12 +209,15 @@ class MediaEditorService {
       final newTitle = '${baseName}_anim_${now.millisecondsSinceEpoch}.gif';
 
       // 1. Extract sampled frames from video
-      final rawFrames = await _channel.invokeMethod<List<dynamic>>('extractVideoFrames', {
-        'inputPath': sourceFilePath,
-        'startMs': startMs.toDouble(),
-        'endMs': endMs.toDouble(),
-        'maxFrames': maxFrames,
-      });
+      final rawFrames = await _channel.invokeMethod<List<dynamic>>(
+        'extractVideoFrames',
+        {
+          'inputPath': sourceFilePath,
+          'startMs': startMs.toDouble(),
+          'endMs': endMs.toDouble(),
+          'maxFrames': maxFrames,
+        },
+      );
 
       if (rawFrames == null || rawFrames.isEmpty) return null;
 

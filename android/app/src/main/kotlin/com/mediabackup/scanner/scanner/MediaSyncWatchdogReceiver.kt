@@ -14,20 +14,15 @@ class MediaSyncWatchdogReceiver : BroadcastReceiver() {
         val action = intent?.action ?: return
         Log.d(TAG, "Received broadcast action: $action")
 
-        // 1. Maintain CPU keep-alive so phone does not sleep while sync runs
-        MediaSyncWatchdog.startContinuousKeepAlive(context)
-
-        // 2. Immediately notify foreground UI if open and trigger background service
+        // Immediately notify foreground UI if open and trigger background service.
+        // The sync cycle owns a short, timeout-bound wake lock.
         MainActivity.notifyMediaChange()
         MediaSyncWatchdog.triggerSyncNow(context)
 
         // 3. Register ContentObserver if not already active
         MediaStoreChangeObserver.register(context)
 
-        // 4. Re-arm the next silent alarm clock (unbroken alarm chain)
-        MediaSyncWatchdog.scheduleSilentAlarm(context)
-
-        // 5. Ensure JobScheduler content URI trigger is active for new media
+        // Ensure JobScheduler content URI trigger is active for new media.
         MediaSyncJobService.scheduleMediaChangeJob(context)
         MediaSyncJobService.schedulePeriodicWakeJob(context)
     }

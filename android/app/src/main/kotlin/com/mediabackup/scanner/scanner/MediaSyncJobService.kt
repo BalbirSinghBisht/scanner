@@ -84,16 +84,12 @@ class MediaSyncJobService : JobService() {
             scheduleMediaChangeJob(this)
         }
 
-        // 2. Keep CPU awake while sync initializes
-        MediaSyncWatchdog.startContinuousKeepAlive(this)
+        // 2. Keep CPU awake only while sync initializes (timeout-bound)
         MediaSyncWatchdog.acquireWakeLock(this, 120000L)
 
         // 3. Immediately notify foreground UI if open and trigger background service
         MainActivity.notifyMediaChange()
         MediaSyncWatchdog.triggerSyncNow(this)
-
-        // 4. Also re-arm silent hardware alarm
-        MediaSyncWatchdog.scheduleSilentAlarm(this)
 
         // Asynchronous background task; finish job after giving sync time to launch
         Thread {

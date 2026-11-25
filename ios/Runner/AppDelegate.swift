@@ -190,8 +190,9 @@ class SilentAudioPlayer: NSObject, AVAudioPlayerDelegate {
       UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     }
 
-    // Automatically start iOS background keep-alive so phone stays running when locked
-    SilentAudioPlayer.shared.start()
+    // Let iOS suspend the app normally. Background callbacks provide bounded
+    // execution time without running silent audio and draining the battery.
+    SilentAudioPlayer.shared.stop()
 
     let controller: FlutterViewController = window?.rootViewController as! FlutterViewController
     let deviceChannel = FlutterMethodChannel(
@@ -431,7 +432,7 @@ class SilentAudioPlayer: NSObject, AVAudioPlayerDelegate {
 
   override func applicationDidEnterBackground(_ application: UIApplication) {
     super.applicationDidEnterBackground(application)
-    SilentAudioPlayer.shared.start()
+    SilentAudioPlayer.shared.stop()
     bgTask = application.beginBackgroundTask(withName: "PersistentSyncKeepAlive") { [weak self] in
       guard let self = self else { return }
       if self.bgTask != .invalid {
@@ -447,7 +448,7 @@ class SilentAudioPlayer: NSObject, AVAudioPlayerDelegate {
       application.endBackgroundTask(bgTask)
       bgTask = .invalid
     }
-    SilentAudioPlayer.shared.start()
+    SilentAudioPlayer.shared.stop()
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {

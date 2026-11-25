@@ -1,8 +1,10 @@
 import 'dart:ui' as ui;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+
 import '../../core/theme/app_theme.dart';
 import '../../models/media_item.dart';
 import '../../services/media_editor_service.dart';
@@ -22,10 +24,7 @@ enum CollageAspectRatio {
 class CollageMakerScreen extends StatefulWidget {
   final List<MediaItem> items;
 
-  const CollageMakerScreen({
-    super.key,
-    required this.items,
-  });
+  const CollageMakerScreen({super.key, required this.items});
 
   @override
   State<CollageMakerScreen> createState() => _CollageMakerScreenState();
@@ -42,7 +41,7 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
   int _layoutStyle = 0; // Layout variant index
   bool _isSaving = false;
 
-  final Map<String, Uint8List> _loadedImages = {};
+  final Map<String, ui.Image> _loadedImages = {};
   bool _isLoadingImages = true;
 
   @override
@@ -54,18 +53,42 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
   }
 
   Future<void> _loadAllImages() async {
+    // Decode sequentially to avoid several large camera images peaking in
+    // memory at the same time.
     for (final item in _selectedItems) {
       try {
-        final file = await MediaScannerService.instance.getMediaFile(item.localId);
+        final file = await MediaScannerService.instance.getMediaFile(
+          item.localId,
+        );
         if (file != null && await file.exists()) {
           final bytes = await file.readAsBytes();
-          _loadedImages[item.localId] = bytes;
+          // Decode to a bounded, raster image before painting. Keeping several
+          // full-resolution camera files compressed in Image.memory can exhaust
+          // the GPU texture budget and produces black cells on some devices.
+          final codec = await ui.instantiateImageCodec(
+            bytes,
+            targetWidth: 1600,
+            allowUpscaling: false,
+          );
+          final frame = await codec.getNextFrame();
+          codec.dispose();
+          _loadedImages[item.localId] = frame.image;
         }
-      } catch (_) {}
+      } catch (error) {
+        debugPrint('Unable to decode collage image ${item.localId}: $error');
+      }
     }
     if (mounted) {
       setState(() => _isLoadingImages = false);
     }
+  }
+
+  @override
+  void dispose() {
+    for (final image in _loadedImages.values) {
+      image.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _saveCollage() async {
@@ -73,19 +96,22 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
     setState(() => _isSaving = true);
 
     try {
-      final boundary = _repaintBoundaryKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
+      final boundary =
+          _repaintBoundaryKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
       if (boundary == null) throw Exception('Collage canvas not ready');
 
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
       if (byteData == null) throw Exception('Failed to render collage');
 
       final pngBytes = byteData.buffer.asUint8List();
 
       final savedItem = await MediaEditorService.instance.saveEditedImage(
         bytes: pngBytes,
-        originalFileName: 'collage_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        originalFileName:
+            'collage_${DateTime.now().millisecondsSinceEpoch}.png',
       );
 
       if (mounted) {
@@ -129,16 +155,20 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final systemUiOverlay = SystemUiOverlayStyle(
-      statusBarColor:
-          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      statusBarColor: isDark
+          ? const Color(0xFF000000)
+          : const Color(0xFFFFFFFF),
       statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-      systemNavigationBarColor:
-          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
-      systemNavigationBarIconBrightness:
-          isDark ? Brightness.light : Brightness.dark,
-      systemNavigationBarDividerColor:
-          isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      systemNavigationBarColor: isDark
+          ? const Color(0xFF000000)
+          : const Color(0xFFFFFFFF),
+      systemNavigationBarIconBrightness: isDark
+          ? Brightness.light
+          : Brightness.dark,
+      systemNavigationBarDividerColor: isDark
+          ? const Color(0xFF000000)
+          : const Color(0xFFFFFFFF),
       systemNavigationBarContrastEnforced: false,
       systemStatusBarContrastEnforced: false,
     );
@@ -146,31 +176,31 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: systemUiOverlay,
       child: Scaffold(
-      backgroundColor: c.bg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Top Bar
-            _buildTopBar(c),
+        backgroundColor: c.bg,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Top Bar
+              _buildTopBar(c),
 
-            // Center Workspace
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: _isLoadingImages
-                      ? CircularProgressIndicator(color: c.primary)
-                      : _buildCollageCanvas(),
+              // Center Workspace
+              Expanded(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: _isLoadingImages
+                        ? CircularProgressIndicator(color: c.primary)
+                        : _buildCollageCanvas(),
+                  ),
                 ),
               ),
-            ),
 
-            // Controls Panel
-            _buildControlsPanel(c),
-          ],
+              // Controls Panel
+              _buildControlsPanel(c),
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -178,8 +208,12 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: c.isDark ? Colors.black.withOpacity(0.85) : Colors.white.withOpacity(0.95),
-        border: Border(bottom: BorderSide(color: c.glassBorderSubtle, width: 0.5)),
+        color: c.isDark
+            ? Colors.black.withOpacity(0.85)
+            : Colors.white.withOpacity(0.95),
+        border: Border(
+          bottom: BorderSide(color: c.glassBorderSubtle, width: 0.5),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -214,7 +248,10 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
                 ? const SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(color: AppTheme.appleBlue, strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      color: AppTheme.appleBlue,
+                      strokeWidth: 2,
+                    ),
                   )
                 : const Text(
                     'Save',
@@ -413,13 +450,13 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
   Widget _buildCell(int index) {
     if (index >= _selectedItems.length) return const SizedBox.shrink();
     final item = _selectedItems[index];
-    final bytes = _loadedImages[item.localId];
+    final image = _loadedImages[item.localId];
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(_borderRadius),
-      child: bytes != null
-          ? Image.memory(
-              bytes,
+      child: image != null
+          ? RawImage(
+              image: image,
               fit: BoxFit.cover,
               width: double.infinity,
               height: double.infinity,
@@ -455,7 +492,10 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
                     onTap: () => setState(() => _aspectRatio = ratio),
                     child: Container(
                       margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: isSelected ? c.primary : c.surfaceGlassFloating,
                         borderRadius: BorderRadius.circular(16),
@@ -475,7 +515,10 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
 
               // Layout Toggle
               CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 minSize: 0,
                 onPressed: () {
                   setState(() {
@@ -492,9 +535,16 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.dashboard_customize_outlined, color: c.primary, size: 15),
+                      Icon(
+                        Icons.dashboard_customize_outlined,
+                        color: c.primary,
+                        size: 15,
+                      ),
                       const SizedBox(width: 4),
-                      Text('Layout', style: TextStyle(color: c.primary, fontSize: 11)),
+                      Text(
+                        'Layout',
+                        style: TextStyle(color: c.primary, fontSize: 11),
+                      ),
                     ],
                   ),
                 ),
@@ -508,13 +558,18 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
             children: [
               Icon(Icons.border_all_outlined, color: c.textTertiary, size: 16),
               const SizedBox(width: 6),
-              Text('Gap', style: TextStyle(color: c.textSecondary, fontSize: 11)),
+              Text(
+                'Gap',
+                style: TextStyle(color: c.textSecondary, fontSize: 11),
+              ),
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: c.primary,
                     inactiveTrackColor: Colors.white12,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 5,
+                    ),
                     trackHeight: 2,
                   ),
                   child: Slider(
@@ -526,15 +581,24 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              Icon(Icons.rounded_corner_outlined, color: c.textTertiary, size: 16),
+              Icon(
+                Icons.rounded_corner_outlined,
+                color: c.textTertiary,
+                size: 16,
+              ),
               const SizedBox(width: 6),
-              Text('Radius', style: TextStyle(color: c.textSecondary, fontSize: 11)),
+              Text(
+                'Radius',
+                style: TextStyle(color: c.textSecondary, fontSize: 11),
+              ),
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: c.primary,
                     inactiveTrackColor: Colors.white12,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 5,
+                    ),
                     trackHeight: 2,
                   ),
                   child: Slider(
@@ -552,31 +616,32 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
           // Frame Background Colors
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Colors.black,
-              Colors.white,
-              const Color(0xFF10141D),
-              const Color(0xFF477BFF),
-              const Color(0xFF55D6A0),
-              const Color(0xFFFF747E),
-            ].map((color) {
-              final isSel = _backgroundColor == color;
-              return GestureDetector(
-                onTap: () => setState(() => _backgroundColor = color),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 6),
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                    border: isSel
-                        ? Border.all(color: Colors.white, width: 2.5)
-                        : Border.all(color: Colors.white24, width: 1),
-                  ),
-                ),
-              );
-            }).toList(),
+            children:
+                [
+                  Colors.black,
+                  Colors.white,
+                  const Color(0xFF10141D),
+                  const Color(0xFF477BFF),
+                  const Color(0xFF55D6A0),
+                  const Color(0xFFFF747E),
+                ].map((color) {
+                  final isSel = _backgroundColor == color;
+                  return GestureDetector(
+                    onTap: () => setState(() => _backgroundColor = color),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: isSel
+                            ? Border.all(color: Colors.white, width: 2.5)
+                            : Border.all(color: Colors.white24, width: 1),
+                      ),
+                    ),
+                  );
+                }).toList(),
           ),
         ],
       ),

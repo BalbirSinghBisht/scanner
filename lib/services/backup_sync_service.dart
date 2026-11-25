@@ -400,16 +400,9 @@ class BackupSyncService {
           : AppConstants.batchSizeMobile; // 5
 
       final now = DateTime.now();
-      // Only media inside the rolling three-month window is eligible on either
+      // Only media inside the rolling ten-day window is eligible on either
       // Wi-Fi or mobile data. Older media stays local and is never claimed.
-      final syncCutoff = DateTime(
-        now.year,
-        now.month - BackupSettings.driveSyncWindowMonths,
-        now.day,
-        now.hour,
-        now.minute,
-        now.second,
-      );
+      final syncCutoff = BackupSettings.driveSyncCutoff(now);
 
       List<MediaItem> batch = await _db.claimNextPendingUploadBatch(
         includePhotos: settings.backupPhotos,

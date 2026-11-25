@@ -1,6 +1,10 @@
 class BackupSettings {
   /// Media older than this rolling window is never eligible for Drive sync.
-  static const int driveSyncWindowMonths = 3;
+  static const int driveSyncWindowDays = 10;
+
+  /// Returns the earliest creation time eligible for backup.
+  static DateTime driveSyncCutoff(DateTime now) =>
+      now.subtract(const Duration(days: driveSyncWindowDays));
 
   final bool autoBackupEnabled;
   final bool userConsentGiven;
@@ -31,7 +35,7 @@ class BackupSettings {
     this.syncLockedFolders = true,
     this.customFolderPaths = const [],
     this.wifiOnlyForOldMedia = false,
-    this.oldMediaMonthsThreshold = driveSyncWindowMonths,
+    this.oldMediaMonthsThreshold = 3,
   });
 
   BackupSettings copyWith({
@@ -107,9 +111,10 @@ class BackupSettings {
               .toList() ??
           const [],
       // Keep reading old settings maps safely, but enforce the current sync
-      // policy: one fixed three-month window on Wi-Fi and mobile data.
+      // policy: one fixed ten-day window on Wi-Fi and mobile data. The legacy
+      // month field remains readable for settings-file compatibility only.
       wifiOnlyForOldMedia: false,
-      oldMediaMonthsThreshold: driveSyncWindowMonths,
+      oldMediaMonthsThreshold: 3,
     );
   }
 }

@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../models/backup_settings.dart';
 import '../models/dashboard_stats.dart';
 import '../models/duplicate_group.dart';
@@ -23,7 +25,9 @@ class BackupProvider extends ChangeNotifier {
   StreamSubscription<ScanProgressReport>? _scanSub;
   StreamSubscription<UploadProgressEvent?>? _uploadSub;
   Timer? _foregroundPollingTimer;
-  static const MethodChannel _nativeChannel = MethodChannel('com.mediabackup.scanner/device_settings');
+  static const MethodChannel _nativeChannel = MethodChannel(
+    'com.mediabackup.scanner/device_settings',
+  );
 
   bool _isScanning = false;
   bool get isScanning => _isScanning;
@@ -100,16 +104,25 @@ class BackupProvider extends ChangeNotifier {
         notifyListeners();
       } else if (event.progress >= 1.0) {
         // Update item in-place so GridView doesn't rebuild or flicker
-        final idx = _mediaItems.indexWhere((it) => it.localId == event.item.localId);
+        final idx = _mediaItems.indexWhere(
+          (it) => it.localId == event.item.localId,
+        );
         if (idx != -1) {
-          _mediaItems[idx] = _mediaItems[idx].copyWith(uploadState: UploadState.UPLOADED);
+          _mediaItems[idx] = _mediaItems[idx].copyWith(
+            uploadState: UploadState.UPLOADED,
+          );
         }
         _failedItems = await _db.getFailedUploads();
         notifyListeners();
-      } else if (event.statusMessage.startsWith('Failed') || event.statusMessage.contains('Expired')) {
-        final idx = _mediaItems.indexWhere((it) => it.localId == event.item.localId);
+      } else if (event.statusMessage.startsWith('Failed') ||
+          event.statusMessage.contains('Expired')) {
+        final idx = _mediaItems.indexWhere(
+          (it) => it.localId == event.item.localId,
+        );
         if (idx != -1) {
-          _mediaItems[idx] = _mediaItems[idx].copyWith(uploadState: UploadState.FAILED);
+          _mediaItems[idx] = _mediaItems[idx].copyWith(
+            uploadState: UploadState.FAILED,
+          );
         }
         _failedItems = await _db.getFailedUploads();
         notifyListeners();
@@ -127,7 +140,9 @@ class BackupProvider extends ChangeNotifier {
     // 6. Listen to native Android MediaStore & camera change events
     _nativeChannel.setMethodCallHandler((call) async {
       if (call.method == 'onMediaChanged') {
-        debugPrint('[BackupProvider] Native onMediaChanged event received! Starting incremental scan and auto-upload...');
+        debugPrint(
+          '[BackupProvider] Native onMediaChanged event received! Starting incremental scan and auto-upload...',
+        );
         await startScan(forceFullScan: false);
         await _autoStartUpload();
       }
@@ -139,9 +154,12 @@ class BackupProvider extends ChangeNotifier {
       await _autoStartUpload();
     });
 
-    // 8. Active foreground watchdog to ensure newly taken photos/videos sync immediately
+    // 8. Infrequent foreground fallback; native/PhotoManager observers handle
+    // new media immediately without continuously scanning the library.
     _foregroundPollingTimer?.cancel();
-    _foregroundPollingTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+    _foregroundPollingTimer = Timer.periodic(const Duration(minutes: 10), (
+      _,
+    ) async {
       if (!_isScanning && !_sync.isSyncing) {
         await startScan(forceFullScan: false);
       }
@@ -184,7 +202,9 @@ class BackupProvider extends ChangeNotifier {
 
       // Prune deleted items on full scan or periodically (every 10 seconds) so external file deletions reflect immediately
       final now = DateTime.now();
-      if (shouldForce || _lastPruneTime == null || now.difference(_lastPruneTime!).inSeconds >= 10) {
+      if (shouldForce ||
+          _lastPruneTime == null ||
+          now.difference(_lastPruneTime!).inSeconds >= 10) {
         await _scanner.pruneDeletedItems();
         _lastPruneTime = now;
       }
@@ -216,7 +236,10 @@ class BackupProvider extends ChangeNotifier {
   }
 
   /// Starts or resumes automatic backup sync
-  Future<void> startBackup(BackupSettings settings, {bool isManual = false}) async {
+  Future<void> startBackup(
+    BackupSettings settings, {
+    bool isManual = false,
+  }) async {
     await _sync.startSync(settings: settings, isManualTrigger: isManual);
     await refreshData();
   }
@@ -253,7 +276,7 @@ class BackupProvider extends ChangeNotifier {
     );
 
     final rawItems = await _db.getAllItems(limit: 500);
-    
+
     // Strict zero-duplication & file existence guarantee
     final seen = <String>{};
     final uniqueItems = <MediaItem>[];
@@ -313,22 +336,28 @@ class BackupProvider extends ChangeNotifier {
       }
     }
 
-    _failedItems = (await _db.getFailedUploads()).where((it) => !it.isLockedFolder).toList();
-    _recentUploads = (await _db.getRecentUploads()).where((it) => !it.isLockedFolder).toList();
+    _failedItems = (await _db.getFailedUploads())
+        .where((it) => !it.isLockedFolder)
+        .toList();
+    _recentUploads = (await _db.getRecentUploads())
+        .where((it) => !it.isLockedFolder)
+        .toList();
 
     final distinctDbFolders = await _db.getDistinctFolders();
     _folders = distinctDbFolders
-        .where((f) =>
-            !f.startsWith('.') &&
-            !f.toLowerCase().contains('private') &&
-            !f.toLowerCase().contains('locked') &&
-            !f.toLowerCase().contains('secret') &&
-            !f.toLowerCase().contains('vault') &&
-            !f.toLowerCase().contains('ringtone') &&
-            !f.toLowerCase().contains('notification') &&
-            !f.toLowerCase().contains('alarm') &&
-            !f.toLowerCase().contains('audio') &&
-            !f.toLowerCase().contains('music'))
+        .where(
+          (f) =>
+              !f.startsWith('.') &&
+              !f.toLowerCase().contains('private') &&
+              !f.toLowerCase().contains('locked') &&
+              !f.toLowerCase().contains('secret') &&
+              !f.toLowerCase().contains('vault') &&
+              !f.toLowerCase().contains('ringtone') &&
+              !f.toLowerCase().contains('notification') &&
+              !f.toLowerCase().contains('alarm') &&
+              !f.toLowerCase().contains('audio') &&
+              !f.toLowerCase().contains('music'),
+        )
         .toList();
 
     notifyListeners();
@@ -375,7 +404,8 @@ class BackupProvider extends ChangeNotifier {
     final list = <DuplicateGroup>[];
     for (final group in raw) {
       if (group.length > 1) {
-        final sig = group.first.contentHash ??
+        final sig =
+            group.first.contentHash ??
             '${group.first.fileSize}_${group.first.width}x${group.first.height}';
         list.add(DuplicateGroup(signature: sig, items: group));
       }

@@ -42,8 +42,6 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         try {
-            MediaSyncWatchdog.startContinuousKeepAlive(this)
-            MediaSyncWatchdog.scheduleHeartbeat(this)
             MediaStoreChangeObserver.register(this)
             MediaSyncJobService.scheduleMediaChangeJob(this)
             MediaSyncJobService.schedulePeriodicWakeJob(this)
@@ -382,8 +380,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "startWatchdog" -> {
-                    MediaSyncWatchdog.startContinuousKeepAlive(this)
-                    MediaSyncWatchdog.scheduleSilentAlarm(this)
+                    MediaSyncWatchdog.stopContinuousKeepAlive()
                     MediaStoreChangeObserver.register(this)
                     MediaSyncJobService.scheduleMediaChangeJob(this)
                     MediaSyncJobService.schedulePeriodicWakeJob(this)

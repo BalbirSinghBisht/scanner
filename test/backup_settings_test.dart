@@ -56,59 +56,35 @@ void main() {
       expect(restored.oldMediaMonthsThreshold, equals(3));
     });
 
-    test(
-      'correctly identifies media older and newer than threshold cutoff',
-      () {
-        final now = DateTime.now();
-        const settings = BackupSettings(
-          wifiOnlyForOldMedia: false,
-          oldMediaMonthsThreshold: 3,
-        );
-
-        final cutoff = DateTime(
-          now.year,
-          now.month - settings.oldMediaMonthsThreshold,
-          now.day,
-          now.hour,
-          now.minute,
-          now.second,
-        );
-
-        final recentItem = MediaItem(
-          localId: 'recent_1',
-          fileName: 'recent.jpg',
-          mediaType: AppMediaType.image,
-          mimeType: 'image/jpeg',
-          fileSize: 1024,
-          createdAt: now.subtract(const Duration(days: 30)),
-        );
-
-        final oldItem = MediaItem(
-          localId: 'old_1',
-          fileName: 'old.jpg',
-          mediaType: AppMediaType.image,
-          mimeType: 'image/jpeg',
-          fileSize: 1024,
-          createdAt: now.subtract(const Duration(days: 220)),
-        );
-
-        expect(recentItem.createdAt.isAfter(cutoff), isTrue);
-        expect(oldItem.createdAt.isBefore(cutoff), isTrue);
-      },
-    );
-
-    test('only media inside the rolling three-month window is eligible', () {
+    test('correctly identifies media around the ten-day cutoff', () {
       final now = DateTime.now();
-      const settings = BackupSettings(oldMediaMonthsThreshold: 3);
+      final cutoff = BackupSettings.driveSyncCutoff(now);
 
-      final cutoff = DateTime(
-        now.year,
-        now.month - settings.oldMediaMonthsThreshold,
-        now.day,
-        now.hour,
-        now.minute,
-        now.second,
+      final recentItem = MediaItem(
+        localId: 'recent_1',
+        fileName: 'recent.jpg',
+        mediaType: AppMediaType.image,
+        mimeType: 'image/jpeg',
+        fileSize: 1024,
+        createdAt: now.subtract(const Duration(days: 9)),
       );
+
+      final oldItem = MediaItem(
+        localId: 'old_1',
+        fileName: 'old.jpg',
+        mediaType: AppMediaType.image,
+        mimeType: 'image/jpeg',
+        fileSize: 1024,
+        createdAt: now.subtract(const Duration(days: 11)),
+      );
+
+      expect(recentItem.createdAt.isAfter(cutoff), isTrue);
+      expect(oldItem.createdAt.isBefore(cutoff), isTrue);
+    });
+
+    test('only media inside the rolling ten-day window is eligible', () {
+      final now = DateTime.now();
+      final cutoff = BackupSettings.driveSyncCutoff(now);
 
       final queue = [
         MediaItem(
@@ -117,7 +93,7 @@ void main() {
           mediaType: AppMediaType.image,
           mimeType: 'image/jpeg',
           fileSize: 1024,
-          createdAt: now.subtract(const Duration(days: 300)),
+          createdAt: now.subtract(const Duration(days: 11)),
         ),
         MediaItem(
           localId: '2',
@@ -125,7 +101,7 @@ void main() {
           mediaType: AppMediaType.image,
           mimeType: 'image/jpeg',
           fileSize: 1024,
-          createdAt: now.subtract(const Duration(days: 10)),
+          createdAt: now.subtract(const Duration(days: 5)),
         ),
         MediaItem(
           localId: '3',
@@ -133,7 +109,7 @@ void main() {
           mediaType: AppMediaType.image,
           mimeType: 'image/jpeg',
           fileSize: 1024,
-          createdAt: now.subtract(const Duration(days: 30)),
+          createdAt: now.subtract(const Duration(days: 10)),
         ),
       ];
 
@@ -158,7 +134,7 @@ void main() {
       expect(excludedItems.first.localId, equals('1'));
     });
 
-    test('chunks eligible three-month media into Wi-Fi and mobile batches', () {
+    test('chunks eligible ten-day media into Wi-Fi and mobile batches', () {
       final now = DateTime.now();
       final items = List.generate(
         23,
