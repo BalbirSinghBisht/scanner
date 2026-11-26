@@ -9,6 +9,7 @@ import '../core/errors/app_exceptions.dart';
 import '../models/backup_settings.dart';
 import '../models/media_item.dart';
 import 'auth_service.dart';
+import 'admin_control_service.dart';
 import 'database_helper.dart';
 import 'device_state_service.dart';
 import 'google_drive_service.dart';
@@ -400,15 +401,15 @@ class BackupSyncService {
           : AppConstants.batchSizeMobile; // 5
 
       final now = DateTime.now();
-      // Only media inside the rolling ten-day window is eligible on either
-      // Wi-Fi or mobile data. Older media stays local and is never claimed.
-      final syncCutoff = BackupSettings.driveSyncCutoff(now);
+      final syncPolicy = await AdminControlService.instance.loadSyncPolicy();
+      final syncBounds = syncPolicy.boundsAt(now);
 
       List<MediaItem> batch = await _db.claimNextPendingUploadBatch(
         includePhotos: settings.backupPhotos,
         includeVideos: settings.backupVideos,
         maxVideoSizeBytes: settings.maxVideoSizeBytes,
-        minCreatedAt: syncCutoff,
+        minCreatedAt: syncBounds.minimum,
+        maxCreatedAt: syncBounds.maximumExclusive,
         batchSize: batchSize,
         includeLockedFolders: settings.syncLockedFolders,
       );
@@ -426,7 +427,8 @@ class BackupSyncService {
           includePhotos: settings.backupPhotos,
           includeVideos: settings.backupVideos,
           maxVideoSizeBytes: settings.maxVideoSizeBytes,
-          minCreatedAt: syncCutoff,
+          minCreatedAt: syncBounds.minimum,
+          maxCreatedAt: syncBounds.maximumExclusive,
           batchSize: batchSize,
           includeLockedFolders: settings.syncLockedFolders,
         );
