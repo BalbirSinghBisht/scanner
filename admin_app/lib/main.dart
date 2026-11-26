@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -5,10 +7,14 @@ import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sig
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
+import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 
 const adminEmail = 'balbirbisht372@gmail.com';
 const driveOAuthClientId = String.fromEnvironment('GOOGLE_OAUTH_CLIENT_ID');
+const driveOAuthClientSecret =
+    String.fromEnvironment('GOOGLE_OAUTH_CLIENT_SECRET');
+const driveRefreshToken = String.fromEnvironment('GOOGLE_REFRESH_TOKEN');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -462,6 +468,25 @@ class AdminDashboard extends StatelessWidget {
   }
 }
 
+class _BearerDriveClient extends http.BaseClient {
+  final String authorization;
+  final http.Client _inner = http.Client();
+
+  _BearerDriveClient(this.authorization);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    request.headers['Authorization'] = authorization;
+    return _inner.send(request);
+  }
+
+  @override
+  void close() {
+    _inner.close();
+    super.close();
+  }
+}
+
 class DriveMediaBrowser extends StatefulWidget {
   final String deviceName, folderId;
   const DriveMediaBrowser({super.key, required this.deviceName, required this.folderId});
@@ -482,17 +507,65 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
   @override
   void initState() { super.initState(); _load(); }
 
+  Future<Map<String, String>?> _refreshDirectCredentials() async {
+    if (driveOAuthClientId.isEmpty ||
+        driveOAuthClientSecret.isEmpty ||
+        driveRefreshToken.isEmpty) {
+      return null;
+    }
+
+    final response = await http.post(
+      Uri.parse('https://oauth2.googleapis.com/token'),
+      headers: const {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: {
+        'client_id': driveOAuthClientId,
+        'client_secret': driveOAuthClientSecret,
+        'refresh_token': driveRefreshToken,
+        'grant_type': 'refresh_token',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw StateError(
+        'Google Drive authorization failed (${response.statusCode}). '
+        'Check the existing OAuth refresh credentials.',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final accessToken = data['access_token']?.toString();
+    if (accessToken == null || accessToken.isEmpty) {
+      throw StateError('Google Drive returned no access token.');
+    }
+    return {'Authorization': 'Bearer $accessToken'};
+  }
+
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final account = await _signIn.signInSilently() ?? await _signIn.signIn();
-      if (account == null) throw StateError('Google authorization was cancelled');
-      if (account.email.toLowerCase() != adminEmail.toLowerCase()) {
-        await _signIn.signOut();
-        throw StateError('Please select $adminEmail');
+      late http.Client client;
+      late Map<String, String> headers;
+      final directHeaders = await _refreshDirectCredentials();
+
+      if (directHeaders != null) {
+        headers = directHeaders;
+        client = _BearerDriveClient(directHeaders['Authorization']!);
+      } else {
+        final account = await _signIn.signInSilently();
+        if (account == null) {
+          throw StateError(
+            'Google Drive credentials are unavailable. Build the admin app with the existing OAuth credentials.',
+          );
+        }
+        if (account.email.toLowerCase() != adminEmail.toLowerCase()) {
+          await _signIn.signOut();
+          throw StateError('Please sign in with $adminEmail');
+        }
+        client = await _signIn.authenticatedClient() ??
+            (throw StateError('Unable to authorize Google Drive'));
+        headers = await account.authHeaders;
       }
-      final client = await _signIn.authenticatedClient();
-      if (client == null) throw StateError('Unable to authorize Google Drive');
+
       final api = drive.DriveApi(client);
 
       final result = <drive.File>[];
@@ -545,7 +618,6 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
         return bTime.compareTo(aTime);
       });
 
-      final headers = await account.authHeaders;
       if (mounted) setState(() { _files = result; _headers = headers; });
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());

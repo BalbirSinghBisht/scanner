@@ -53,7 +53,9 @@ jobs:
       - name: Build release APK
         env:
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-        run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID"
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+        run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID" --dart-define=GOOGLE_OAUTH_CLIENT_SECRET="$GOOGLE_OAUTH_CLIENT_SECRET" --dart-define=GOOGLE_REFRESH_TOKEN="$GOOGLE_REFRESH_TOKEN"
 
       - name: Prepare release asset
         run: cp build/app/outputs/flutter-apk/app-release.apk gallery-admin.apk
