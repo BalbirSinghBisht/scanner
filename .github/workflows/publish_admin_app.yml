@@ -1,0 +1,77 @@
+name: Publish Gallery Admin APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "admin_app/**"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - ".github/workflows/publish_admin_app.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-gallery-admin
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin_app
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze admin app
+        run: flutter analyze
+
+      - name: Test admin app
+        run: flutter test
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Prepare release asset
+        run: cp build/app/outputs/flutter-apk/app-release.apk gallery-admin.apk
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gallery-admin-apk
+          path: admin_app/gallery-admin.apk
+          if-no-files-found: error
+
+      - name: Publish stable admin release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: admin-latest
+          commit: ${{ github.sha }}
+          name: Gallery Admin — Latest
+          body: Automatically built from the latest admin-app changes on the main branch.
+          artifacts: admin_app/gallery-admin.apk
+          artifactContentType: application/vnd.android.package-archive
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: false
+          token: ${{ secrets.GITHUB_TOKEN }}

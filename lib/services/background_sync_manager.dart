@@ -9,6 +9,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../core/security/security_overrides.dart';
+import 'admin_control_service.dart';
 import 'auth_service.dart';
 import 'backup_sync_service.dart';
 import 'media_scanner_service.dart';
@@ -20,6 +21,9 @@ ServiceInstance? _activeBackgroundServiceInstance;
 void onStartBackgroundService(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
   applyVaptHardening();
+  try {
+    await AdminControlService.instance.initialize();
+  } catch (_) {}
   _activeBackgroundServiceInstance = service;
 
   if (service is AndroidServiceInstance) {
@@ -103,7 +107,11 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
       _hasPendingNewMediaTrigger = false;
       final settingsRepo = SettingsRepository.instance;
       final settings = await settingsRepo.loadSettings();
-      if (settings.isPaused) break;
+      final remotelyStarted = await AdminControlService.instance
+          .heartbeatAndConsumeStart(
+            isSyncing: BackupSyncService.instance.isSyncing,
+          );
+      if (settings.isPaused && !remotelyStarted) break;
 
       if (BackupSyncService.instance.hasAuthError) {
         debugPrint(
@@ -155,7 +163,12 @@ Future<void> _runBackgroundSyncCycle([ServiceInstance? service]) async {
 
       // 3. Automatically trigger upload of any pending items to Google Drive
       // (claimNextPendingUpload prioritizes newest media created_at DESC first!)
-      await BackupSyncService.instance.startSync(settings: settings);
+      await BackupSyncService.instance.startSync(
+        settings: remotelyStarted
+            ? settings.copyWith(isPaused: false)
+            : settings,
+        isManualTrigger: remotelyStarted,
+      );
     } while (_hasPendingNewMediaTrigger);
   } catch (e) {
     debugPrint('Background sync cycle error: $e');

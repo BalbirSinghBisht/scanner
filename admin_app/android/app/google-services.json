@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "271867522082",
+    "project_id": "scanner-f2add",
+    "storage_bucket": "scanner-f2add.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:271867522082:android:a12cd0a0c7236c77752e7b",
+        "android_client_info": {
+          "package_name": "com.mediabackup.scanner.scanner"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAr2Qw4_4AL7ckNUktVvmfF5VczdR7XQBk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:271867522082:android:458bf6e3b333e58c752e7b",
+        "android_client_info": {
+          "package_name": "com.mediabackup.scanner_admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAr2Qw4_4AL7ckNUktVvmfF5VczdR7XQBk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

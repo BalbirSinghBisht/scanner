@@ -37,6 +37,8 @@ migrate_working_dir/
 /oauth_secrets.json
 /oauth_secrets.*.json
 !/oauth_secrets.example.json
+/firebase-debug.log
+/functions/node_modules/
 
 # Symbolication related
 app.*.symbols

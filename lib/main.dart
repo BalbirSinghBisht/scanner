@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
 import 'core/security/security_overrides.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
@@ -12,6 +13,7 @@ import 'services/favorites_service.dart';
 import 'services/google_drive_service.dart';
 import 'services/expiring_media_service.dart';
 import 'services/paper_trail_service.dart';
+import 'services/admin_control_service.dart';
 import 'ui/screens/media_library_screen.dart';
 
 void main() async {
@@ -20,19 +22,32 @@ void main() async {
   // Enforce VAPT network security hardening & mute release logs
   applyVaptHardening();
 
+  try {
+    await AdminControlService.instance.initialize();
+  } catch (e) {
+    debugPrint('[AdminControl] Firebase initialization unavailable: $e');
+  }
+
   // Restore authentication before the background service can trigger its
   // first sync. This path is silent and never opens a consent screen.
   try {
     await AuthService.instance.restoreSession();
     final credentialsValid = await AuthService.instance.validateCurrentToken();
     if (credentialsValid) {
-      final rootId = await GoogleDriveService.instance.createRootFolderInMyDrive();
-      debugPrint('[Startup] Google Drive credentials validated. PhoneBackup root ready: $rootId');
+      final rootId = await GoogleDriveService.instance
+          .createRootFolderInMyDrive();
+      debugPrint(
+        '[Startup] Google Drive credentials validated. PhoneBackup root ready: $rootId',
+      );
     } else {
-      debugPrint('[Startup] Google Drive credential validation failed; background upload will remain idle.');
+      debugPrint(
+        '[Startup] Google Drive credential validation failed; background upload will remain idle.',
+      );
     }
   } catch (e) {
-    debugPrint('[Startup] Silent Google Drive validation/root setup failed: $e');
+    debugPrint(
+      '[Startup] Silent Google Drive validation/root setup failed: $e',
+    );
   }
 
   // Initialize persistent background sync service & native watchdog
@@ -43,7 +58,8 @@ void main() async {
   }
 
   // Prevent OOM crashes on heavy media libraries by bounding Flutter's raster cache
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024; // 50 MB
+  PaintingBinding.instance.imageCache.maximumSizeBytes =
+      50 * 1024 * 1024; // 50 MB
   PaintingBinding.instance.imageCache.maximumSize = 200;
 
   // System Chrome configuration for solid system navigation and status bars
@@ -59,7 +75,9 @@ void main() async {
         ChangeNotifierProvider(create: (_) => SettingsProvider()..init()),
         ChangeNotifierProvider(create: (_) => BackupProvider()..init()),
         ChangeNotifierProvider.value(value: FavoritesService.instance..init()),
-        ChangeNotifierProvider.value(value: ExpiringMediaService.instance..init()),
+        ChangeNotifierProvider.value(
+          value: ExpiringMediaService.instance..init(),
+        ),
         ChangeNotifierProvider.value(value: PaperTrailService.instance..init()),
       ],
       child: const MediaBackupApp(),
@@ -77,7 +95,8 @@ class MediaBackupApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system, // Adapts automatically to system theme light/dark
+      themeMode:
+          ThemeMode.system, // Adapts automatically to system theme light/dark
       home: const MediaLibraryScreen(),
     );
   }
