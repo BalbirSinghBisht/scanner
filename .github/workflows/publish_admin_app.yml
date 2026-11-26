@@ -51,7 +51,9 @@ jobs:
         run: flutter test
 
       - name: Build release APK
-        run: flutter build apk --release --build-number=${{ github.run_number }}
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+        run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID"
 
       - name: Prepare release asset
         run: cp build/app/outputs/flutter-apk/app-release.apk gallery-admin.apk

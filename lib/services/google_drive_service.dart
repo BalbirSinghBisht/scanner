@@ -1,15 +1,20 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../core/errors/app_exceptions.dart';
 import '../models/media_item.dart';
 import 'auth_service.dart';
 import 'device_state_service.dart';
 
-typedef UploadProgressCallback = void Function(int bytesUploaded, int totalBytes);
+typedef UploadProgressCallback = void Function(
+  int bytesUploaded,
+  int totalBytes,
+);
 
 /// Custom Stream wrapper that reports byte progress as chunks are sent to HTTP socket
 class ProgressCountingStream extends Stream<List<int>> {
@@ -86,11 +91,88 @@ class GoogleDriveService {
   /// Ensures the device backup folder (PhoneBackup/`deviceFolder`) exists once on Google Drive.
   /// Consolidates any pre-existing duplicates and returns the canonical folder ID.
   Future<String> ensureDeviceBackupFolder() async {
-    final deviceFolder =
-        await DeviceStateService.instance.getDeviceBackupFolderName();
-    final folderId = await getOrCreateFolderPath([rootFolderName, deviceFolder]);
+    final deviceFolder = await DeviceStateService.instance
+        .getDeviceBackupFolderName();
+    final folderId = await getOrCreateFolderPath([
+      rootFolderName,
+      deviceFolder,
+    ]);
     await cleanDuplicateDriveFolders();
     return folderId;
+  }
+
+  /// Returns metadata for this device's existing Drive tree without exposing
+  /// credentials or downloading media contents.
+  Future<Map<String, dynamic>?> getDeviceFolderSummary() async {
+    try {
+      final api = await _getDriveApi();
+      final deviceFolder = await DeviceStateService.instance
+          .getDeviceBackupFolderName();
+      final deviceFolderId = await getOrCreateFolderPath([
+        rootFolderName,
+        deviceFolder,
+      ]);
+      final childFolders = await api.files.list(
+        q:
+            "'$deviceFolderId' in parents and "
+            "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        $fields: 'files(id,name)',
+        pageSize: 1000,
+      );
+
+      final folders = <Map<String, dynamic>>[];
+      var totalFiles = 0;
+      var totalBytes = 0;
+      for (final folder in childFolders.files ?? const <drive.File>[]) {
+        if (folder.id == null || folder.name == null) continue;
+        var folderFiles = 0;
+        var folderBytes = 0;
+        String? pageToken;
+        do {
+          final page = await api.files.list(
+            q:
+                "'${folder.id}' in parents and "
+                "mimeType != 'application/vnd.google-apps.folder' and trashed = false",
+            spaces: 'drive',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+            pageSize: 1000,
+            pageToken: pageToken,
+            $fields: 'nextPageToken,files(id,size)',
+          );
+          for (final file in page.files ?? const <drive.File>[]) {
+            folderFiles++;
+            folderBytes += int.tryParse(file.size ?? '0') ?? 0;
+          }
+          pageToken = page.nextPageToken;
+        } while (pageToken != null && pageToken.isNotEmpty);
+
+        totalFiles += folderFiles;
+        totalBytes += folderBytes;
+        folders.add({
+          'name': folder.name,
+          'fileCount': folderFiles,
+          'totalBytes': folderBytes,
+        });
+      }
+      folders.sort(
+        (a, b) => (a['name'] as String).compareTo(b['name'] as String),
+      );
+      return {
+        'path': '$rootFolderName/$deviceFolder',
+        'folderId': deviceFolderId,
+        'fileCount': totalFiles,
+        'totalBytes': totalBytes,
+        'folders': folders,
+        'refreshedAt': DateTime.now().millisecondsSinceEpoch,
+      };
+    } catch (e) {
+      debugPrint('[GoogleDriveService] Folder summary unavailable: $e');
+      return null;
+    }
   }
 
   /// Thread-safe resolution of folder paths with per-segment coalescing locks.
@@ -176,13 +258,14 @@ class GoogleDriveService {
     int deleted = 0;
     try {
       final api = await _getDriveApi();
-      final deviceFolder =
-          await DeviceStateService.instance.getDeviceBackupFolderName();
+      final deviceFolder = await DeviceStateService.instance
+          .getDeviceBackupFolderName();
 
       // Check root PhoneBackup and deviceFolder exist
       final escapedRoot = rootFolderName.replaceAll("'", "\\'");
       final rootList = await api.files.list(
-        q: "name = '$escapedRoot' and 'root' in parents and "
+        q:
+            "name = '$escapedRoot' and 'root' in parents and "
             "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
         spaces: 'drive',
         supportsAllDrives: true,
@@ -239,14 +322,19 @@ class GoogleDriveService {
           try {
             await api.files.delete(fId, supportsAllDrives: true);
             deleted++;
-            debugPrint('[GoogleDriveService] Deleted empty Drive folder with no data: $fName ($fId)');
+            debugPrint(
+              '[GoogleDriveService] Deleted empty Drive folder with no data: $fName ($fId)',
+            );
             final partialPath = '$rootFolderName/$deviceFolder/$fName';
             _folderCache.remove(partialPath);
-            final prefKey = 'gdrive_folder_id_${partialPath.replaceAll(RegExp(r'[^\w]'), '_')}';
+            final prefKey =
+                'gdrive_folder_id_${partialPath.replaceAll(RegExp(r'[^\w]'), '_')}';
             final prefs = await SharedPreferences.getInstance();
             await prefs.remove(prefKey);
           } catch (e) {
-            debugPrint('[GoogleDriveService] Could not delete empty folder $fName: $e');
+            debugPrint(
+              '[GoogleDriveService] Could not delete empty folder $fName: $e',
+            );
           }
         }
       }
@@ -264,7 +352,8 @@ class GoogleDriveService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final api = await _getDriveApi();
-    final prefKey = 'gdrive_folder_id_${segmentPathKey.replaceAll(RegExp(r'[^\w]'), '_')}';
+    final prefKey =
+        'gdrive_folder_id_${segmentPathKey.replaceAll(RegExp(r'[^\w]'), '_')}';
 
     String? resolvedFolderId;
 
@@ -295,7 +384,9 @@ class GoogleDriveService {
                 supportsAllDrives: true,
               );
               resolvedFolderId = candidateId;
-              debugPrint('Relocated orphaned folder $segmentName into parent $parentId');
+              debugPrint(
+                'Relocated orphaned folder $segmentName into parent $parentId',
+              );
             } catch (_) {
               resolvedFolderId = null;
             }
@@ -379,7 +470,9 @@ class GoogleDriveService {
           $fields: 'id, name',
         );
         resolvedFolderId = created.id!;
-        debugPrint('[GoogleDriveService] Created folder "$segmentName" (id: $resolvedFolderId) under parent: $parentId');
+        debugPrint(
+          '[GoogleDriveService] Created folder "$segmentName" (id: $resolvedFolderId) under parent: $parentId',
+        );
 
         // Drive does not provide create-if-absent. A foreground and background
         // isolate can both observe a miss and create within milliseconds. Give
@@ -398,7 +491,9 @@ class GoogleDriveService {
     if (canonicalId != null) resolvedFolderId = canonicalId;
 
     if (resolvedFolderId == null || resolvedFolderId.isEmpty) {
-      throw BackupException('Failed to resolve or create Drive folder: $segmentName');
+      throw BackupException(
+        'Failed to resolve or create Drive folder: $segmentName',
+      );
     }
 
     _folderCache[segmentPathKey] = resolvedFolderId;
@@ -413,7 +508,8 @@ class GoogleDriveService {
   }) async {
     final escapedName = segmentName.replaceAll("'", "\\'");
     final matches = await api.files.list(
-      q: "name = '$escapedName' and "
+      q:
+          "name = '$escapedName' and "
           "mimeType = 'application/vnd.google-apps.folder' and "
           "'$parentId' in parents and trashed = false",
       spaces: 'drive',
@@ -423,7 +519,8 @@ class GoogleDriveService {
       $fields: 'files(id, name, parents, createdTime)',
       pageSize: 100,
     );
-    final folders = matches.files
+    final folders =
+        matches.files
             ?.where((folder) => folder.id != null && folder.id!.isNotEmpty)
             .toList() ??
         const <drive.File>[];
@@ -474,9 +571,13 @@ class GoogleDriveService {
         }
       }
       await api.files.delete(duplicateFolderId, supportsAllDrives: true);
-      debugPrint('[GoogleDriveService] Consolidated duplicate folder $duplicateFolderId into $canonicalFolderId');
+      debugPrint(
+        '[GoogleDriveService] Consolidated duplicate folder $duplicateFolderId into $canonicalFolderId',
+      );
     } catch (e) {
-      debugPrint('[GoogleDriveService] Error consolidating duplicate folder $duplicateFolderId: $e');
+      debugPrint(
+        '[GoogleDriveService] Error consolidating duplicate folder $duplicateFolderId: $e',
+      );
     }
   }
 
@@ -560,8 +661,7 @@ class GoogleDriveService {
           includeItemsFromAllDrives: true,
           corpora: 'allDrives',
           orderBy: 'createdTime',
-          $fields:
-              'nextPageToken, files(id, name, size, parents, createdTime, appProperties)',
+          $fields: 'nextPageToken, files(id, name, size, parents, createdTime, appProperties)',
           pageToken: pageToken,
           pageSize: 500,
         );
@@ -580,7 +680,10 @@ class GoogleDriveService {
               // Found duplicate in the exact same folder!
               final duplicateToDelete = f.id!;
               try {
-                await api.files.delete(duplicateToDelete, supportsAllDrives: true);
+                await api.files.delete(
+                  duplicateToDelete,
+                  supportsAllDrives: true,
+                );
                 deletedCount++;
                 debugPrint(
                   '[GoogleDriveService] Purged hash-verified duplicate file on Drive: '
@@ -597,7 +700,9 @@ class GoogleDriveService {
 
       _cachedRemoteFilesByName = null;
     } catch (e) {
-      debugPrint('[GoogleDriveService] Error cleaning duplicate Drive files: $e');
+      debugPrint(
+        '[GoogleDriveService] Error cleaning duplicate Drive files: $e',
+      );
     }
     return deletedCount;
   }
@@ -610,7 +715,8 @@ class GoogleDriveService {
       final api = await _getDriveApi();
       final escapedRoot = rootFolderName.replaceAll("'", "\\'");
       final rootList = await api.files.list(
-        q: "name = '$escapedRoot' and 'root' in parents and "
+        q:
+            "name = '$escapedRoot' and 'root' in parents and "
             "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
         spaces: 'drive',
         supportsAllDrives: true,
@@ -622,8 +728,8 @@ class GoogleDriveService {
       final rootId = rootList.files!.first.id;
       if (rootId == null) return 0;
 
-      final deviceFolder =
-          await DeviceStateService.instance.getDeviceBackupFolderName();
+      final deviceFolder = await DeviceStateService.instance
+          .getDeviceBackupFolderName();
       final escapedDev = deviceFolder.replaceAll("'", "\\'");
 
       final devList = await api.files.list(
@@ -666,16 +772,22 @@ class GoogleDriveService {
                         supportsAllDrives: true,
                       );
                     } catch (e) {
-                      debugPrint('[GoogleDriveService] Error moving child ${child.name} to canonical device folder: $e');
+                      debugPrint(
+                        '[GoogleDriveService] Error moving child ${child.name} to canonical device folder: $e',
+                      );
                     }
                   }
                 }
               }
               await api.files.delete(dupDevId, supportsAllDrives: true);
               mergedOrDeleted++;
-              debugPrint('[GoogleDriveService] Consolidated duplicate device folder $dupDevId into $deviceFolderId');
+              debugPrint(
+                '[GoogleDriveService] Consolidated duplicate device folder $dupDevId into $deviceFolderId',
+              );
             } catch (e) {
-              debugPrint('[GoogleDriveService] Error deleting duplicate device folder $dupDevId: $e');
+              debugPrint(
+                '[GoogleDriveService] Error deleting duplicate device folder $dupDevId: $e',
+              );
             }
           }
         }
@@ -691,7 +803,9 @@ class GoogleDriveService {
         pageSize: 500,
       );
 
-      if (childFolders.files == null || childFolders.files!.isEmpty) return mergedOrDeleted;
+      if (childFolders.files == null || childFolders.files!.isEmpty) {
+        return mergedOrDeleted;
+      }
 
       final foldersByName = <String, List<drive.File>>{};
       for (final f in childFolders.files!) {
@@ -702,7 +816,9 @@ class GoogleDriveService {
       for (final entry in foldersByName.entries) {
         final list = entry.value;
         if (list.length > 1) {
-          debugPrint('[GoogleDriveService] Found ${list.length} duplicate folders named "${entry.key}" on Drive. Consolidating...');
+          debugPrint(
+            '[GoogleDriveService] Found ${list.length} duplicate folders named "${entry.key}" on Drive. Consolidating...',
+          );
           final primaryFolderId = list.first.id!;
 
           for (int i = 1; i < list.length; i++) {
@@ -737,15 +853,21 @@ class GoogleDriveService {
               // Delete the duplicate folder now that it's empty
               await api.files.delete(dupFolderId, supportsAllDrives: true);
               mergedOrDeleted++;
-              debugPrint('[GoogleDriveService] Consolidated and deleted duplicate Drive folder "${entry.key}" ($dupFolderId)');
+              debugPrint(
+                '[GoogleDriveService] Consolidated and deleted duplicate Drive folder "${entry.key}" ($dupFolderId)',
+              );
             } catch (e) {
-              debugPrint('[GoogleDriveService] Error consolidating duplicate folder "${entry.key}": $e');
+              debugPrint(
+                '[GoogleDriveService] Error consolidating duplicate folder "${entry.key}": $e',
+              );
             }
           }
         }
       }
     } catch (e) {
-      debugPrint('[GoogleDriveService] Error cleaning duplicate Drive folders: $e');
+      debugPrint(
+        '[GoogleDriveService] Error cleaning duplicate Drive folders: $e',
+      );
     }
     return mergedOrDeleted;
   }
@@ -754,13 +876,14 @@ class GoogleDriveService {
   Future<bool> doesDeviceFolderExist() async {
     try {
       final api = await _getDriveApi();
-      final deviceFolder =
-          await DeviceStateService.instance.getDeviceBackupFolderName();
+      final deviceFolder = await DeviceStateService.instance
+          .getDeviceBackupFolderName();
 
       // 1. Verify root PhoneBackup exists and is not trashed
       final escapedRoot = rootFolderName.replaceAll("'", "\\'");
       final rootList = await api.files.list(
-        q: "name = '$escapedRoot' and 'root' in parents and "
+        q:
+            "name = '$escapedRoot' and 'root' in parents and "
             "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
         spaces: 'drive',
         supportsAllDrives: true,
@@ -773,7 +896,10 @@ class GoogleDriveService {
         return false;
       }
 
-      final rootIds = rootList.files!.map((f) => f.id).whereType<String>().toList();
+      final rootIds = rootList.files!
+          .map((f) => f.id)
+          .whereType<String>()
+          .toList();
       if (rootIds.isEmpty) return false;
 
       // 2. Verify deviceFolder exists inside the root and is not trashed
@@ -805,7 +931,9 @@ class GoogleDriveService {
 
       return true;
     } catch (e) {
-      debugPrint('[GoogleDriveService] Error checking doesDeviceFolderExist: $e');
+      debugPrint(
+        '[GoogleDriveService] Error checking doesDeviceFolderExist: $e',
+      );
       if (e is drive.DetailedApiRequestError) {
         final status = e.status;
         if (status == 401) {
@@ -818,7 +946,9 @@ class GoogleDriveService {
           // than being misreported as "folder exists" forever.
           rethrow;
         }
-        if (status == 408 || status == 429 || (status != null && status >= 500)) {
+        if (status == 408 ||
+            status == 429 ||
+            (status != null && status >= 500)) {
           return true;
         }
       }
@@ -830,12 +960,15 @@ class GoogleDriveService {
   }
 
   /// Fetches stable identities for app-owned Drive media.
-  Future<({
-    Set<String> fileIds,
-    Map<String, String> idsByLocalId,
-    Map<String, String> idsByContentHash,
-    bool success,
-  })> fetchRemoteFilesSummary() async {
+  Future<
+    ({
+      Set<String> fileIds,
+      Map<String, String> idsByLocalId,
+      Map<String, String> idsByContentHash,
+      bool success,
+    })
+  >
+  fetchRemoteFilesSummary() async {
     final filesByName = <String, String>{};
     final fileIds = <String>{};
     final idsByLocalId = <String, String>{};
@@ -845,7 +978,9 @@ class GoogleDriveService {
     try {
       final exists = await doesDeviceFolderExist();
       if (!exists) {
-        debugPrint('[GoogleDriveService] Device backup folder does not exist or is trashed on Drive.');
+        debugPrint(
+          '[GoogleDriveService] Device backup folder does not exist or is trashed on Drive.',
+        );
         _cachedRemoteFilesByName = filesByName;
         return (
           fileIds: fileIds,
@@ -915,8 +1050,8 @@ class GoogleDriveService {
     UploadProgressCallback? onProgress,
   }) async {
     // 1. Destination folder structure: PhoneBackup as root, then device folder, then matching phone folder (e.g. Camera, Screenshots, WhatsApp Images)
-    final deviceFolder =
-        await DeviceStateService.instance.getDeviceBackupFolderName();
+    final deviceFolder = await DeviceStateService.instance
+        .getDeviceBackupFolderName();
     final phoneFolder = item.displayFolderName;
     final pathSegments = [rootFolderName, deviceFolder, phoneFolder];
 
@@ -932,7 +1067,9 @@ class GoogleDriveService {
     );
 
     if (existingFileId != null) {
-      debugPrint('File ${item.fileName} already exists on Drive: $existingFileId');
+      debugPrint(
+        'File ${item.fileName} already exists on Drive: $existingFileId',
+      );
       final existingFile = drive.File()..id = existingFileId;
       return existingFile;
     }
@@ -946,15 +1083,14 @@ class GoogleDriveService {
       try {
         final api = await _getDriveApi();
         final fileStream = file.openRead();
-        final countingStream = ProgressCountingStream(
-          fileStream,
-          fileLength,
-          (sent, total) {
-            if (onProgress != null) {
-              onProgress(sent, total);
-            }
-          },
-        );
+        final countingStream = ProgressCountingStream(fileStream, fileLength, (
+          sent,
+          total,
+        ) {
+          if (onProgress != null) {
+            onProgress(sent, total);
+          }
+        });
 
         final media = drive.Media(
           countingStream,
@@ -965,7 +1101,8 @@ class GoogleDriveService {
         final driveFile = drive.File()
           ..name = item.fileName
           ..parents = [folderId]
-          ..description = 'Backed up via Media Backup App. Local ID: ${item.localId}';
+          ..description =
+              'Backed up via Media Backup App. Local ID: ${item.localId}';
 
         driveFile.appProperties = {
           'localId': item.localId,
@@ -986,7 +1123,9 @@ class GoogleDriveService {
         );
 
         if (result.id == null || result.id!.isEmpty) {
-          throw BackupException('Google Drive returned empty file ID on creation');
+          throw BackupException(
+            'Google Drive returned empty file ID on creation',
+          );
         }
 
         if (result.id != null) {
@@ -999,7 +1138,9 @@ class GoogleDriveService {
 
         if (e is drive.DetailedApiRequestError) {
           if (e.status == 404) {
-            debugPrint('[GoogleDriveService] 404 Not Found during upload. Clearing folder cache and resolving folder again...');
+            debugPrint(
+              '[GoogleDriveService] 404 Not Found during upload. Clearing folder cache and resolving folder again...',
+            );
             await clearFolderCache();
             try {
               folderId = await getOrCreateFolderPath(pathSegments);
@@ -1027,7 +1168,9 @@ class GoogleDriveService {
                 localId: item.localId,
               );
               if (doubleCheckId != null) {
-                debugPrint('File ${item.fileName} was already uploaded on Drive ($doubleCheckId)! Avoiding duplicate.');
+                debugPrint(
+                  'File ${item.fileName} was already uploaded on Drive ($doubleCheckId)! Avoiding duplicate.',
+                );
                 return drive.File()..id = doubleCheckId;
               }
               continue;
@@ -1060,8 +1203,8 @@ class GoogleDriveService {
   }) async {
     try {
       final api = await _getDriveApi();
-      final deviceFolder =
-          await DeviceStateService.instance.getDeviceBackupFolderName();
+      final deviceFolder = await DeviceStateService.instance
+          .getDeviceBackupFolderName();
       final pathSegments = [rootFolderName, deviceFolder, targetFolderName];
       final targetFolderId = await getOrCreateFolderPath(pathSegments);
 
@@ -1080,7 +1223,9 @@ class GoogleDriveService {
           removeParents: currentParents.isNotEmpty ? currentParents : null,
           supportsAllDrives: true,
         );
-        debugPrint('[GoogleDriveService] Relocated Drive file $driveFileId to $targetFolderName ($targetFolderId)');
+        debugPrint(
+          '[GoogleDriveService] Relocated Drive file $driveFileId to $targetFolderName ($targetFolderId)',
+        );
         return true;
       }
       return false;
@@ -1121,7 +1266,10 @@ class GoogleDriveService {
     _inFlightFolderResolutions.clear();
     try {
       final prefs = await SharedPreferences.getInstance();
-      final allKeys = prefs.getKeys().where((k) => k.startsWith('gdrive_folder_id_')).toList();
+      final allKeys = prefs
+          .getKeys()
+          .where((k) => k.startsWith('gdrive_folder_id_'))
+          .toList();
       for (final k in allKeys) {
         await prefs.remove(k);
       }

@@ -11,6 +11,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/remote_sync_policy.dart';
 import 'device_state_service.dart';
+import 'google_drive_service.dart';
 
 /// Spark-plan-compatible bridge using authenticated Firestore directly.
 class AdminControlService {
@@ -100,6 +101,14 @@ class AdminControlService {
         'syncState': isSyncing ? 'syncing' : 'idle',
         'lastSeen': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      final driveSummary = await GoogleDriveService.instance
+          .getDeviceFolderSummary();
+      if (driveSummary != null) {
+        await ref.set({
+          'driveSummary': driveSummary,
+          'driveSummaryUpdatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
       await _listenForCommands();
 
       return await FirebaseFirestore.instance.runTransaction((

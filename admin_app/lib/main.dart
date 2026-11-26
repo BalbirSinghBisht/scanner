@@ -1,9 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:googleapis/drive/v3.dart' as drive;
+import 'package:video_player/video_player.dart';
 
 const adminEmail = 'balbirbisht372@gmail.com';
+const driveOAuthClientId = String.fromEnvironment('GOOGLE_OAUTH_CLIENT_ID');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,16 +43,21 @@ class AdminApp extends StatelessWidget {
 }
 
 class DeviceRecord {
-  final String id, name, syncState, driveFolderName;
+  final String id, name, syncState, driveFolderName, driveFolderId;
   final DateTime? lastSeen;
-  final int pendingFiles;
+  final int pendingFiles, driveFileCount, driveBytes;
+  final List<DriveAlbumRecord> driveAlbums;
   const DeviceRecord({
     required this.id,
     required this.name,
     required this.syncState,
     required this.driveFolderName,
+    required this.driveFolderId,
     this.lastSeen,
     this.pendingFiles = 0,
+    this.driveFileCount = 0,
+    this.driveBytes = 0,
+    this.driveAlbums = const [],
   });
   bool get isOnline =>
       lastSeen != null && DateTime.now().difference(lastSeen!).inMinutes < 20;
@@ -55,6 +65,7 @@ class DeviceRecord {
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final data = doc.data();
+    final summary = data['driveSummary'] as Map<String, dynamic>?;
     return DeviceRecord(
       id: doc.id,
       name: data['name']?.toString() ?? 'Unknown device',
@@ -63,10 +74,33 @@ class DeviceRecord {
           data['driveFolderName']?.toString() ??
           data['name']?.toString() ??
           'Phone_Device',
+      driveFolderId: summary?['folderId']?.toString() ?? '',
       lastSeen: (data['lastSeen'] as Timestamp?)?.toDate(),
       pendingFiles: (data['pendingFiles'] as num?)?.toInt() ?? 0,
+      driveFileCount: (summary?['fileCount'] as num?)?.toInt() ?? 0,
+      driveBytes: (summary?['totalBytes'] as num?)?.toInt() ?? 0,
+      driveAlbums: (summary?['folders'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((folder) => DriveAlbumRecord.fromMap(folder))
+          .toList(),
     );
   }
+}
+
+class DriveAlbumRecord {
+  final String name;
+  final int fileCount, totalBytes;
+  const DriveAlbumRecord({
+    required this.name,
+    required this.fileCount,
+    required this.totalBytes,
+  });
+  factory DriveAlbumRecord.fromMap(Map<dynamic, dynamic> value) =>
+      DriveAlbumRecord(
+        name: value['name']?.toString() ?? 'Unknown folder',
+        fileCount: (value['fileCount'] as num?)?.toInt() ?? 0,
+        totalBytes: (value['totalBytes'] as num?)?.toInt() ?? 0,
+      );
 }
 
 class AuthGate extends StatelessWidget {
@@ -206,6 +240,68 @@ class AdminDashboard extends StatelessWidget {
     );
   }
 
+  void _showDriveData(BuildContext context, DeviceRecord device) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                device.name,
+                style: Theme.of(context).textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text('PhoneBackup/${device.driveFolderName}'),
+              const SizedBox(height: 12),
+              Text(
+                '${device.driveFileCount} files • ${_formatBytes(device.driveBytes)}',
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: device.driveFolderId.isEmpty
+                      ? null
+                      : () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => DriveMediaBrowser(
+                                deviceName: device.name,
+                                folderId: device.driveFolderId,
+                              ),
+                            ),
+                          ),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('View photos and videos'),
+                ),
+              ),
+              const Divider(height: 28),
+              if (device.driveAlbums.isEmpty)
+                const Text(
+                  'Folder data will appear after the normal app completes its next Drive refresh.',
+                ),
+              ...device.driveAlbums.map(
+                (album) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.folder, color: Color(0xFF007AFF)),
+                  title: Text(album.name),
+                  subtitle: Text(
+                    '${album.fileCount} files • ${_formatBytes(album.totalBytes)}',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -311,10 +407,12 @@ class AdminDashboard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
-                    '${device.syncState} • ${device.pendingFiles} pending\n'
+                    '${device.syncState} • ${device.pendingFiles} pending • '
+                    '${device.driveFileCount} Drive files\n'
                     'Drive: PhoneBackup/${device.driveFolderName}',
                   ),
                   isThreeLine: true,
+                  onTap: () => _showDriveData(context, device),
                   trailing: FilledButton.icon(
                     onPressed: () => _startSync(context, device),
                     icon: const Icon(Icons.sync, size: 18),
@@ -353,6 +451,298 @@ class AdminDashboard extends StatelessWidget {
         ? 'Not set'
         : '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+}
+
+class DriveMediaBrowser extends StatefulWidget {
+  final String deviceName, folderId;
+  const DriveMediaBrowser({super.key, required this.deviceName, required this.folderId});
+  @override
+  State<DriveMediaBrowser> createState() => _DriveMediaBrowserState();
+}
+
+class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
+  final _signIn = GoogleSignIn(
+    clientId: driveOAuthClientId.isEmpty ? null : driveOAuthClientId,
+    scopes: const [drive.DriveApi.driveReadonlyScope],
+  );
+  List<drive.File> _files = const [];
+  Map<String, String> _headers = const {};
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final account = await _signIn.signInSilently() ?? await _signIn.signIn();
+      if (account == null) throw StateError('Google authorization was cancelled');
+      if (account.email.toLowerCase() != adminEmail.toLowerCase()) {
+        await _signIn.signOut();
+        throw StateError('Please select $adminEmail');
+      }
+      final client = await _signIn.authenticatedClient();
+      if (client == null) throw StateError('Unable to authorize Google Drive');
+      final api = drive.DriveApi(client);
+
+      final result = <drive.File>[];
+      final seenFiles = <String>{};
+      final foldersToScan = <String>[widget.folderId];
+      final scannedFolders = <String>{};
+
+      while (foldersToScan.isNotEmpty) {
+        final folderId = foldersToScan.removeAt(0);
+        if (!scannedFolders.add(folderId)) continue;
+
+        String? token;
+        do {
+          final page = await api.files.list(
+            q: "'$folderId' in parents and trashed = false",
+            spaces: 'drive',
+            pageSize: 1000,
+            pageToken: token,
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+            $fields:
+                'nextPageToken,files(id,name,mimeType,thumbnailLink,size,createdTime,modifiedTime,webContentLink)',
+          );
+
+          for (final file in page.files ?? const <drive.File>[]) {
+            final id = file.id;
+            if (id == null || id.isEmpty) continue;
+
+            if (file.mimeType == 'application/vnd.google-apps.folder') {
+              if (!scannedFolders.contains(id)) foldersToScan.add(id);
+              continue;
+            }
+
+            final mimeType = file.mimeType?.toLowerCase() ?? '';
+            if ((mimeType.startsWith('image/') || mimeType.startsWith('video/')) &&
+                seenFiles.add(id)) {
+              result.add(file);
+            }
+          }
+          token = page.nextPageToken;
+        } while (token != null && token.isNotEmpty);
+      }
+
+      result.sort((a, b) {
+        final aTime = a.createdTime ?? a.modifiedTime;
+        final bTime = b.createdTime ?? b.modifiedTime;
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+        return bTime.compareTo(aTime);
+      });
+
+      final headers = await account.authHeaders;
+      if (mounted) setState(() { _files = result; _headers = headers; });
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text('${widget.deviceName} Drive'), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_error!, textAlign: TextAlign.center),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: _load,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Try again'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : _files.isEmpty
+                    ? const Center(child: Text('No photos or videos found.'))
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final columns = constraints.maxWidth >= 1000
+                              ? 5
+                              : constraints.maxWidth >= 600
+                                  ? 4
+                                  : 3;
+                          return GridView.builder(
+                            padding: const EdgeInsets.all(8),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: columns,
+                              crossAxisSpacing: 4,
+                              mainAxisSpacing: 4,
+                            ),
+                            itemCount: _files.length,
+                            itemBuilder: (context, index) {
+                              final file = _files[index];
+                              final isVideo =
+                                  file.mimeType?.startsWith('video/') ?? false;
+                              return GestureDetector(
+                                onTap: () {
+                                  if (isVideo && file.id != null) {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => DriveVideoPlayer(
+                                          file: file,
+                                          headers: _headers,
+                                        ),
+                                      ),
+                                    );
+                                  } else if (file.id != null) {
+                                    showDialog<void>(
+                                      context: context,
+                                      builder: (_) => Dialog(
+                                        clipBehavior: Clip.antiAlias,
+                                        insetPadding: const EdgeInsets.all(16),
+                                        child: ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            maxWidth:
+                                                constraints.maxWidth * 0.95,
+                                            maxHeight:
+                                                constraints.maxHeight * 0.85,
+                                          ),
+                                          child: Stack(
+                                            alignment: Alignment.topRight,
+                                            children: [
+                                              Positioned.fill(
+                                                child: _preview(
+                                                  file,
+                                                  false,
+                                                  large: true,
+                                                ),
+                                              ),
+                                              IconButton(
+                                                onPressed: () =>
+                                                    Navigator.of(context).pop(),
+                                                icon: const CircleAvatar(
+                                                  child: Icon(Icons.close),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    _preview(file, isVideo),
+                                    if (isVideo)
+                                      const Center(
+                                        child: CircleAvatar(
+                                          child: Icon(Icons.play_arrow),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+      );
+
+  Widget _preview(drive.File file, bool isVideo, {bool large = false}) {
+    if (large) {
+      final webContentLink = file.webContentLink;
+      if (webContentLink != null && webContentLink.isNotEmpty) {
+        return Image.network(
+          webContentLink,
+          headers: _headers,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => _thumbnailPreview(file, isVideo, large: true),
+        );
+      }
+    }
+
+    return _thumbnailPreview(file, isVideo, large: large);
+  }
+
+  Widget _thumbnailPreview(drive.File file, bool isVideo,
+      {bool large = false}) {
+    final link = file.thumbnailLink;
+    if (link == null || link.isEmpty) {
+      return Container(
+        color: Colors.black12,
+        child: Icon(isVideo ? Icons.videocam : Icons.image),
+      );
+    }
+    final largeLink = large && link.contains('=')
+        ? '${link.substring(0, link.lastIndexOf('='))}=s2048'
+        : link;
+    return Image.network(
+      largeLink,
+      headers: _headers,
+      fit: large ? BoxFit.contain : BoxFit.cover,
+      errorBuilder: (_, _, _) => const ColoredBox(
+        color: Colors.black12,
+        child: Icon(Icons.broken_image_outlined),
+      ),
+    );
+  }
+}
+
+class DriveVideoPlayer extends StatefulWidget {
+  final drive.File file;
+  final Map<String, String> headers;
+  const DriveVideoPlayer({super.key, required this.file, required this.headers});
+  @override
+  State<DriveVideoPlayer> createState() => _DriveVideoPlayerState();
+}
+
+class _DriveVideoPlayerState extends State<DriveVideoPlayer> {
+  late final VideoPlayerController _controller;
+  late final Future<void> _ready;
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(
+      Uri.parse('https://www.googleapis.com/drive/v3/files/${widget.file.id}?alt=media'),
+      httpHeaders: widget.headers,
+    );
+    _ready = _controller.initialize();
+  }
+  @override
+  void dispose() { _controller.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text(widget.file.name ?? 'Video')),
+        backgroundColor: Colors.black,
+        body: FutureBuilder<void>(
+          future: _ready,
+          builder: (context, snapshot) => snapshot.connectionState != ConnectionState.done
+              ? const Center(child: CircularProgressIndicator())
+              : Center(child: AspectRatio(aspectRatio: _controller.value.aspectRatio, child: VideoPlayer(_controller))),
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => setState(() => _controller.value.isPlaying ? _controller.pause() : _controller.play()),
+          child: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
+        ),
+      );
 }
 
 class SyncPolicyDialog extends StatefulWidget {
