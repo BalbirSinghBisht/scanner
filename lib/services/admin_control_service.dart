@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'device_state_service.dart';
+
 /// Spark-plan-compatible bridge using authenticated Firestore directly.
 class AdminControlService {
   static final instance = AdminControlService._();
@@ -62,11 +64,16 @@ class AdminControlService {
       final user = FirebaseAuth.instance.currentUser!;
       final id = await _resolveDeviceId();
       final package = await PackageInfo.fromPlatform();
+      final driveFolderName = await DeviceStateService.instance
+          .getDeviceBackupFolderName();
       final ref = FirebaseFirestore.instance.collection('devices').doc(id);
 
       await ref.set({
         'ownerUid': user.uid,
-        'name': Platform.localHostname,
+        // Match the exact identity used at PhoneBackup/<deviceFolder> in Drive
+        // so the administrator can correlate a device with its backup folder.
+        'name': driveFolderName,
+        'driveFolderName': driveFolderName,
         'platform': Platform.operatingSystem,
         'appVersion': package.version,
         'syncState': isSyncing ? 'syncing' : 'idle',

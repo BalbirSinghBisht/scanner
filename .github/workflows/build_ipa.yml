@@ -4,6 +4,11 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+    paths-ignore:
+      - "admin_app/**"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - ".github/workflows/publish_admin_app.yml"
 
 permissions:
   contents: write

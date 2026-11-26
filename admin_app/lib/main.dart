@@ -1,9 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:googleapis/drive/v3.dart' as drive;
 
 const adminEmail = 'balbirbisht372@gmail.com';
+const driveOAuthClientId = String.fromEnvironment('GOOGLE_OAUTH_CLIENT_ID');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -167,8 +171,72 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   );
 }
 
-class AdminDashboard extends StatelessWidget {
+class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
+
+  @override
+  State<AdminDashboard> createState() => _AdminDashboardState();
+}
+
+class _AdminDashboardState extends State<AdminDashboard> {
+  late final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: driveOAuthClientId.isEmpty ? null : driveOAuthClientId,
+    scopes: const [drive.DriveApi.driveReadonlyScope],
+  );
+  String _driveValue = 'Connect';
+  bool _driveLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDrive(interactive: false);
+  }
+
+  Future<void> _loadDrive({required bool interactive}) async {
+    if (_driveLoading) return;
+    setState(() => _driveLoading = true);
+    try {
+      final account = interactive
+          ? await _googleSignIn.signIn()
+          : await _googleSignIn.signInSilently();
+      if (account == null) {
+        if (mounted) setState(() => _driveValue = 'Connect');
+        return;
+      }
+      if (account.email.toLowerCase() != adminEmail.toLowerCase()) {
+        await _googleSignIn.signOut();
+        throw StateError('Use the shared Drive account: $adminEmail');
+      }
+      final client = await _googleSignIn.authenticatedClient();
+      if (client == null) throw StateError('Google Drive authorization failed');
+      final api = drive.DriveApi(client);
+      var count = 0;
+      String? pageToken;
+      do {
+        final page = await api.files.list(
+          q: 'trashed = false',
+          spaces: 'drive',
+          pageSize: 1000,
+          pageToken: pageToken,
+          $fields: 'nextPageToken,files(id)',
+        );
+        count += page.files?.length ?? 0;
+        pageToken = page.nextPageToken;
+      } while (pageToken != null && pageToken.isNotEmpty);
+      if (mounted) setState(() => _driveValue = '$count files');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _driveValue = 'Connect');
+        if (interactive) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Drive connection failed: $e')),
+          );
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _driveLoading = false);
+    }
+  }
 
   Future<void> _startSync(BuildContext context, DeviceRecord device) async {
     final firestore = FirebaseFirestore.instance;
@@ -225,7 +293,12 @@ class AdminDashboard extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _metric('Drive', 'Sign-in next', Icons.cloud_outlined),
+                  child: _metric(
+                    'Drive',
+                    _driveLoading ? 'Loading…' : _driveValue,
+                    Icons.cloud_outlined,
+                    onTap: () => _loadDrive(interactive: true),
+                  ),
                 ),
               ],
             ),
@@ -277,20 +350,29 @@ class AdminDashboard extends StatelessWidget {
     ),
   );
 
-  Widget _metric(String label, String value, IconData icon) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: const Color(0xFF007AFF)),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          Text(label),
-        ],
+  Widget _metric(
+    String label,
+    String value,
+    IconData icon, {
+    VoidCallback? onTap,
+  }) => Card(
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: const Color(0xFF007AFF)),
+            const SizedBox(height: 12),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            Text(label),
+          ],
+        ),
       ),
     ),
   );

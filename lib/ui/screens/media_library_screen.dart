@@ -377,6 +377,17 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen>
         .where((it) => _selectedIds.contains(it.localId))
         .toList();
     if (selectedItems.length < 2) return;
+    if (!CollageMakerScreen.canCreateFrom(selectedItems)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Videos cannot be used in a collage. Please select photos only.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     final result = await Navigator.of(context).push<MediaItem>(
       CupertinoPageRoute(

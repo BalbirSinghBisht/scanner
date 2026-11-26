@@ -26,6 +26,9 @@ class CollageMakerScreen extends StatefulWidget {
 
   const CollageMakerScreen({super.key, required this.items});
 
+  static bool canCreateFrom(List<MediaItem> items) =>
+      items.length >= 2 && items.every((item) => item.isImage);
+
   @override
   State<CollageMakerScreen> createState() => _CollageMakerScreenState();
 }
@@ -49,7 +52,11 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
     super.initState();
     // Support up to 6 items
     _selectedItems = widget.items.take(6).toList();
-    _loadAllImages();
+    if (CollageMakerScreen.canCreateFrom(widget.items)) {
+      _loadAllImages();
+    } else {
+      _isLoadingImages = false;
+    }
   }
 
   Future<void> _loadAllImages() async {
@@ -151,6 +158,33 @@ class _CollageMakerScreenState extends State<CollageMakerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!CollageMakerScreen.canCreateFrom(widget.items)) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Collage')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.videocam_off_outlined, size: 52),
+                const SizedBox(height: 16),
+                const Text(
+                  'Videos cannot be used in a collage. Please select photos only.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Go back'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     final c = AppTheme.colors(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
