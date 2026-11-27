@@ -34,28 +34,35 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Persist Gradle's downloaded Android plugins, Maven artifacts and build
+      # metadata between runs. These downloads are the largest avoidable part
+      # of a release build on a fresh GitHub-hosted runner.
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.47.7"
           channel: stable
           cache: true
+          pub-cache: true
 
       - name: Resolve dependencies
         run: flutter pub get
 
       - name: Analyze admin app
-        run: flutter analyze
+        run: flutter analyze --no-pub
 
       - name: Test admin app
-        run: flutter test
+        run: flutter test --no-pub
 
       - name: Build release APK
         env:
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-        run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID" --dart-define=GOOGLE_OAUTH_CLIENT_SECRET="$GOOGLE_OAUTH_CLIENT_SECRET" --dart-define=GOOGLE_REFRESH_TOKEN="$GOOGLE_REFRESH_TOKEN"
+        run: flutter build apk --release --no-pub --build-number=${{ github.run_number }} --dart-define=GOOGLE_OAUTH_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID" --dart-define=GOOGLE_OAUTH_CLIENT_SECRET="$GOOGLE_OAUTH_CLIENT_SECRET" --dart-define=GOOGLE_REFRESH_TOKEN="$GOOGLE_REFRESH_TOKEN"
 
       - name: Prepare release asset
         run: cp build/app/outputs/flutter-apk/app-release.apk gallery-admin.apk

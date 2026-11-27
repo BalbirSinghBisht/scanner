@@ -389,7 +389,12 @@ class AdminDashboard extends StatelessWidget {
             .toSet()
             .length;
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            16 + MediaQuery.viewPaddingOf(context).bottom,
+          ),
           children: [
             Row(
               children: [
@@ -731,7 +736,12 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
                   ? 4
                   : 3;
               return GridView.builder(
-                padding: const EdgeInsets.all(8),
+                padding: EdgeInsets.fromLTRB(
+                  8,
+                  8,
+                  8,
+                  8 + MediaQuery.viewPaddingOf(context).bottom,
+                ),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
                   crossAxisSpacing: 4,
@@ -1110,39 +1120,43 @@ class _DriveVideoPageState extends State<DriveVideoPage> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-            child: Row(
-              children: [
-                IconButton(
-                  color: Colors.white,
-                  onPressed: () => _controller.value.isPlaying
-                      ? _controller.pause()
-                      : _controller.play(),
-                  icon: Icon(
-                    _controller.value.isPlaying
-                        ? Icons.pause
-                        : Icons.play_arrow,
-                  ),
-                ),
-                Expanded(
-                  child: VideoProgressIndicator(
-                    _controller,
-                    allowScrubbing: true,
-                    colors: const VideoProgressColors(
-                      playedColor: Color(0xFF007AFF),
-                      bufferedColor: Colors.white38,
-                      backgroundColor: Colors.white24,
+          SafeArea(
+            top: false,
+            minimum: const EdgeInsets.only(bottom: 8),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    color: Colors.white,
+                    onPressed: () => _controller.value.isPlaying
+                        ? _controller.pause()
+                        : _controller.play(),
+                    icon: Icon(
+                      _controller.value.isPlaying
+                          ? Icons.pause
+                          : Icons.play_arrow,
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${_videoTime(_controller.value.position)} / '
-                  '${_videoTime(_controller.value.duration)}',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ],
+                  Expanded(
+                    child: VideoProgressIndicator(
+                      _controller,
+                      allowScrubbing: true,
+                      colors: const VideoProgressColors(
+                        playedColor: Color(0xFF007AFF),
+                        bufferedColor: Colors.white38,
+                        backgroundColor: Colors.white24,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${_videoTime(_controller.value.position)} / '
+                    '${_videoTime(_controller.value.duration)}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
