@@ -20,7 +20,6 @@ class AdminControlService {
 
   String? _deviceId;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _commandSub;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _policySub;
   RemoteSyncPolicy? _cachedPolicy;
   DateTime? _policyLoadedAt;
 
@@ -29,24 +28,6 @@ class AdminControlService {
     if (FirebaseAuth.instance.currentUser == null) {
       await FirebaseAuth.instance.signInAnonymously();
     }
-    _listenForPolicy();
-  }
-
-  void _listenForPolicy() {
-    if (_policySub != null) return;
-    _policySub = FirebaseFirestore.instance
-        .collection('config')
-        .doc('syncPolicy')
-        .snapshots()
-        .listen(
-          (snapshot) {
-            _cachedPolicy = _policyFromData(snapshot.data());
-            _policyLoadedAt = DateTime.now();
-          },
-          onError: (Object error) {
-            debugPrint('[AdminControl] Policy listener unavailable: $error');
-          },
-        );
   }
 
   Future<void> _listenForCommands() async {
@@ -58,7 +39,13 @@ class AdminControlService {
         .snapshots()
         .listen(
           (snapshot) {
-            if (snapshot.data()?['pendingCommand'] == 'startSync') {
+            final data = snapshot.data();
+            final policyData = data?['syncPolicy'];
+            _cachedPolicy = _policyFromData(
+              policyData is Map ? Map<String, dynamic>.from(policyData) : null,
+            );
+            _policyLoadedAt = DateTime.now();
+            if (data?['pendingCommand'] == 'startSync') {
               FlutterBackgroundService().invoke('triggerSync');
             }
           },
@@ -139,13 +126,15 @@ class AdminControlService {
     }
     try {
       await initialize();
+      final id = await _resolveDeviceId();
       final snapshot = await FirebaseFirestore.instance
-          .collection('config')
-          .doc('syncPolicy')
+          .collection('devices')
+          .doc(id)
           .get();
-      final data = snapshot.data();
-      if (data == null) return const RemoteSyncPolicy();
-      _cachedPolicy = _policyFromData(data);
+      final policyData = snapshot.data()?['syncPolicy'];
+      _cachedPolicy = _policyFromData(
+        policyData is Map ? Map<String, dynamic>.from(policyData) : null,
+      );
       _policyLoadedAt = now;
       return _cachedPolicy!;
     } catch (e) {

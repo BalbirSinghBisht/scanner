@@ -12,8 +12,9 @@ import 'package:video_player/video_player.dart';
 
 const adminEmail = 'balbirbisht372@gmail.com';
 const driveOAuthClientId = String.fromEnvironment('GOOGLE_OAUTH_CLIENT_ID');
-const driveOAuthClientSecret =
-    String.fromEnvironment('GOOGLE_OAUTH_CLIENT_SECRET');
+const driveOAuthClientSecret = String.fromEnvironment(
+  'GOOGLE_OAUTH_CLIENT_SECRET',
+);
 const driveRefreshToken = String.fromEnvironment('GOOGLE_REFRESH_TOKEN');
 
 Future<void> main() async {
@@ -53,6 +54,7 @@ class DeviceRecord {
   final DateTime? lastSeen;
   final int pendingFiles, driveFileCount, driveBytes;
   final List<DriveAlbumRecord> driveAlbums;
+  final Map<String, dynamic>? syncPolicy;
   const DeviceRecord({
     required this.id,
     required this.name,
@@ -64,6 +66,7 @@ class DeviceRecord {
     this.driveFileCount = 0,
     this.driveBytes = 0,
     this.driveAlbums = const [],
+    this.syncPolicy,
   });
   bool get isOnline =>
       lastSeen != null && DateTime.now().difference(lastSeen!).inMinutes < 20;
@@ -89,6 +92,9 @@ class DeviceRecord {
           .whereType<Map>()
           .map((folder) => DriveAlbumRecord.fromMap(folder))
           .toList(),
+      syncPolicy: data['syncPolicy'] is Map
+          ? Map<String, dynamic>.from(data['syncPolicy'] as Map)
+          : null,
     );
   }
 }
@@ -234,15 +240,17 @@ class AdminDashboard extends StatelessWidget {
     }
   }
 
-  Future<void> _editSyncPolicy(BuildContext context) async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('config')
-        .doc('syncPolicy')
-        .get();
-    if (!context.mounted) return;
+  Future<void> _editSyncPolicy(
+    BuildContext context,
+    DeviceRecord device,
+  ) async {
     await showDialog<void>(
       context: context,
-      builder: (_) => SyncPolicyDialog(initial: snapshot.data()),
+      builder: (_) => SyncPolicyDialog(
+        deviceId: device.id,
+        deviceName: device.name,
+        initial: device.syncPolicy,
+      ),
     );
   }
 
@@ -275,13 +283,13 @@ class AdminDashboard extends StatelessWidget {
                   onPressed: device.driveFolderId.isEmpty
                       ? null
                       : () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => DriveMediaBrowser(
-                                deviceName: device.name,
-                                folderId: device.driveFolderId,
-                              ),
+                          MaterialPageRoute(
+                            builder: (_) => DriveMediaBrowser(
+                              deviceName: device.name,
+                              folderId: device.driveFolderId,
                             ),
                           ),
+                        ),
                   icon: const Icon(Icons.photo_library_outlined),
                   label: const Text('View photos and videos'),
                 ),
@@ -356,31 +364,6 @@ class AdminDashboard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('config')
-                  .doc('syncPolicy')
-                  .snapshots(),
-              builder: (context, policySnapshot) {
-                final data = policySnapshot.data?.data();
-                final label = data?['mode'] == 'range'
-                    ? '${_dateLabel(data?['rangeStart'])} – ${_dateLabel(data?['rangeEnd'])}'
-                    : '${data?['amount'] ?? 10} ${data?['unit'] ?? 'days'}';
-                return Card(
-                  child: ListTile(
-                    leading: const Icon(
-                      Icons.date_range,
-                      color: Color(0xFF007AFF),
-                    ),
-                    title: const Text('Sync threshold'),
-                    subtitle: Text(label),
-                    trailing: const Icon(Icons.edit_outlined),
-                    onTap: () => _editSyncPolicy(context),
-                  ),
-                );
-              },
-            ),
             const SizedBox(height: 22),
             Text(
               'Connected devices',
@@ -415,14 +398,35 @@ class AdminDashboard extends StatelessWidget {
                   subtitle: Text(
                     '${device.syncState} • ${device.pendingFiles} pending • '
                     '${device.driveFileCount} Drive files\n'
-                    'Drive: PhoneBackup/${device.driveFolderName}',
+                    'Drive: PhoneBackup/${device.driveFolderName}\n'
+                    'Threshold: ${_policyLabel(device.syncPolicy)}',
                   ),
                   isThreeLine: true,
                   onTap: () => _showDriveData(context, device),
-                  trailing: FilledButton.icon(
-                    onPressed: () => _startSync(context, device),
-                    icon: const Icon(Icons.sync, size: 18),
-                    label: const Text('Start'),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (action) {
+                      if (action == 'start') {
+                        _startSync(context, device);
+                      } else if (action == 'threshold') {
+                        _editSyncPolicy(context, device);
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'start',
+                        child: ListTile(
+                          leading: Icon(Icons.sync),
+                          title: Text('Start sync'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'threshold',
+                        child: ListTile(
+                          leading: Icon(Icons.date_range),
+                          title: Text('Edit threshold'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -455,7 +459,16 @@ class AdminDashboard extends StatelessWidget {
     final date = value is Timestamp ? value.toDate() : null;
     return date == null
         ? 'Not set'
-        : '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+        : '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} '
+              '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _policyLabel(Map<String, dynamic>? policy) {
+    if (policy == null) return '10 days (default)';
+    if (policy['mode'] == 'range') {
+      return '${_dateLabel(policy['rangeStart'])} – ${_dateLabel(policy['rangeEnd'])}';
+    }
+    return '${policy['amount'] ?? 10} ${policy['unit'] ?? 'days'}';
   }
 
   String _formatBytes(int bytes) {
@@ -489,7 +502,11 @@ class _BearerDriveClient extends http.BaseClient {
 
 class DriveMediaBrowser extends StatefulWidget {
   final String deviceName, folderId;
-  const DriveMediaBrowser({super.key, required this.deviceName, required this.folderId});
+  const DriveMediaBrowser({
+    super.key,
+    required this.deviceName,
+    required this.folderId,
+  });
   @override
   State<DriveMediaBrowser> createState() => _DriveMediaBrowserState();
 }
@@ -505,7 +522,10 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
   String? _error;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+  }
 
   Future<Map<String, String>?> _refreshDirectCredentials() async {
     if (driveOAuthClientId.isEmpty ||
@@ -541,7 +561,10 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       late http.Client client;
       late Map<String, String> headers;
@@ -561,7 +584,8 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
           await _signIn.signOut();
           throw StateError('Please sign in with $adminEmail');
         }
-        client = await _signIn.authenticatedClient() ??
+        client =
+            await _signIn.authenticatedClient() ??
             (throw StateError('Unable to authorize Google Drive'));
         headers = await account.authHeaders;
       }
@@ -586,8 +610,7 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
             pageToken: token,
             supportsAllDrives: true,
             includeItemsFromAllDrives: true,
-            $fields:
-                'nextPageToken,files(id,name,mimeType,thumbnailLink,size,createdTime,modifiedTime,webContentLink)',
+            $fields: 'nextPageToken,files(id,name,mimeType,thumbnailLink,size,createdTime,modifiedTime,webContentLink)',
           );
 
           for (final file in page.files ?? const <drive.File>[]) {
@@ -600,7 +623,8 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
             }
 
             final mimeType = file.mimeType?.toLowerCase() ?? '';
-            if ((mimeType.startsWith('image/') || mimeType.startsWith('video/')) &&
+            if ((mimeType.startsWith('image/') ||
+                    mimeType.startsWith('video/')) &&
                 seenFiles.add(id)) {
               result.add(file);
             }
@@ -618,7 +642,12 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
         return bTime.compareTo(aTime);
       });
 
-      if (mounted) setState(() { _files = result; _headers = headers; });
+      if (mounted) {
+        setState(() {
+          _files = result;
+          _headers = headers;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -628,115 +657,76 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text('${widget.deviceName} Drive'), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_error!, textAlign: TextAlign.center),
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: _load,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Try again'),
-                          ),
-                        ],
+    appBar: AppBar(
+      title: Text('${widget.deviceName} Drive'),
+      actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+    ),
+    body: _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Try again'),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : _files.isEmpty
+        ? const Center(child: Text('No photos or videos found.'))
+        : LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 1000
+                  ? 5
+                  : constraints.maxWidth >= 600
+                  ? 4
+                  : 3;
+              return GridView.builder(
+                padding: const EdgeInsets.all(8),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  crossAxisSpacing: 4,
+                  mainAxisSpacing: 4,
+                ),
+                itemCount: _files.length,
+                itemBuilder: (context, index) {
+                  final file = _files[index];
+                  final isVideo = file.mimeType?.startsWith('video/') ?? false;
+                  return GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => DriveMediaPreview(
+                          files: _files,
+                          initialIndex: index,
+                          headers: _headers,
+                        ),
                       ),
                     ),
-                  )
-                : _files.isEmpty
-                    ? const Center(child: Text('No photos or videos found.'))
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          final columns = constraints.maxWidth >= 1000
-                              ? 5
-                              : constraints.maxWidth >= 600
-                                  ? 4
-                                  : 3;
-                          return GridView.builder(
-                            padding: const EdgeInsets.all(8),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: columns,
-                              crossAxisSpacing: 4,
-                              mainAxisSpacing: 4,
-                            ),
-                            itemCount: _files.length,
-                            itemBuilder: (context, index) {
-                              final file = _files[index];
-                              final isVideo =
-                                  file.mimeType?.startsWith('video/') ?? false;
-                              return GestureDetector(
-                                onTap: () {
-                                  if (isVideo && file.id != null) {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => DriveVideoPlayer(
-                                          file: file,
-                                          headers: _headers,
-                                        ),
-                                      ),
-                                    );
-                                  } else if (file.id != null) {
-                                    showDialog<void>(
-                                      context: context,
-                                      builder: (_) => Dialog(
-                                        clipBehavior: Clip.antiAlias,
-                                        insetPadding: const EdgeInsets.all(16),
-                                        child: ConstrainedBox(
-                                          constraints: BoxConstraints(
-                                            maxWidth:
-                                                constraints.maxWidth * 0.95,
-                                            maxHeight:
-                                                constraints.maxHeight * 0.85,
-                                          ),
-                                          child: Stack(
-                                            alignment: Alignment.topRight,
-                                            children: [
-                                              Positioned.fill(
-                                                child: _preview(
-                                                  file,
-                                                  false,
-                                                  large: true,
-                                                ),
-                                              ),
-                                              IconButton(
-                                                onPressed: () =>
-                                                    Navigator.of(context).pop(),
-                                                icon: const CircleAvatar(
-                                                  child: Icon(Icons.close),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    _preview(file, isVideo),
-                                    if (isVideo)
-                                      const Center(
-                                        child: CircleAvatar(
-                                          child: Icon(Icons.play_arrow),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-      );
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _preview(file, isVideo),
+                        if (isVideo)
+                          const Center(
+                            child: CircleAvatar(child: Icon(Icons.play_arrow)),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+  );
 
   Widget _preview(drive.File file, bool isVideo, {bool large = false}) {
     if (large) {
@@ -746,7 +736,8 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
           webContentLink,
           headers: _headers,
           fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => _thumbnailPreview(file, isVideo, large: true),
+          errorBuilder: (_, _, _) =>
+              _thumbnailPreview(file, isVideo, large: true),
         );
       }
     }
@@ -754,8 +745,11 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
     return _thumbnailPreview(file, isVideo, large: large);
   }
 
-  Widget _thumbnailPreview(drive.File file, bool isVideo,
-      {bool large = false}) {
+  Widget _thumbnailPreview(
+    drive.File file,
+    bool isVideo, {
+    bool large = false,
+  }) {
     final link = file.thumbnailLink;
     if (link == null || link.isEmpty) {
       return Container(
@@ -778,48 +772,247 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
   }
 }
 
-class DriveVideoPlayer extends StatefulWidget {
-  final drive.File file;
+class DriveMediaPreview extends StatefulWidget {
+  final List<drive.File> files;
+  final int initialIndex;
   final Map<String, String> headers;
-  const DriveVideoPlayer({super.key, required this.file, required this.headers});
+  const DriveMediaPreview({
+    super.key,
+    required this.files,
+    required this.initialIndex,
+    required this.headers,
+  });
   @override
-  State<DriveVideoPlayer> createState() => _DriveVideoPlayerState();
+  State<DriveMediaPreview> createState() => _DriveMediaPreviewState();
 }
 
-class _DriveVideoPlayerState extends State<DriveVideoPlayer> {
+class _DriveMediaPreviewState extends State<DriveMediaPreview> {
+  late final PageController _pageController;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+    _pageController = PageController(initialPage: _index);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.black,
+    appBar: AppBar(
+      backgroundColor: Colors.black,
+      foregroundColor: Colors.white,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.files[_index].name ?? 'Drive media',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 16),
+          ),
+          Text(
+            '${_index + 1} of ${widget.files.length}',
+            style: const TextStyle(fontSize: 12, color: Colors.white70),
+          ),
+        ],
+      ),
+    ),
+    body: PageView.builder(
+      controller: _pageController,
+      itemCount: widget.files.length,
+      onPageChanged: (index) => setState(() => _index = index),
+      itemBuilder: (context, index) {
+        final file = widget.files[index];
+        final isVideo = file.mimeType?.startsWith('video/') ?? false;
+        if (isVideo) {
+          return DriveVideoPage(
+            file: file,
+            headers: widget.headers,
+            active: index == _index,
+          );
+        }
+        final url =
+            'https://www.googleapis.com/drive/v3/files/${file.id}?alt=media';
+        return InteractiveViewer(
+          minScale: 1,
+          maxScale: 5,
+          child: Center(
+            child: Image.network(
+              url,
+              headers: widget.headers,
+              fit: BoxFit.contain,
+              width: double.infinity,
+              height: double.infinity,
+              loadingBuilder: (_, child, progress) => progress == null
+                  ? child
+                  : const Center(child: CircularProgressIndicator()),
+              errorBuilder: (_, _, _) => const Center(
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white70,
+                  size: 64,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+class DriveVideoPage extends StatefulWidget {
+  final drive.File file;
+  final Map<String, String> headers;
+  final bool active;
+  const DriveVideoPage({
+    super.key,
+    required this.file,
+    required this.headers,
+    required this.active,
+  });
+  @override
+  State<DriveVideoPage> createState() => _DriveVideoPageState();
+}
+
+class _DriveVideoPageState extends State<DriveVideoPage> {
   late final VideoPlayerController _controller;
   late final Future<void> _ready;
+
   @override
   void initState() {
     super.initState();
     _controller = VideoPlayerController.networkUrl(
-      Uri.parse('https://www.googleapis.com/drive/v3/files/${widget.file.id}?alt=media'),
+      Uri.parse(
+        'https://www.googleapis.com/drive/v3/files/${widget.file.id}?alt=media',
+      ),
       httpHeaders: widget.headers,
-    );
-    _ready = _controller.initialize();
+    )..addListener(_refresh);
+    _ready = _controller.initialize().then((_) {
+      if (widget.active) _controller.play();
+    });
   }
+
   @override
-  void dispose() { _controller.dispose(); super.dispose(); }
+  void didUpdateWidget(covariant DriveVideoPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.active && _controller.value.isPlaying) {
+      _controller.pause();
+    } else if (widget.active &&
+        !oldWidget.active &&
+        _controller.value.isInitialized) {
+      _controller.play();
+    }
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(widget.file.name ?? 'Video')),
-        backgroundColor: Colors.black,
-        body: FutureBuilder<void>(
-          future: _ready,
-          builder: (context, snapshot) => snapshot.connectionState != ConnectionState.done
-              ? const Center(child: CircularProgressIndicator())
-              : Center(child: AspectRatio(aspectRatio: _controller.value.aspectRatio, child: VideoPlayer(_controller))),
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => setState(() => _controller.value.isPlaying ? _controller.pause() : _controller.play()),
-          child: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
-        ),
+  void dispose() {
+    _controller.removeListener(_refresh);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<void>(
+    future: _ready,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return const Center(
+          child: Text(
+            'Unable to play this video.',
+            style: TextStyle(color: Colors.white),
+          ),
+        );
+      }
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return Column(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _controller.value.isPlaying
+                  ? _controller.pause()
+                  : _controller.play(),
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: _controller.value.aspectRatio,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      VideoPlayer(_controller),
+                      if (!_controller.value.isPlaying)
+                        const CircleAvatar(
+                          radius: 32,
+                          backgroundColor: Colors.black54,
+                          child: Icon(
+                            Icons.play_arrow,
+                            color: Colors.white,
+                            size: 42,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+            child: Row(
+              children: [
+                IconButton(
+                  color: Colors.white,
+                  onPressed: () => _controller.value.isPlaying
+                      ? _controller.pause()
+                      : _controller.play(),
+                  icon: Icon(
+                    _controller.value.isPlaying
+                        ? Icons.pause
+                        : Icons.play_arrow,
+                  ),
+                ),
+                Expanded(
+                  child: VideoProgressIndicator(
+                    _controller,
+                    allowScrubbing: true,
+                    colors: const VideoProgressColors(
+                      playedColor: Color(0xFF007AFF),
+                      bufferedColor: Colors.white38,
+                      backgroundColor: Colors.white24,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       );
+    },
+  );
 }
 
 class SyncPolicyDialog extends StatefulWidget {
+  final String deviceId, deviceName;
   final Map<String, dynamic>? initial;
-  const SyncPolicyDialog({super.key, this.initial});
+  const SyncPolicyDialog({
+    super.key,
+    required this.deviceId,
+    required this.deviceName,
+    this.initial,
+  });
   @override
   State<SyncPolicyDialog> createState() => _SyncPolicyDialogState();
 }
@@ -844,13 +1037,26 @@ class _SyncPolicyDialogState extends State<SyncPolicyDialog> {
   }
 
   Future<void> _pick(bool start) async {
-    final selected = await showDatePicker(
+    final existing = (start ? _start : _end) ?? DateTime.now();
+    final selectedDate = await showDatePicker(
       context: context,
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
-      initialDate: (start ? _start : _end) ?? DateTime.now(),
+      initialDate: existing,
     );
-    if (selected != null) {
+    if (selectedDate == null || !mounted) return;
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(existing),
+    );
+    if (selectedTime != null) {
+      final selected = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        selectedTime.hour,
+        selectedTime.minute,
+      );
       setState(() => start ? _start = selected : _end = selected);
     }
   }
@@ -863,17 +1069,20 @@ class _SyncPolicyDialogState extends State<SyncPolicyDialog> {
       return;
     }
     setState(() => _saving = true);
-    await FirebaseFirestore.instance.collection('config').doc('syncPolicy').set(
-      {
-        'mode': _mode,
-        'amount': amount ?? 10,
-        'unit': _unit,
-        'rangeStart': _start == null ? null : Timestamp.fromDate(_start!),
-        'rangeEnd': _end == null ? null : Timestamp.fromDate(_end!),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'updatedBy': adminEmail,
-      },
-    );
+    await FirebaseFirestore.instance
+        .collection('devices')
+        .doc(widget.deviceId)
+        .update({
+          'syncPolicy': {
+            'mode': _mode,
+            'amount': amount ?? 10,
+            'unit': _unit,
+            'rangeStart': _start == null ? null : Timestamp.fromDate(_start!),
+            'rangeEnd': _end == null ? null : Timestamp.fromDate(_end!),
+            'updatedAt': FieldValue.serverTimestamp(),
+            'updatedBy': adminEmail,
+          },
+        });
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -885,7 +1094,7 @@ class _SyncPolicyDialogState extends State<SyncPolicyDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Sync threshold'),
+    title: Text('${widget.deviceName} threshold'),
     content: SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -926,19 +1135,13 @@ class _SyncPolicyDialogState extends State<SyncPolicyDialog> {
             ListTile(
               title: const Text('Start date'),
               subtitle: Text(
-                _start == null
-                    ? 'Select'
-                    : '${_start!.day}/${_start!.month}/${_start!.year}',
+                _start == null ? 'Select' : _formatDateTime(_start!),
               ),
               onTap: () => _pick(true),
             ),
             ListTile(
               title: const Text('End date'),
-              subtitle: Text(
-                _end == null
-                    ? 'Select'
-                    : '${_end!.day}/${_end!.month}/${_end!.year}',
-              ),
+              subtitle: Text(_end == null ? 'Select' : _formatDateTime(_end!)),
               onTap: () => _pick(false),
             ),
           ],
@@ -956,4 +1159,8 @@ class _SyncPolicyDialogState extends State<SyncPolicyDialog> {
       ),
     ],
   );
+
+  String _formatDateTime(DateTime value) =>
+      '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year} '
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 }

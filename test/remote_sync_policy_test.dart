@@ -30,6 +30,6 @@ void main() {
       rangeEnd: DateTime(2025, 1, 31),
     ).boundsAt(now);
     expect(bounds.minimum, DateTime(2025, 1, 1));
-    expect(bounds.maximumExclusive, DateTime(2025, 2, 1));
+    expect(bounds.maximumExclusive, DateTime(2025, 1, 31, 0, 1));
   });
 }

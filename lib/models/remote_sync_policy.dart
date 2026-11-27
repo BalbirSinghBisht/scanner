@@ -23,17 +23,12 @@ class RemoteSyncPolicy {
 
   SyncDateBounds boundsAt(DateTime now) {
     if (mode == 'range' && rangeStart != null && rangeEnd != null) {
-      final start = DateTime(
-        rangeStart!.year,
-        rangeStart!.month,
-        rangeStart!.day,
+      // The admin picker has minute precision. Make the selected end minute
+      // inclusive while retaining an exclusive database upper bound.
+      return SyncDateBounds(
+        minimum: rangeStart,
+        maximumExclusive: rangeEnd!.add(const Duration(minutes: 1)),
       );
-      final endExclusive = DateTime(
-        rangeEnd!.year,
-        rangeEnd!.month,
-        rangeEnd!.day + 1,
-      );
-      return SyncDateBounds(minimum: start, maximumExclusive: endExclusive);
     }
     final safeAmount = amount.clamp(1, 1000);
     final minimum = switch (unit) {
