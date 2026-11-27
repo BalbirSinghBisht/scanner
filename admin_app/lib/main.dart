@@ -17,6 +17,48 @@ const driveOAuthClientSecret = String.fromEnvironment(
 );
 const driveRefreshToken = String.fromEnvironment('GOOGLE_REFRESH_TOKEN');
 
+bool _isDriveVideo(drive.File file) {
+  final mimeType = file.mimeType?.toLowerCase() ?? '';
+  if (mimeType.startsWith('video/')) return true;
+  final name = file.name?.toLowerCase() ?? '';
+  return const [
+    '.mp4',
+    '.mov',
+    '.m4v',
+    '.3gp',
+    '.mkv',
+    '.webm',
+    '.avi',
+  ].any(name.endsWith);
+}
+
+bool _isDriveImage(drive.File file) {
+  final mimeType = file.mimeType?.toLowerCase() ?? '';
+  if (mimeType.startsWith('image/')) return true;
+  final name = file.name?.toLowerCase() ?? '';
+  return const [
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.heic',
+    '.heif',
+    '.gif',
+    '.bmp',
+  ].any(name.endsWith);
+}
+
+String _driveMediaUrl(drive.File file) =>
+    'https://www.googleapis.com/drive/v3/files/${file.id}?alt=media';
+
+String? _largeDriveThumbnail(drive.File file) {
+  final link = file.thumbnailLink;
+  if (link == null || link.isEmpty) return null;
+  return link.contains('=')
+      ? '${link.substring(0, link.lastIndexOf('='))}=s2048'
+      : link;
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -622,9 +664,7 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
               continue;
             }
 
-            final mimeType = file.mimeType?.toLowerCase() ?? '';
-            if ((mimeType.startsWith('image/') ||
-                    mimeType.startsWith('video/')) &&
+            if ((_isDriveImage(file) || _isDriveVideo(file)) &&
                 seenFiles.add(id)) {
               result.add(file);
             }
@@ -700,7 +740,7 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
                 itemCount: _files.length,
                 itemBuilder: (context, index) {
                   final file = _files[index];
-                  final isVideo = file.mimeType?.startsWith('video/') ?? false;
+                  final isVideo = _isDriveVideo(file);
                   return GestureDetector(
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
@@ -714,7 +754,10 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        _preview(file, isVideo),
+                        Hero(
+                          tag: 'drive-media-${file.id}',
+                          child: _preview(file, isVideo),
+                        ),
                         if (isVideo)
                           const Center(
                             child: CircleAvatar(child: Icon(Icons.play_arrow)),
@@ -757,9 +800,7 @@ class _DriveMediaBrowserState extends State<DriveMediaBrowser> {
         child: Icon(isVideo ? Icons.videocam : Icons.image),
       );
     }
-    final largeLink = large && link.contains('=')
-        ? '${link.substring(0, link.lastIndexOf('='))}=s2048'
-        : link;
+    final largeLink = large ? _largeDriveThumbnail(file)! : link;
     return Image.network(
       largeLink,
       headers: _headers,
@@ -789,6 +830,7 @@ class DriveMediaPreview extends StatefulWidget {
 class _DriveMediaPreviewState extends State<DriveMediaPreview> {
   late final PageController _pageController;
   late int _index;
+  bool _showChrome = true;
 
   @override
   void initState() {
@@ -804,67 +846,153 @@ class _DriveMediaPreviewState extends State<DriveMediaPreview> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.black,
-    appBar: AppBar(
+  Widget build(BuildContext context) {
+    final current = widget.files[_index];
+    return Scaffold(
       backgroundColor: Colors.black,
-      foregroundColor: Colors.white,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Stack(
         children: [
-          Text(
-            widget.files[_index].name ?? 'Drive media',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 16),
+          Positioned.fill(
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: widget.files.length,
+              onPageChanged: (index) => setState(() => _index = index),
+              itemBuilder: (context, index) {
+                final file = widget.files[index];
+                if (_isDriveVideo(file)) {
+                  return DriveVideoPage(
+                    file: file,
+                    headers: widget.headers,
+                    active: index == _index,
+                    onToggleChrome: () =>
+                        setState(() => _showChrome = !_showChrome),
+                  );
+                }
+                return DrivePhotoPage(
+                  file: file,
+                  headers: widget.headers,
+                  onToggleChrome: () =>
+                      setState(() => _showChrome = !_showChrome),
+                );
+              },
+            ),
           ),
-          Text(
-            '${_index + 1} of ${widget.files.length}',
-            style: const TextStyle(fontSize: 12, color: Colors.white70),
-          ),
-        ],
-      ),
-    ),
-    body: PageView.builder(
-      controller: _pageController,
-      itemCount: widget.files.length,
-      onPageChanged: (index) => setState(() => _index = index),
-      itemBuilder: (context, index) {
-        final file = widget.files[index];
-        final isVideo = file.mimeType?.startsWith('video/') ?? false;
-        if (isVideo) {
-          return DriveVideoPage(
-            file: file,
-            headers: widget.headers,
-            active: index == _index,
-          );
-        }
-        final url =
-            'https://www.googleapis.com/drive/v3/files/${file.id}?alt=media';
-        return InteractiveViewer(
-          minScale: 1,
-          maxScale: 5,
-          child: Center(
-            child: Image.network(
-              url,
-              headers: widget.headers,
-              fit: BoxFit.contain,
-              width: double.infinity,
-              height: double.infinity,
-              loadingBuilder: (_, child, progress) => progress == null
-                  ? child
-                  : const Center(child: CircularProgressIndicator()),
-              errorBuilder: (_, _, _) => const Center(
-                child: Icon(
-                  Icons.broken_image_outlined,
-                  color: Colors.white70,
-                  size: 64,
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 180),
+            top: _showChrome ? 0 : -120,
+            left: 0,
+            right: 0,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.black87, Colors.transparent],
+                ),
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: ListTile(
+                  leading: IconButton(
+                    onPressed: Navigator.of(context).pop,
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  ),
+                  title: Text(
+                    current.name ?? 'Drive media',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: Text(
+                    '${_index + 1} of ${widget.files.length}',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
                 ),
               ),
             ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+}
+
+class DrivePhotoPage extends StatefulWidget {
+  final drive.File file;
+  final Map<String, String> headers;
+  final VoidCallback onToggleChrome;
+  const DrivePhotoPage({
+    super.key,
+    required this.file,
+    required this.headers,
+    required this.onToggleChrome,
+  });
+
+  @override
+  State<DrivePhotoPage> createState() => _DrivePhotoPageState();
+}
+
+class _DrivePhotoPageState extends State<DrivePhotoPage> {
+  final TransformationController _transformation = TransformationController();
+
+  @override
+  void dispose() {
+    _transformation.dispose();
+    super.dispose();
+  }
+
+  void _doubleTap() {
+    final zoomed = _transformation.value.getMaxScaleOnAxis() > 1;
+    _transformation.value = zoomed
+        ? Matrix4.identity()
+        : (Matrix4.identity()..scaleByDouble(2.5, 2.5, 1, 1));
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: widget.onToggleChrome,
+    onDoubleTap: _doubleTap,
+    child: InteractiveViewer(
+      transformationController: _transformation,
+      minScale: 1,
+      maxScale: 6,
+      child: SizedBox.expand(
+        child: Hero(
+          tag: 'drive-media-${widget.file.id}',
+          child: Image.network(
+            _driveMediaUrl(widget.file),
+            headers: widget.headers,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            loadingBuilder: (_, child, progress) => progress == null
+                ? child
+                : Center(
+                    child: CircularProgressIndicator(
+                      value: progress.expectedTotalBytes == null
+                          ? null
+                          : progress.cumulativeBytesLoaded /
+                                progress.expectedTotalBytes!,
+                    ),
+                  ),
+            errorBuilder: (_, _, _) {
+              final fallback = _largeDriveThumbnail(widget.file);
+              return fallback == null
+                  ? const Center(
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        color: Colors.white70,
+                        size: 64,
+                      ),
+                    )
+                  : Image.network(
+                      fallback,
+                      headers: widget.headers,
+                      fit: BoxFit.contain,
+                    );
+            },
+          ),
+        ),
+      ),
     ),
   );
 }
@@ -873,11 +1001,13 @@ class DriveVideoPage extends StatefulWidget {
   final drive.File file;
   final Map<String, String> headers;
   final bool active;
+  final VoidCallback onToggleChrome;
   const DriveVideoPage({
     super.key,
     required this.file,
     required this.headers,
     required this.active,
+    required this.onToggleChrome,
   });
   @override
   State<DriveVideoPage> createState() => _DriveVideoPageState();
@@ -891,9 +1021,7 @@ class _DriveVideoPageState extends State<DriveVideoPage> {
   void initState() {
     super.initState();
     _controller = VideoPlayerController.networkUrl(
-      Uri.parse(
-        'https://www.googleapis.com/drive/v3/files/${widget.file.id}?alt=media',
-      ),
+      Uri.parse(_driveMediaUrl(widget.file)),
       httpHeaders: widget.headers,
     )..addListener(_refresh);
     _ready = _controller.initialize().then((_) {
@@ -929,10 +1057,22 @@ class _DriveVideoPageState extends State<DriveVideoPage> {
     future: _ready,
     builder: (context, snapshot) {
       if (snapshot.hasError) {
-        return const Center(
-          child: Text(
-            'Unable to play this video.',
-            style: TextStyle(color: Colors.white),
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white70, size: 48),
+              const SizedBox(height: 12),
+              const Text(
+                'Unable to play this video format.',
+                style: TextStyle(color: Colors.white),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.file.name ?? '',
+                style: const TextStyle(color: Colors.white60),
+              ),
+            ],
           ),
         );
       }
@@ -943,7 +1083,8 @@ class _DriveVideoPageState extends State<DriveVideoPage> {
         children: [
           Expanded(
             child: GestureDetector(
-              onTap: () => _controller.value.isPlaying
+              onTap: widget.onToggleChrome,
+              onDoubleTap: () => _controller.value.isPlaying
                   ? _controller.pause()
                   : _controller.play(),
               child: Center(
@@ -995,6 +1136,12 @@ class _DriveVideoPageState extends State<DriveVideoPage> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 12),
+                Text(
+                  '${_videoTime(_controller.value.position)} / '
+                  '${_videoTime(_controller.value.duration)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
               ],
             ),
           ),
@@ -1002,6 +1149,12 @@ class _DriveVideoPageState extends State<DriveVideoPage> {
       );
     },
   );
+
+  String _videoTime(Duration value) {
+    final minutes = value.inMinutes.toString().padLeft(2, '0');
+    final seconds = (value.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
 }
 
 class SyncPolicyDialog extends StatefulWidget {
